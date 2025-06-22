@@ -2,6 +2,13 @@ import sqlite3
 from tkinter import *
 from tkinter import ttk, messagebox
 import tkinter as tk
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Table
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+import datetime
+import sys
+import os
 
 
 class Ventas(tk.Frame):
@@ -234,17 +241,18 @@ class Ventas(tk.Frame):
             conn = sqlite3.connect(self.db_name)
             c = conn.cursor()
             try:
+                productos = []
                 for i in self.tree.get_children():
                     item = self.tree.item(i, "values")
-                    nombre_producto = item[0]
+                    producto = item[0]
+                    precio = item[1]
                     cantidad_vendida = int(item[2])
-                    if not self.validar_stock(nombre_producto, cantidad_vendida):
-                        messagebox.showerror("Error", f"Stock insuficiemte para el producto: {nombre_producto}")
-                        return
+                    subtotal = float(item[3])
+                    productos.append(producto, precio, cantidad_vendida, subtotal)
                     
-                    c.execute("INSERT INTO ventas (factura,nobre_articulo, voalor_articulo, cantidad, subtotal) VALUES (?,?,?,?,?)", (self.numero_factura_actual, nombre_producto, float(item[1]), cantidad_vendida,float(item[3])))
+                    c.execute("INSERT INTO ventas (factura,nobre_articulo, voalor_articulo, cantidad, subtotal) VALUES (?,?,?,?,?)", (self.numero_factura_actual, producto, float(precio), cantidad_vendida, subtotal))
                     
-                    c.execute("UPDATE inventario SET stock -stock - ? WHERE nombre = ?",(cantidad_vendida,nombre_producto))
+                    c.execute("UPDATE inventario SET stock -stock - ? WHERE nombre = ?",(cantidad_vendida, producto))
                     
                     conn.commit()
                     messagebox.showinfo("Exito", "La venta se ha completado")
@@ -258,6 +266,9 @@ class Ventas(tk.Frame):
                     
                     ventana_pago.destroy()
                     
+                    fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+                    self.generar_factura_pdf(productos, total, self.numero_factura_actual, fecha)
+                    
             except sqlite3.Error as e:
                 conn.rollback()
                 messagebox.showerror("Error", f"Error al registrar la venta: {e}")
@@ -265,7 +276,43 @@ class Ventas(tk.Frame):
                 conn.close()
         except ValueError:
             messagebox.showerror("Error", "Cantidad pagada no valida")
-            
+    
+    def generar_factura_pdf(self, productos, total, factura_numero, fecha):
+        archivo_pdf: f"fecturas/factura_{factura_numero}.pdf"
+        
+        c = canvas.Canvas(archivo_pdf, pagesize=letter)
+        width, height = letter
+        
+        styles = getSampleStyleSheet()
+        estilo_titulo = styles["title"]
+        estilo_normal = styles["normal"]
+        
+        c.setFont("Helvetica-bold", 16)
+        c.drawString(100, height - 50, f"Factura #{factura_numero}")
+        
+        c.setFont("Helvetica-bold", 12)
+        c.drawString(100, height - 70, f"Fecha: {fecha}")
+        
+        c.setFont("Helvetica-bold", 12)
+        c.drawString(100, height - 100, "Informacion de la venta")
+        
+        data = [["producto", "precio", "cantidad", "subtutal"]] + productos
+        table = Table(data)
+        table.wrapOn(c, width, height)
+        table.drawOn(c, 100 , height - 200)
+        
+        c.setFont("Helvetica-bold", 16)
+        c.drawString(100, height - 250, f"Total a pagar: {total:.0f} €")
+        
+        c.setFont("Helvetica-bold", 12)
+        c.drawString(100, height - 370, "Gracias por su compra, vuelva pronto")
+        
+        c.save()
+        
+        messagebox.showinfo("Factura generada", f"La factura #{factura_numero} ha sido creada exitosamente")
+        
+        os.startfile(os.path.abspath(archivo_pdf))
+
     def obtener_numero_factura_actual(self):
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()

@@ -21,6 +21,11 @@ class Container(tk.Frame):
         top_level.geometry("1100x650+120+20")
         top_level.resizable(False, False)
         
+        top_level.transient(self.master)
+        top_level.grab_set()
+        top_level.focus_set()
+        top_level.lift()
+        
     def ventas(self):
         self.show_frames(Ventas)
         
@@ -38,7 +43,7 @@ class Container(tk.Frame):
         btnInventario = Button(frame1, bg="#c62e26", fg="white", font="sans 18 bold", text="Ir a inventario", command=self.inventario)
         btnInventario.place(x=500, y=130, width=240, height=60)
         
-        self.logo_image = Image.open("img/caja registradora.png")
+        self.logo_image = Image.open("img/logo.png")
         self.logo_image = self.logo_image.resize((280, 280))
         self.logo_image = ImageTk.PhotoImage(self.logo_image)
         self.logo_label = tk.Label(frame1, image=self.logo_image, bg="#C6D9E3")
