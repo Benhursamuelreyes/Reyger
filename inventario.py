@@ -54,10 +54,10 @@ class Inventario(tk.Frame):
         self.stock = ttk.Entry(labelFrame, font="sans 14 bold")
         self.stock.place(x=140, y=260, width=240, height=40)
         
-        boton_agregar = tk.Button(labelFrame, text="Ingresar", font="sans 14 bold", bg="#dddddd", command=self.registrar)
+        boton_agregar = tk.Button(labelFrame, text="Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
         boton_agregar.place(x=80, y=340, width=240, height=40)
         
-        boton_editar = tk.Button(labelFrame, text="Editar", font="sans 14 bold", bg="#dddddd", command=self.editar_producto)
+        boton_editar = tk.Button(labelFrame, text="Editar", font="sans 14 bold", bg="#0000FF",fg="white", command=self.editar_producto)
         boton_editar.place(x=80, y=400, width=240, height=40)
         
         #tablas
@@ -93,7 +93,7 @@ class Inventario(tk.Frame):
         
         self.mostrar()
         
-        btn_actualizar = Button(frame2, text="Actualizar inventario", font="sans 14 bold", command=self.actualizar_inventario)
+        btn_actualizar = Button(frame2, text="Actualizar inventario", bg="#000CFF", fg="white", font="sans 14 bold", command=self.actualizar_inventario)
         btn_actualizar.place(x=440, y=480, width=260, height=50)
     
     def eje_consulta(self, consulta, parametros=()):

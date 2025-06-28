@@ -89,13 +89,13 @@ class Ventas(tk.Frame):
         lblframe1 = LabelFrame(frame2, text="Opciones", bg="#C6D9E3", font="sans 14 bold")
         lblframe1.place(x=10, y=380, width=1060, height=100)
         
-        boton_agregar = tk.Button(lblframe1, text="Agregar articulo", bg="#dddddd", font="sans 14 bold", command=self.registrar)
+        boton_agregar = tk.Button(lblframe1, text="Agregar articulo", bg="#0049FF", fg="white", font="sans 14 bold", command=self.registrar)
         boton_agregar.place(x=50, y=10, width=240, height=50)
         
-        boton_pagar = tk.Button(lblframe1, text="Pagar", bg="#dddddd", font="sans 14 bold", command=self.abrir_ventana_paga)
+        boton_pagar = tk.Button(lblframe1, text="Pagar", bg="#38C834", font="sans 14 bold", command=self.abrir_ventana_paga)
         boton_pagar.place(x=400, y=10,width=240, height=50)
         
-        boton_ver_factura = tk.Button(lblframe1, text="Ver Factura", bg="#dddddd", font="sans 14 bold", command=self.abrir_ventana_factura)
+        boton_ver_factura = tk.Button(lblframe1, text="Ver Factura", bg="#DF4242", fg="white", font="sans 14 bold", command=self.abrir_ventana_factura)
         boton_ver_factura.place(x=750, y=10, width=240, height=50)
         
         self.label_suma_total = tk.Label(frame2, text="Total a pagar: 0 €", bg="#C6D9E3", font="sans 25 bold")
@@ -317,14 +317,11 @@ class Ventas(tk.Frame):
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         try:
-            c.execute("SELECT MAX(factura) FROM ventas")
+            c.execute("SELECT IFNULL(MAX(factura), 0) FROM ventas")
             max_factura = c.fetchone()[0]
-            if max_factura:
-                return max_factura + 1
-            else:
-                return 1
+            return max_factura + 1
         except sqlite3.Error as e:
-            messagebox.showerror("Error", "Error al obtener el numero de factura: {e}")
+            messagebox.showerror("Error", f"Error al obtener el numero de factura: {e}")
             return 1
         finally:
             conn.close()
