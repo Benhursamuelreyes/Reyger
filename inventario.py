@@ -28,37 +28,42 @@ class Inventario(tk.Frame):
         labelFrame.place(x=20, y=30, width=400, height=500)
         
         # Campos de entrada
+        lblId = Label(labelFrame, text="Id: ", font="sans 14 bold", bg="#C6D9E3")
+        lblId.place(x=10, y=20)
+        self.id = ttk.Entry(labelFrame, font="sans 14 bold")
+        self.id.place(x=140, y=20, width=240, height=40)
+
         lblNombre = Label(labelFrame, text="Nombre: ", font="sans 14 bold", bg="#C6D9E3")
-        lblNombre.place(x=10, y=20)
+        lblNombre.place(x=10, y=80)
         self.nombre = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.nombre.place(x=140, y=20, width=240, height=40)
+        self.nombre.place(x=140, y=80, width=240, height=40)
         
         lblProveedor = Label(labelFrame, text="Proveedor: ", font="sans 14 bold", bg="#C6D9E3")
-        lblProveedor.place(x=10, y=80)
+        lblProveedor.place(x=10, y=140)
         self.proveedor = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.proveedor.place(x=140, y=80, width=240, height=40)
+        self.proveedor.place(x=140, y=140, width=240, height=40)
         
         lblPrecio = Label(labelFrame, text="Precio: ", font="sans 14 bold", bg="#C6D9E3")
-        lblPrecio.place(x=10, y=140)
+        lblPrecio.place(x=10, y=200)
         self.precio = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.precio.place(x=140, y=140, width=240, height=40)
+        self.precio.place(x=140, y=200, width=240, height=40)
         
         lblCosto = Label(labelFrame, text="Costo: ", font="sans 14 bold", bg="#C6D9E3")
-        lblCosto.place(x=10, y=200)
+        lblCosto.place(x=10, y=260)
         self.costo = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.costo.place(x=140, y=200, width=240, height=40)
+        self.costo.place(x=140, y=260, width=240, height=40)
         
         lblStock = Label(labelFrame, text="Stock: ", font="sans 14 bold", bg="#C6D9E3")
-        lblStock.place(x=10, y=260)
+        lblStock.place(x=10, y=320)
         self.stock = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.stock.place(x=140, y=260, width=240, height=40)
+        self.stock.place(x=140, y=320, width=240, height=40)
         
         # Botones
         boton_agregar = tk.Button(labelFrame, text="Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
-        boton_agregar.place(x=80, y=340, width=240, height=40)
+        boton_agregar.place(x=30, y=400, width=120, height=40)
         
         boton_editar = tk.Button(labelFrame, text="Editar", font="sans 14 bold", bg="#0000FF", fg="white", command=self.editar_producto)
-        boton_editar.place(x=80, y=400, width=240, height=40)
+        boton_editar.place(x=250, y=400, width=120, height=40)
         
         boton_eliminar = tk.Button(frame2, text="Eliminar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.eliminar_producto)
         boton_eliminar.place(x=800, y=480, width=260, height=50)
@@ -108,7 +113,8 @@ class Inventario(tk.Frame):
     def crear_tabla(self):
         consulta = """
         CREATE TABLE IF NOT EXISTS inventario (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            --id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER NOT NULL,
             nombre TEXT NOT NULL,
             proveedor TEXT NOT NULL,
             precio REAL NOT NULL,
@@ -118,8 +124,8 @@ class Inventario(tk.Frame):
         """
         self.eje_consulta(consulta)
     
-    def validacion(self, nombre, prov, precio, costo, stock):
-        if not (nombre and prov and precio and costo and stock):
+    def validacion(self,id, nombre, prov, precio, costo, stock):
+        if not (id and nombre and prov and precio and costo and stock):
             return False
         try:
             float(precio)
@@ -148,18 +154,20 @@ class Inventario(tk.Frame):
         messagebox.showinfo("Actualización", "El inventario ha sido actualizado correctamente")
     
     def registrar(self):
+        id=self.id.get()
         nombre = self.nombre.get()
         prov = self.proveedor.get()
         precio = self.precio.get()
         costo = self.costo.get()
         stock = self.stock.get()
         
-        if self.validacion(nombre, prov, precio, costo, stock):
+        if self.validacion(id,nombre, prov, precio, costo, stock):
             try:
                 consulta = "INSERT INTO inventario VALUES(?,?,?,?,?,?)"
-                parametros = (None, nombre, prov, precio, costo, stock)
+                parametros = (id, nombre, prov, precio, costo, stock)
                 self.eje_consulta(consulta, parametros)
                 self.actualizar_inventario()
+                self.id.delete(0, END)
                 self.nombre.delete(0, END)
                 self.proveedor.delete(0, END)
                 self.precio.delete(0, END)
@@ -183,6 +191,12 @@ class Inventario(tk.Frame):
         ventana_editar.title("Editar producto")
         ventana_editar.geometry("400x400")
         ventana_editar.config(bg="#C6D9E3")
+
+        lbl_id = Label(ventana_editar, text="id:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_id.grid(row=0, column=0, padx=10, pady=10)
+        entry_id = Entry(ventana_editar, font="sans 14 bold")
+        entry_id.grid(row=0, column=1, padx=10, pady=10)
+        entry_id.insert(0, item_values[1])
         
         lbl_nombre = Label(ventana_editar, text="Nombre:", font="sans 14 bold", bg="#C6D9E3")
         lbl_nombre.grid(row=0, column=0, padx=10, pady=10)
@@ -215,6 +229,7 @@ class Inventario(tk.Frame):
         entry_stock.insert(0, item_values[5])
         
         def guardar_cambio():
+            id =entry_id.get()
             nombre = entry_nombre.get()
             proveedor = entry_proveedor.get()
             precio = entry_precio.get()
