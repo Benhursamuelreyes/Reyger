@@ -3,9 +3,19 @@ import sqlite3
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk, messagebox
+import sys
+import os
 
+def get_db_path():
+    if getattr(sys, 'frozen', False):
+        # Ejecutando como .exe compilado
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        # Ejecutando como script .py normal
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "database.db")
 class Inventario(tk.Frame):
-    db_name = "database.db"
+    db_name = get_db_path()
     
     def __init__(self, padre):
         super().__init__(padre)
@@ -54,13 +64,13 @@ class Inventario(tk.Frame):
         self.stock.place(x=140, y=260, width=240, height=40)
         
         # Botones
-        boton_agregar = tk.Button(labelFrame, text="Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
+        boton_agregar = tk.Button(labelFrame, text="➕ Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
         boton_agregar.place(x=80, y=340, width=240, height=40)
         
-        boton_editar = tk.Button(labelFrame, text="Editar", font="sans 14 bold", bg="#0000FF", fg="white", command=self.editar_producto)
+        boton_editar = tk.Button(labelFrame, text="✏️ Editar", font="sans 14 bold", bg="#0000FF", fg="white", command=self.editar_producto)
         boton_editar.place(x=80, y=400, width=240, height=40)
         
-        boton_eliminar = tk.Button(frame2, text="Eliminar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.eliminar_producto)
+        boton_eliminar = tk.Button(frame2, text="🗑️ Eliminar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.eliminar_producto)
         boton_eliminar.place(x=800, y=480, width=260, height=50)
         
         # Tabla de productos
@@ -95,7 +105,7 @@ class Inventario(tk.Frame):
         self.tre.pack(expand=True, fill=BOTH)
         self.mostrar()
         
-        btn_actualizar = Button(frame2, text="Actualizar inventario", bg="#000CFF", fg="white", font="sans 14 bold", command=self.actualizar_inventario)
+        btn_actualizar = Button(frame2, text="🔄 Actualizar inventario", bg="#000CFF", fg="white", font="sans 14 bold", command=self.actualizar_inventario)
         btn_actualizar.place(x=440, y=480, width=260, height=50)
     
     def eje_consulta(self, consulta, parametros=()):

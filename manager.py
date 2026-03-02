@@ -1,20 +1,24 @@
 from tkinter import Tk, Frame
 from container import Container
 from ttkthemes import ThemedStyle
+from config import ConfigManager
 import sys
 import os
 
 class Manager(Tk):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, ** kwargs)
-        self.title("Caja registradora veersion 1.0")
+        self.config_manager = ConfigManager()
+        self.colors = self.config_manager.get_colors()
+        
+        self.title("Caja registradora versión 1.0")
         self.resizable(False, False)
-        self.configure(bg="#C6D9E3")
+        self.configure(bg=self.colors["bg_principal"])
         self.geometry("800x400+120+20")
         ruta = self.rutas(r"icono.ico")
         self.iconbitmap(ruta)
         
-        self.Container = Frame(self, bg="#C6D9E3")
+        self.Container = Frame(self, bg=self.colors["bg_principal"])
         self.Container.pack(fill="both", expand=True)
         
         self.frames = {
@@ -45,7 +49,10 @@ class Manager(Tk):
         
     def set_theme(self):
         style = ThemedStyle(self)
-        style.set_theme("breeze")
+        if self.config_manager.get("tema") == "oscuro":
+            style.set_theme("equilux")  # Tema oscuro
+        else:
+            style.set_theme("breeze")  # Tema claro
     
 def main():
     app = Manager()

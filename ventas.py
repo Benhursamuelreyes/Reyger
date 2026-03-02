@@ -10,8 +10,16 @@ import datetime
 import sys
 import os
 
+def get_db_path():
+    if getattr(sys, 'frozen', False):
+        # Ejecutando como .exe compilado
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        # Ejecutando como script .py normal
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "database.db")
 class Ventas(tk.Frame):
-    db_name = "database.db"
+    db_name = get_db_path()
     
     def __init__(self, parent):
         super().__init__(parent)
