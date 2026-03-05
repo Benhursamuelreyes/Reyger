@@ -33,7 +33,7 @@ class Manager(Tk):
         
     def rutas(self, ruta):
         try:
-            rutabase = sys.__MEIPASS
+            rutabase = sys._MEIPASS
         except Exception:
             rutabase = os.path.abspath(".")
         return os.path.join(rutabase, ruta)

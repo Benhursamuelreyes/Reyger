@@ -145,6 +145,7 @@ class Ventas(tk.Frame):
     
     def actualizar_precio(self, event):
         nombre_producto = self.entry_nombre.get()
+        conn = None
         try:
             conn = sqlite3.connect(self.db_name)
             c = conn.cursor()
@@ -163,7 +164,8 @@ class Ventas(tk.Frame):
         except sqlite3.Error as e:
             messagebox.showerror("Error", f"Error al obtener el precio: {e}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def actualizar_total(self):
         total = 0.0
@@ -203,6 +205,7 @@ class Ventas(tk.Frame):
             messagebox.showerror("Error", "Cantidad o precio no válidos. Asegúrese de ingresar números válidos")
     
     def validar_stock(self, nombre_producto, cantidad):
+        conn = None
         try:
             conn = sqlite3.connect(self.db_name)
             c = conn.cursor()
@@ -215,7 +218,8 @@ class Ventas(tk.Frame):
             messagebox.showerror("Error", f"Error al validar el stock: {e}")
             return False
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def obtener_total(self):
         total = 0.0
