@@ -114,4 +114,8 @@ El sistema está listo para extenderse con:
 Nombre de empresa en encabezados de comprobantes
 Logo en facturas PDF generadas con reportlab
 Aplicación dinámica del tamaño de fuente en todos los módulos
+<<<<<<< HEAD
 Uso de mostrar_hora y redondear_decimales en todos los cálculos
+=======
+Uso de mostrar_hora y redondear_decimales en todos los cálculos
+>>>>>>> 1d83f90d5298d19480b94331849373e8dbcf050e
