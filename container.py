@@ -58,11 +58,10 @@ class Container(tk.Frame):
         ruta = self.rutas(r"img/logo.png")
         if os.path.exists(ruta):
             self.logo_image = Image.open(ruta)
-            self.logo_image = self.logo_image.resize((300, 80))
+            self.logo_image = self.logo_image.resize((760, 194))
             self.logo_image = ImageTk.PhotoImage(self.logo_image)
             self.logo_label = tk.Label(frame1, image=self.logo_image, bg=self.colors["bg_principal"])
-            self.logo_label.place(x=250, y=20)
-        
+            self.logo_label.place(x=20, y=60)
         # Botón de Ventas
         btnVentas = Button(
             frame1, 
@@ -71,7 +70,7 @@ class Container(tk.Frame):
             text="🛒 Ir a ventas", 
             command=self.ventas
         )
-        btnVentas.place(x=30, y=200, width=230, height=70)
+        btnVentas.place(x=30, y=300, width=230, height=70)
         
         # Botón de Inventario
         btnInventario = Button(
@@ -82,7 +81,7 @@ class Container(tk.Frame):
             text="📦 Ir a inventario", 
             command=self.inventario
         )
-        btnInventario.place(x=285, y=200, width=230, height=70)
+        btnInventario.place(x=285, y=300, width=230, height=70)
         
         # Botón de Ajustes
         btnAjustes = Button(
@@ -93,9 +92,8 @@ class Container(tk.Frame):
             text="⚙️ Ajustes", 
             command=self.ajustes
         )
-        btnAjustes.place(x=540, y=200, width=230, height=70)
+        btnAjustes.place(x=540, y=300, width=230, height=70)
         
-        # Logo personalizado si existe
         logo_path = self.config_manager.get("logo_path")
         if logo_path and os.path.exists(logo_path):
             try:
