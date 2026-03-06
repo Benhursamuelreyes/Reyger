@@ -38,6 +38,17 @@ class Manager(Tk):
             rutabase = os.path.abspath(".")
         return os.path.join(rutabase, ruta)
 
+    def _set_icon(self):
+        try:
+            origen = self.rutas("icono.ico")
+            # Copiar a carpeta temporal del sistema (fuera de _MEIPASS)
+            tmp_dir = tempfile.gettempdir()
+            destino = os.path.join(tmp_dir, "icono_app.ico")
+            shutil.copy2(origen, destino)
+            self.iconbitmap(destino)
+        except Exception as e:
+            print(f"No se pudo cargar el icono: {e}")
+
     def load_frames(self):
         for FrameClass in self.frames.keys():
             frame = FrameClass(self.Container, self)
@@ -59,4 +70,5 @@ def main():
     app.mainloop()
     
 if __name__ == "__main__":
+
     main()
