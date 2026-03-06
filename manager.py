@@ -4,19 +4,22 @@ from ttkthemes import ThemedStyle
 from config import ConfigManager
 import sys
 import os
-
+import shutil
+import tempfile
 class Manager(Tk):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, ** kwargs)
         self.config_manager = ConfigManager()
         self.colors = self.config_manager.get_colors()
         
-        self.title("Caja registradora versión 1.0")
+        self.title("VentaPRO versión BETA")
         self.resizable(False, False)
         self.configure(bg=self.colors["bg_principal"])
         self.geometry("800x400+120+20")
         ruta = self.rutas(r"icono.ico")
         self.iconbitmap(ruta)
+        
+        self._set_icon()
         
         self.Container = Frame(self, bg=self.colors["bg_principal"])
         self.Container.pack(fill="both", expand=True)
@@ -41,7 +44,6 @@ class Manager(Tk):
     def _set_icon(self):
         try:
             origen = self.rutas("icono.ico")
-            # Copiar a carpeta temporal del sistema (fuera de _MEIPASS)
             tmp_dir = tempfile.gettempdir()
             destino = os.path.join(tmp_dir, "icono_app.ico")
             shutil.copy2(origen, destino)

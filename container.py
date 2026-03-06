@@ -54,6 +54,15 @@ class Container(tk.Frame):
         frame1.pack()
         frame1.place(x=0, y=0, width=800, height=400)
         
+        # Logo
+        ruta = self.rutas(r"img/logo.png")
+        if os.path.exists(ruta):
+            self.logo_image = Image.open(ruta)
+            self.logo_image = self.logo_image.resize((300, 80))
+            self.logo_image = ImageTk.PhotoImage(self.logo_image)
+            self.logo_label = tk.Label(frame1, image=self.logo_image, bg=self.colors["bg_principal"])
+            self.logo_label.place(x=250, y=20)
+        
         # Botón de Ventas
         btnVentas = Button(
             frame1, 
@@ -62,7 +71,7 @@ class Container(tk.Frame):
             text="🛒 Ir a ventas", 
             command=self.ventas
         )
-        btnVentas.place(x=500, y=30, width=240, height=60)
+        btnVentas.place(x=30, y=200, width=230, height=70)
         
         # Botón de Inventario
         btnInventario = Button(
@@ -73,7 +82,7 @@ class Container(tk.Frame):
             text="📦 Ir a inventario", 
             command=self.inventario
         )
-        btnInventario.place(x=500, y=130, width=240, height=60)
+        btnInventario.place(x=285, y=200, width=230, height=70)
         
         # Botón de Ajustes
         btnAjustes = Button(
@@ -84,28 +93,19 @@ class Container(tk.Frame):
             text="⚙️ Ajustes", 
             command=self.ajustes
         )
-        btnAjustes.place(x=500, y=230, width=240, height=60)
-        
-        # Logo
-        ruta = self.rutas(r"img/logo.png")
-        if os.path.exists(ruta):
-            self.logo_image = Image.open(ruta)
-            self.logo_image = self.logo_image.resize((280, 280))
-            self.logo_image = ImageTk.PhotoImage(self.logo_image)
-            self.logo_label = tk.Label(frame1, image=self.logo_image, bg=self.colors["bg_principal"])
-            self.logo_label.place(x=100, y=30)
+        btnAjustes.place(x=540, y=200, width=230, height=70)
         
         # Logo personalizado si existe
         logo_path = self.config_manager.get("logo_path")
         if logo_path and os.path.exists(logo_path):
             try:
                 self.custom_logo_image = Image.open(logo_path)
-                self.custom_logo_image = self.custom_logo_image.resize((280, 280))
+                self.custom_logo_image = self.custom_logo_image.resize((300, 80))
                 self.custom_logo_image = ImageTk.PhotoImage(self.custom_logo_image)
                 
                 # Crear un Frame sobre el logo para mostrar el personalizado
                 logo_frame = tk.Frame(frame1, bg=self.colors["bg_principal"])
-                logo_frame.place(x=100, y=30, width=280, height=280)
+                logo_frame.place(x=250, y=20, width=300, height=80)
                 
                 logo_label_custom = tk.Label(
                     logo_frame, 
