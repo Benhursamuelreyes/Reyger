@@ -5,7 +5,8 @@ import tkinter as tk
 from ventas import Ventas
 from inventario import Inventario
 from ajustes import Ajustes
-from PIL import Image, ImageTk
+from presupuestos import Presupuestos
+from PIL import Image, ImageTk # type: ignore
 from config import ConfigManager
 
 class Container(tk.Frame):
@@ -48,6 +49,9 @@ class Container(tk.Frame):
     
     def ajustes(self):
         self.show_frames(Ajustes)
+    
+    def presupuestos(self):
+        self.show_frames(Presupuestos)
         
     def widgets(self):
         frame1 = tk.Frame(self, bg=self.colors["bg_principal"])
@@ -67,10 +71,10 @@ class Container(tk.Frame):
             frame1, 
             bg="#f4b400", 
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold", 
-            text="🛒 Ir a ventas", 
+            text="Ventas", 
             command=self.ventas
         )
-        btnVentas.place(x=30, y=300, width=230, height=70)
+        btnVentas.place(x=30, y=300, width=170, height=70)
         
         # Botón de Inventario
         btnInventario = Button(
@@ -78,10 +82,10 @@ class Container(tk.Frame):
             bg="#c62e26", 
             fg="white", 
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold", 
-            text="📦 Ir a inventario", 
+            text="Inventario", 
             command=self.inventario
         )
-        btnInventario.place(x=285, y=300, width=230, height=70)
+        btnInventario.place(x=225, y=300, width=170, height=70)
         
         # Botón de Ajustes
         btnAjustes = Button(
@@ -89,10 +93,21 @@ class Container(tk.Frame):
             bg="#17A2B8", 
             fg="white", 
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold", 
-            text="⚙️ Ajustes", 
+            text="Ajustes", 
             command=self.ajustes
         )
-        btnAjustes.place(x=540, y=300, width=230, height=70)
+        btnAjustes.place(x=420, y=300, width=170, height=70)
+        
+        # Botón de Presupuestos (Nueva funcionalidad)
+        btnPresupuestos = Button(
+            frame1, 
+            bg="#9B59B6", 
+            fg="white", 
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold", 
+            text="Presupuestos", 
+            command=self.presupuestos
+        )
+        btnPresupuestos.place(x=615, y=300, width=170, height=70)
         
         logo_path = self.config_manager.get("logo_path")
         if logo_path and os.path.exists(logo_path):

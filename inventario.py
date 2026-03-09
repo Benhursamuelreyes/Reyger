@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sys
 import os
+from barcode_scanner import EscanerCodigoBarras, DialogoAsignarCodigoBarras
 
 def get_db_path():
     if getattr(sys, 'frozen', False):
@@ -20,6 +21,7 @@ class Inventario(tk.Frame):
     def __init__(self, padre):
         super().__init__(padre)
         self.pack()
+        self.escaner = EscanerCodigoBarras(self.db_name)
         self.crear_tabla()
         self.widgets()
     
@@ -114,19 +116,6 @@ class Inventario(tk.Frame):
             result = cursor.execute(consulta, parametros)
             conn.commit()
         return result
-    
-    def crear_tabla(self):
-        consulta = """
-        CREATE TABLE IF NOT EXISTS inventario (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            proveedor TEXT NOT NULL,
-            precio REAL NOT NULL,
-            costo REAL NOT NULL,
-            stock INTEGER NOT NULL
-        );
-        """
-        self.eje_consulta(consulta)
     
     def validacion(self, nombre, prov, precio, costo, stock):
         if not (nombre and prov and precio and costo and stock):

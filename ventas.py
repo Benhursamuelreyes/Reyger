@@ -32,6 +32,7 @@ class Ventas(tk.Frame):
         try:
             with sqlite3.connect(self.db_name) as conn:
                 cursor = conn.cursor()
+                # Crear tabla principal de ventas
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS ventas (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,9 +41,29 @@ class Ventas(tk.Frame):
                         valor_articulo REAL NOT NULL,
                         cantidad INTEGER NOT NULL,
                         subtotal REAL NOT NULL,
+                        metodo_pago TEXT DEFAULT 'Efectivo',
+                        cantidad_efectivo REAL DEFAULT 0,
+                        cantidad_tarjeta REAL DEFAULT 0,
                         fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
+                
+                # Hacer ALTER TABLE si la tabla existe pero no tiene las columnas
+                try:
+                    cursor.execute('ALTER TABLE ventas ADD COLUMN metodo_pago TEXT DEFAULT "Efectivo"')
+                except:
+                    pass  # Columna ya existe
+                
+                try:
+                    cursor.execute('ALTER TABLE ventas ADD COLUMN cantidad_efectivo REAL DEFAULT 0')
+                except:
+                    pass
+                
+                try:
+                    cursor.execute('ALTER TABLE ventas ADD COLUMN cantidad_tarjeta REAL DEFAULT 0')
+                except:
+                    pass
+                
                 conn.commit()
         except sqlite3.Error as e:
             messagebox.showerror("Error", f"No se pudo crear la tabla ventas: {e}")
@@ -59,27 +80,27 @@ class Ventas(tk.Frame):
         frame2.place(x=0, y=100, width=1100, height=550)
         
         lblframe = LabelFrame(frame2, text="Información de la venta", bg="#C6D9E3", font="sans 16 bold")
-        lblframe.place(x=10, y=10, width=1060, height=95)
+        lblframe.place(x=10, y=10, width=1060, height=135)
         
-        nFactura = tk.Label(lblframe, text="Numero de factura", bg="#C6D9E3", font="sans 14 bold")
-        nFactura.place(x=10, y=5)
+        nFactura = tk.Label(lblframe, text="Num.factura: ", bg="#C6D9E3", font="sans 14 bold")
+        nFactura.place(x=10, y=12)
         
         self.numero_factura = tk.StringVar()
         self.entry_numero_factura = ttk.Entry(lblframe, textvariable=self.numero_factura, state="readonly", font="sans 12 bold")
-        self.entry_numero_factura.place(x=130, y=5, width=100)
+        self.entry_numero_factura.place(x=130, y=12, width=100)
         
         label_nombre = tk.Label(lblframe, text="Productos: ", bg="#C6D9E3", font="sans 14 bold")
         label_nombre.place(x=240, y=12)
         
         self.entry_nombre = ttk.Combobox(lblframe, font="sans 14 bold", state="readonly")
-        self.entry_nombre.place(x=360, y=10, width=180)
+        self.entry_nombre.place(x=360, y=12, width=180)
         self.cargar_productos()
         
         label_valor = tk.Label(lblframe, text="Precio: ", bg="#C6D9E3", font="sans 14 bold")
         label_valor.place(x=550, y=12)
         
         self.entry_valor = ttk.Entry(lblframe, font="sans 14 bold", state="readonly")
-        self.entry_valor.place(x=630, y=10, width=180)
+        self.entry_valor.place(x=630, y=12, width=180)
         
         self.entry_nombre.bind("<<ComboboxSelected>>", self.actualizar_precio)
         
@@ -87,10 +108,10 @@ class Ventas(tk.Frame):
         label_cantidad.place(x=820, y=12)
         
         self.entry_cantidad = ttk.Entry(lblframe, font="sans 14 bold")
-        self.entry_cantidad.place(x=920, y=10)
+        self.entry_cantidad.place(x=920, y=12)
         
         treFrame = tk.Frame(frame2, bg="#C6D9E3")
-        treFrame.place(x=150, y=120, width=800, height=200)
+        treFrame.place(x=150, y=170, width=800, height=200)
         
         scrol_y = ttk.Scrollbar(treFrame, orient=VERTICAL)
         scrol_y.pack(side=RIGHT, fill=Y)
@@ -114,7 +135,7 @@ class Ventas(tk.Frame):
         self.tree.pack(expand=True, fill=BOTH)
         
         lblframe1 = LabelFrame(frame2, text="Opciones", bg="#C6D9E3", font="sans 14 bold")
-        lblframe1.place(x=10, y=380, width=1060, height=100)
+        lblframe1.place(x=10, y=430, width=1060, height=100)
         
         boton_agregar = tk.Button(lblframe1, text="Agregar artículo", bg="#000CFF", fg="white", font="sans 14 bold", command=self.registrar)
         boton_agregar.place(x=50, y=10, width=240, height=50)
@@ -126,7 +147,7 @@ class Ventas(tk.Frame):
         boton_ver_factura.place(x=750, y=10, width=240, height=50)
         
         self.label_suma_total = tk.Label(frame2, text="Total a pagar: 0 €", bg="#C6D9E3", font="sans 25 bold")
-        self.label_suma_total.place(x=360, y=335)
+        self.label_suma_total.place(x=360, y=385)
     
     def cargar_productos(self):
         try:
@@ -228,6 +249,29 @@ class Ventas(tk.Frame):
             total += subtotal
         return total
     
+    def _actualizar_campos_pago(self, ventana, var_metodo, label_efe=None, entry_efe=None, label_tar=None, entry_tar=None):
+        """Actualiza visibilidad de campos según método seleccionado"""
+        if label_efe is None:
+            return
+        
+        metodo = var_metodo.get()
+        
+        if metodo == "Efectivo":
+            label_efe.place(x=50, y=150)
+            entry_efe.place(x=50, y=180, width=400, height=35)
+            label_tar.place_forget()
+            entry_tar.place_forget()
+        elif metodo == "Tarjeta":
+            label_efe.place_forget()
+            entry_efe.place_forget()
+            label_tar.place(x=50, y=150)
+            entry_tar.place(x=50, y=180, width=400, height=35)
+        else:  # Mixto
+            label_efe.place(x=50, y=150)
+            entry_efe.place(x=50, y=180, width=400, height=35)
+            label_tar.place(x=50, y=230)
+            entry_tar.place(x=50, y=260, width=400, height=35)
+    
     def abrir_ventana_paga(self):
         if not self.tree.get_children():
             messagebox.showerror("Error", "No hay artículos para pagar")
@@ -235,48 +279,142 @@ class Ventas(tk.Frame):
         
         ventana_pago = tk.Toplevel(self)
         ventana_pago.title("Realizar pago")
-        ventana_pago.geometry("400x400")
+        ventana_pago.geometry("500x600")
         ventana_pago.config(bg="#C5D9E3")
         ventana_pago.resizable(False, False)
         
-        label_total = tk.Label(ventana_pago, bg="#C6D9E3", text=f"Total a pagar: {self.obtener_total():.0f} €", font="sans 18 bold")
-        label_total.place(x=70, y=20)
+        # Total a pagar
+        total = self.obtener_total()
+        label_total = tk.Label(ventana_pago, bg="#C6D9E3", text=f"Total a pagar: {total:.2f} €", font="sans 18 bold")
+        label_total.place(x=50, y=20)
         
-        label_cantidad_pagada = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad pagada:", font="sans 14 bold")
-        label_cantidad_pagada.place(x=100, y=90)
+        # Método de pago
+        label_metodo = tk.Label(ventana_pago, bg="#C6D9E3", text="Método de pago:", font="sans 14 bold")
+        label_metodo.place(x=50, y=70)
         
-        entry_cantidad_pagada = ttk.Entry(ventana_pago, font="sans 14 bold")
-        entry_cantidad_pagada.place(x=100, y=130)
+        var_metodo = tk.StringVar(value="Efectivo")
         
-        label_cambio = tk.Label(ventana_pago, bg="#C6D9E3", text="", font="sans 14 bold")
-        label_cambio.place(x=100, y=190)
+        def actualizar_campos():
+            self._actualizar_campos_pago(ventana_pago, var_metodo, label_efectivo, entry_efectivo, label_tarjeta, entry_tarjeta)
+        
+        radio_efectivo = tk.Radiobutton(
+            ventana_pago, text="Efectivo", variable=var_metodo, value="Efectivo",
+            bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos
+        )
+        radio_efectivo.place(x=50, y=100)
+        
+        radio_tarjeta = tk.Radiobutton(
+            ventana_pago, text="Tarjeta", variable=var_metodo, value="Tarjeta",
+            bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos
+        )
+        radio_tarjeta.place(x=200, y=100)
+        
+        radio_mixto = tk.Radiobutton(
+            ventana_pago, text="Mixto", variable=var_metodo, value="Mixto",
+            bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos
+        )
+        radio_mixto.place(x=320, y=100)
+        
+        # Campos para EFECTIVO
+        label_efectivo = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad en efectivo:", font="sans 12 bold")
+        label_efectivo.place(x=50, y=150)
+        entry_efectivo = ttk.Entry(ventana_pago, font="sans 12 bold")
+        entry_efectivo.place(x=50, y=180, width=400, height=35)
+        
+        # Campos para TARJETA (ocultos inicialmente)
+        label_tarjeta = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad en tarjeta:", font="sans 12 bold")
+        label_tarjeta.place(x=50, y=230)
+        entry_tarjeta = ttk.Entry(ventana_pago, font="sans 12 bold")
+        entry_tarjeta.place(x=50, y=260, width=400, height=35)
+        label_tarjeta.place_forget()
+        entry_tarjeta.place_forget()
+        
+        # Campo de cambio/vuelto
+        label_cambio = tk.Label(ventana_pago, bg="#C6D9E3", text="", font="sans 14 bold", fg="#27AE60")
+        label_cambio.place(x=50, y=320)
         
         def calcular_cambio():
             try:
-                cantidad_pagada = float(entry_cantidad_pagada.get())
-                total = self.obtener_total()
-                cambio = cantidad_pagada - total
-                if cambio < 0:
-                    messagebox.showerror("Error", "Cantidad insuficiente")
-                    return
-                label_cambio.config(text=f"Vuelto: {cambio:.0f} €")
+                metodo = var_metodo.get()
+                
+                if metodo == "Efectivo":
+                    cantidad_pagada = float(entry_efectivo.get())
+                    cambio = cantidad_pagada - total
+                    if cambio < 0:
+                        messagebox.showerror("Error", "Cantidad en efectivo insuficiente")
+                        label_cambio.config(text="")
+                        return
+                    label_cambio.config(text=f"Vuelto: {cambio:.2f} €")
+                
+                elif metodo == "Tarjeta":
+                    cantidad_tarjeta = float(entry_tarjeta.get())
+                    if cantidad_tarjeta < total:
+                        messagebox.showerror("Error", "Cantidad en tarjeta insuficiente")
+                        label_cambio.config(text="")
+                        return
+                    label_cambio.config(text="Pago con tarjeta registrado")
+                
+                elif metodo == "Mixto":
+                    cantidad_efectivo = float(entry_efectivo.get())
+                    cantidad_tarjeta = float(entry_tarjeta.get())
+                    total_pagado = cantidad_efectivo + cantidad_tarjeta
+                    
+                    if total_pagado < total:
+                        messagebox.showerror("Error", "Pago insuficiente (efectivo + tarjeta)")
+                        label_cambio.config(text="")
+                        return
+                    
+                    cambio = total_pagado - total
+                    label_cambio.config(text=f"Vuelto: {cambio:.2f} € (del efectivo)")
+            
             except ValueError:
-                messagebox.showerror("Error", "Cantidad no válida")
+                messagebox.showerror("Error", "Ingrese valores numericos validos")
         
-        boton_calcular = tk.Button(ventana_pago, text="Calcular vuelto", font="sans 12 bold", command=calcular_cambio)
-        boton_calcular.place(x=100, y=240, width=240, height=40)
+        boton_calcular = tk.Button(
+            ventana_pago, text="Calcular", bg="#0078D4", fg="white",
+            font="sans 12 bold", command=calcular_cambio
+        )
+        boton_calcular.place(x=50, y=370, width=400, height=40)
         
-        boton_pagar = tk.Button(ventana_pago, text="Pagar", font="sans 12 bold", command=lambda: self.pagar(ventana_pago, entry_cantidad_pagada, label_cambio))
-        boton_pagar.place(x=100, y=300, width=240, height=40)
+        boton_pagar = tk.Button(
+            ventana_pago, text="Confirmar pago", bg="#27AE60", fg="white",
+            font="sans 14 bold",
+            command=lambda: self.pagar(
+                ventana_pago, entry_efectivo, entry_tarjeta, var_metodo,
+                label_cambio, total
+            )
+        )
+        boton_pagar.place(x=50, y=430, width=400, height=50)
+        
+        boton_cancelar = tk.Button(
+            ventana_pago, text="Cancelar", bg="#C0392B", fg="white",
+            font="sans 12 bold", command=ventana_pago.destroy
+        )
+        boton_cancelar.place(x=50, y=500, width=400, height=40)
     
-    def pagar(self, ventana_pago, entry_cantidad_pagada, label_cambio):
+    def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total):
         try:
-            cantidad_pagada = float(entry_cantidad_pagada.get())
-            total = self.obtener_total()
-            cambio = cantidad_pagada - total
-            if cambio < 0:
-                messagebox.showerror("Error", "La cantidad pagada es insuficiente")
-                return
+            metodo_pago = var_metodo.get()
+            cantidad_efectivo = 0.0
+            cantidad_tarjeta = 0.0
+            
+            # Validar y obtener cantidades según el método
+            if metodo_pago == "Efectivo":
+                cantidad_efectivo = float(entry_efectivo.get())
+                if cantidad_efectivo < total:
+                    messagebox.showerror("Error", "Cantidad en efectivo insuficiente")
+                    return
+            elif metodo_pago == "Tarjeta":
+                cantidad_tarjeta = float(entry_tarjeta.get())
+                if cantidad_tarjeta < total:
+                    messagebox.showerror("Error", "Cantidad en tarjeta insuficiente")
+                    return
+            elif metodo_pago == "Mixto":
+                cantidad_efectivo = float(entry_efectivo.get())
+                cantidad_tarjeta = float(entry_tarjeta.get())
+                if (cantidad_efectivo + cantidad_tarjeta) < total:
+                    messagebox.showerror("Error", "Pago insuficiente (efectivo + tarjeta)")
+                    return
             
             with sqlite3.connect(self.db_name) as conn:
                 c = conn.cursor()
@@ -292,14 +430,19 @@ class Ventas(tk.Frame):
                     
                     c.execute("""
                         INSERT INTO ventas (
-                            factura, nombre_articulo, valor_articulo, cantidad, subtotal
-                        ) VALUES (?, ?, ?, ?, ?)
-                    """, (self.numero_factura_actual, producto, float(precio), cantidad_vendida, subtotal))
+                            factura, nombre_articulo, valor_articulo, cantidad, subtotal,
+                            metodo_pago, cantidad_efectivo, cantidad_tarjeta
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        self.numero_factura_actual, producto, float(precio), 
+                        cantidad_vendida, subtotal, metodo_pago, 
+                        cantidad_efectivo, cantidad_tarjeta
+                    ))
                     
                     c.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
                 
                 conn.commit()
-                messagebox.showinfo("Éxito", "La venta se ha completado")
+                messagebox.showinfo("Exito", f"La venta se ha completado\nMetodo de pago: {metodo_pago}")
                 self.numero_factura_actual += 1
                 self.mostrar_numero_factura()
                 
@@ -309,11 +452,11 @@ class Ventas(tk.Frame):
                 ventana_pago.destroy()
                 
                 fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                self.generar_factura_pdf(productos, total, self.numero_factura_actual, fecha)
+                self.generar_factura_pdf(productos, total, self.numero_factura_actual, fecha, metodo_pago)
         except ValueError:
-            messagebox.showerror("Error", "Cantidad pagada no válida")
+            messagebox.showerror("Error", "Valores ingresados no validos")
     
-    def generar_factura_pdf(self, productos, total, factura_numero, fecha):
+    def generar_factura_pdf(self, productos, total, factura_numero, fecha, metodo_pago="Efectivo"):
         if not os.path.exists("facturas"):
             os.makedirs("facturas")
         
@@ -325,6 +468,7 @@ class Ventas(tk.Frame):
         c.drawString(100, height - 50, f"Factura #{factura_numero}")
         c.setFont("Helvetica", 12)
         c.drawString(100, height - 70, f"Fecha: {fecha}")
+        c.drawString(100, height - 90, f"Metodo de pago: {metodo_pago}")
         
         data = [["Producto", "Precio", "Cantidad", "Subtotal"]] + [[p[0], p[1], p[2], p[3]] for p in productos]
         table = Table(data)
@@ -332,7 +476,7 @@ class Ventas(tk.Frame):
         table.drawOn(c, 100, height - 200)
         
         c.setFont("Helvetica-Bold", 16)
-        c.drawString(100, height - 250, f"Total a pagar: {total:.0f} €")
+        c.drawString(100, height - 250, f"Total a pagar: {total:.2f} €")
         c.setFont("Helvetica", 12)
         c.drawString(100, height - 370, "Gracias por su compra, vuelva pronto")
         
