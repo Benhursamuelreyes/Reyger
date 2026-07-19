@@ -1,0 +1,44 @@
+[project]
+name = "ventapro"
+version = "2.0.0"
+description = "VentaPRO — Sistema de ventas y facturación"
+requires-python = ">=3.9"
+dependencies = [
+    "reportlab>=4.0",
+    "qrcode[pil]>=7.0",
+    "Pillow>=10.0",
+    "ttkthemes>=3.0",
+    "platformdirs>=4.0",
+]
+
+[tool.briefcase]
+project_name = "VentaPRO"
+bundle = "com.ventapro"
+version = "2.0.0"
+url = "https://github.com/Benhursamuelreyes/sales_system"
+license = "MIT"
+
+[tool.briefcase.app.ventapro]
+formal_name = "VentaPRO"
+description = "Sistema de ventas y facturación"
+sources = ["src/ventapro"]
+requires = [
+    "reportlab>=4.0",
+    "qrcode[pil]>=7.0",
+    "Pillow>=10.0",
+    "ttkthemes>=3.0",
+    "platformdirs>=4.0",
+]
+main_module = "ventapro.app"
+support_package = "slack"
+console = false
+
+[tool.briefcase.app.ventapro.linux]
+icon = "src/ventapro/assets/icono.png"
+packaging = "system"
+
+[tool.briefcase.app.ventapro.windows]
+icon = "src/ventapro/assets/icono.ico"
+
+[tool.briefcase.app.ventapro.macOS]
+icon = "src/ventapro/assets/icono.png"
