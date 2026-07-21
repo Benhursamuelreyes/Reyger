@@ -30,7 +30,6 @@ requires = [
     "platformdirs>=4.0",
 ]
 main_module = "ventapro.app"
-support_package = "slack"
 console = false
 
 [tool.briefcase.app.ventapro.linux]
