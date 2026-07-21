@@ -37,7 +37,7 @@ icon = "src/ventapro/assets/icono.png"
 packaging = "system"
 
 [tool.briefcase.app.ventapro.windows]
-icon = "src/ventapro/assets/icono.ico"
+icon = "src/ventapro/assets/icono"
 
 [tool.briefcase.app.ventapro.macOS]
 icon = "src/ventapro/assets/icono.png"
