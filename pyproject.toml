@@ -2,7 +2,8 @@
 name = "ventapro"
 version = "2.0.0"
 description = "VentaPRO — Sistema de ventas y facturación"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 dependencies = [
     "reportlab>=4.0",
