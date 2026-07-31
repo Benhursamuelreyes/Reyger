@@ -36,7 +36,6 @@ console = false
 
 [tool.briefcase.app.ventapro.linux]
 icon = "src/ventapro/assets/icono.png"
-packaging = "system"
 
 [tool.briefcase.app.ventapro.windows]
 icon = "src/ventapro/assets/icono"

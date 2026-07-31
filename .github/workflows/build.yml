@@ -13,23 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-dev \
-            python3-tk \
-            libsqlite3-dev \
-            libgstreamer1.0-0 \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            libsdl2-2.0-0 \
-            libsdl2-image-2.0-0 \
-            libsdl2-mixer-2.0-0 \
-            libsdl2-ttf-2.0-0 \
-            libportaudio2 \
-            xdg-utils
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -43,9 +26,9 @@ jobs:
 
       - name: Build AppImage with Briefcase
         run: |
-          briefcase create
-          briefcase build
-          briefcase package
+          briefcase create linux appimage
+          briefcase build linux appimage
+          briefcase package linux appimage
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
