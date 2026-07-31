@@ -1,283 +1,134 @@
-# 🛒 SALES SYSTEM - Caja Registradora v2.0
+# VentaPRO
 
-**Sistema profesional de gestión de ventas e inventario** desarrollado en Python con Tkinter.  
-Ahora con **7 nuevas funcionalidades empresariales** listas para producción.
+[![Build](https://github.com/Benhursamuelreyes/sales_system/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/sales_system/actions/workflows/build.yml)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0-blue.svg)](https://github.com/Benhursamuelreyes/sales_system/releases)
+[![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
----
-
-## 📋 Contenido
-
-- [✨ Novedades (7 funcionalidades)](#-novedades)
-- [Inicio rápido](#-inicio-rápido)
-- [Estructura del proyecto](#-estructura)
-- [Documentación completa](#-documentación)
-- [Validación](#-validación)
-- [Solución de problemas](#-troubleshooting)
+**Sistema de ventas y facturación multiplataforma** desarrollado en Python.
+Facturas en PDF, códigos QR de verificación, gestión de inventario y un
+catálogo completo de documentos comerciales para Windows, macOS y Linux.
 
 ---
 
-## ✨ Novedades
+## Características principales
 
-### 1️⃣ **Factura VeriFACTU** 🧾
-Cumplimiento normativa Hacienda España
-- Código QR de verificación
-- NIF emisor/receptor
-- Auditoría en BD
-- PDF profesional
-
-### 2️⃣ **Tickets Simplificados** 🎫
-Para impresoras térmicas 80mm
-- Rollo formato compacto
-- Método pago visible
-- Optimizado POS
-
-### 3️⃣ **Albaranes** 📦
-Documentos de entrega
-- Signature fields
-- Estados: Abierto/Entregado/Rechazado
-- Tracking logístico
-
-### 4️⃣ **Métodos de Pago** 💳
-Integrado en Ventas
-- Efectivo → Cálculo vuelto
-- Tarjeta → Últimos 4 dígitos
-- Mixto → Parte efectivo + tarjeta
-- Registro en BD
-
-### 5️⃣ **Presupuestos** 📝
-Módulo interactivo 1100×650px
-- Crear desde inventario
-- IVA: 4%, 10%, 21%
-- PDF profesional
-- **Nuevo botón púrpura en navegación**
-
-### 6️⃣ **Gestión de Impresoras** 🖨️
-Soporte Windows completo
-- Enumera impresoras
-- Diálogo selección
-- Opciones: color, doble cara
-- Métodos fallback
-
-### 7️⃣ **Escáner de Barras** 📷
-Lector USB (HID keyboard)
-- Búsqueda por código
-- Asignar códigos a productos
-- Integrado en Inventario
+- **Facturación VeriFACTU** — Facturas con cumplimiento normativo español,
+  códigos QR de verificación y auditoría en base de datos.
+- **PDF profesional con ReportLab** — Facturas, presupuestos y albaranes
+  generados como documentos PDF listos para imprimir o enviar.
+- **Interfaz moderna con ttkthemes** — Temas configurables (claro/oscuro) y
+  ventanas optimizadas para uso en punto de venta (POS).
+- **Base de datos SQLite** — Sin servidor, portable y de fácil respaldo.
+  Se crea automáticamente en la primera ejecución.
+- **Tickets de 80 mm** — Formato compacto para impresoras térmicas.
+- **Métodos de pago** — Efectivo (con cálculo de vuelto), tarjeta y mixto.
+- **Albaranes** — Documentos de entrega con estados y firma.
+- **Presupuestos** — Módulo con IVA configurable (4%, 10%, 21%).
+- **Gestión de impresoras** — Detección y configuración (Windows).
+- **Escáner de código de barras** — Búsqueda rápida de productos por código.
+- **Empaquetado multiplataforma con Briefcase** — Instaladores `.msi`,
+  `.dmg` y `.AppImage` generados automáticamente en CI.
 
 ---
 
-## 🚀 Inicio Rápido
+## Descarga e instalación
 
-### 1. Instalar
+Los instaladores oficiales de VentaPRO se publican como **Release assets**
+y pueden descargarse de forma permanente desde:
+
+👉 **[Descargar VentaPRO — Releases](https://github.com/Benhursamuelreyes/sales_system/releases)**
+
+| Plataforma | Archivo |
+|------------|---------|
+| **Windows** | `VentaPRO-2.0.0.msi` |
+| **macOS** | `VentaPRO-2.0.0.dmg` |
+| **Linux** | `VentaPRO-2.0.0.AppImage` |
+
+Una vez instalado, abre la aplicación y empieza a vender.
+
+---
+
+## Desarrollo local
+
+### Requisitos
+
+- Python 3.9 o superior
+- [Briefcase](https://briefcase.readthedocs.io/)
+
+### Clonar el repositorio
+
 ```bash
-pip install qrcode[pil] pywin32 reportlab pillow ttkthemes
+git clone https://github.com/Benhursamuelreyes/sales_system.git
+cd sales_system
 ```
 
-### 2. (Opcional pero recomendado para impresoras)
+### Crear el entorno virtual
+
 ```bash
-python -m pywin32_postinstall -install
+python -m venv .venv
+source .venv/bin/activate   # Linux / macOS
+# .venv\Scripts\activate    # Windows
+
+python -m pip install --upgrade pip
+python -m pip install briefcase reportlab "qrcode[pil]" Pillow ttkthemes platformdirs
 ```
 
-### 3. Ejecutar
+### Ejecutar en modo desarrollo
+
 ```bash
-python index.py
+briefcase dev
 ```
 
-**⏱️ < 5 minutos de instalación**
+También puedes arrancar la app directamente con:
+
+```bash
+python run.py
+```
+
+### Compilar instaladores localmente
+
+```bash
+# Windows (.msi)
+briefcase create && briefcase build && briefcase package
+
+# macOS (.dmg)
+briefcase create && briefcase build && briefcase package --adhoc-sign
+
+# Linux (.AppImage)
+briefcase create linux appimage && briefcase build linux appimage && briefcase package linux appimage
+```
+
+> En CI, los tres instaladores se compilan y publican automáticamente al
+> etiquetar el repositorio con una versión (por ejemplo, `git tag v2.0.0`).
 
 ---
 
-## 📁 Estructura
+## Estructura del proyecto
 
 ```
 sales_system/
-├── # Núcleo
-├── index.py                      # 🟢 Inicio
-├── manager.py                    # Ventana principal
-├── container.py                  # [MOD] + botón Presupuestos
-├── config.py                     # Configuración
-│
-├── # Módulos (3 modificados, 6 nuevos)
-├── ventas.py                     # [MOD] + métodos pago
-├── inventario.py                 # [MOD] + barcode
-├── ajustes.py                    # Ajustes
-├── facturas_verifactu.py         # ✨ VeriFACTU
-├── tickets.py                    # ✨ Tickets
-├── albaranes.py                  # ✨ Albaranes
-├── presupuestos.py               # ✨ Presupuestos
-├── impresoras.py                 # ✨ Impresoras
-├── barcode_scanner.py            # ✨ Escáner
-│
-├── # Documentación
-├── README.md                     # Este archivo
-├── GUIA_CERO_IMPLEMENTACION.md
-├── RESUMEN_VISUAL.md
-├── INSTALAR_DEPENDENCIAS.md
-├── test_nuevas_funcionalidades.py
-│
-├── database.db                   # SQLite
-└── [Directorios se crean automáticamente]
+├── .github/workflows/build.yml   # CI: build + release automático
+├── src/ventapro/                 # Código fuente de la aplicación
+│   ├── app.py                    # Punto de entrada (Briefcase)
+│   ├── manager.py                # Ventana principal
+│   ├── ventas.py                 # Módulo de ventas
+│   ├── inventario.py             # Módulo de inventario
+│   ├── facturas_verifactu.py     # Facturación VeriFACTU
+│   ├── tickets.py                # Tickets 80 mm
+│   ├── albaranes.py              # Albaranes
+│   ├── presupuestos.py           # Presupuestos
+│   └── assets/                   # Iconos e imágenes
+├── pyproject.toml                # Configuración del proyecto y Briefcase
+├── requirements.txt              # Dependencias
+├── LICENSE                       # Licencia MIT
+└── README.md
 ```
 
 ---
 
-## 📖 Documentación
+## Licencia
 
-| Archivo | Para |
-|---------|------|
-| [GUIA_CERO_IMPLEMENTACION.md](./docs/GUIA_CERO_IMPLEMENTACION.md) | Referencia técnica |
-| [RESUMEN_VISUAL.md](./docs/RESUMEN_VISUAL.md) | Ejemplos código |
-| [INSTALAR_DEPENDENCIAS.md](./docs/INSTALAR_DEPENDENCIAS.md) | Troubleshooting |
+Distribuido bajo la [licencia MIT](./LICENSE).
 
----
-
-## ✅ Validación
-
-```bash
-python test_nuevas_funcionalidades.py
-```
-
-Verifica:
-- ✓ Librerías instaladas
-- ✓ Estructura correcta
-- ✓ BD accesible
-- ✓ Módulos importables
-- ✓ Funcionalidad OK
-
----
-
-## 💡 Uso
-
-### Vender con método pago
-1. Ventas → Agregar productos
-2. Pagar
-3. Selecciona: Efectivo / Tarjeta / Mixto
-4. Sistema calcula vuelto
-
-### Presupuesto
-1. Botón púrpura "📝 Presupuestos"
-2. Cliente + Productos
-3. IVA (4%/10%/21%)
-4. Genera PDF
-
-### Factura VeriFACTU
-```python
-from facturas_verifactu import FacturaVeriFACTU
-
-factura = FacturaVeriFACTU()
-pdf = factura.crear_factura_verifactu(
-    nif_cliente="12345678A",
-    cliente="Juan García",
-    productos=[{"nombre": "Producto", "cantidad": 1, "precio": 100}],
-    total=121
-)
-```
-
-### Barcode
-```python
-from barcode_scanner import EscanerCodigoBarras
-
-scanner = EscanerCodigoBarras()
-producto = scanner.buscar_producto_por_codigo("1234567890")
-```
-
----
-
-## 🐛 Troubleshooting
-
-**App no inicia**
-```bash
-python test_nuevas_funcionalidades.py
-```
-
-**No aparece botón Presupuestos**  
-Verifica que `presupuestos.py` está en raíz
-
-**Impresoras no se detectan**  
-```bash
-python -m pywin32_postinstall -install
-```
-
-**Código de barras no funciona**  
-Instala `barcode_scanner.py` en raíz
-
----
-
-## 📊 Base de Datos
-
-Se crean automáticamente:
-- `facturas_verifactu` - Auditoría facturas
-- `albaranes` - Entregas
-- `presupuestos` - Presupuestos
-- Columnas nuevas en `ventas` - Método pago
-
----
-
-## 🔧 Configuración
-
-Edita `config.json` o usa panel ⚙️ Ajustes:
-
-```json
-{
-    "tema": "claro",
-    "tamaño_fuente": 14,
-    "nombre_empresa": "Mi Empresa",
-    "nif_emisor": "12345678Z"
-}
-```
-
----
-
-## 📦 Dependencias
-
-| Librería | Para |
-|----------|------|
-| `tkinter` | GUI |
-| `sqlite3` | Base datos |
-| `reportlab` | PDF |
-| `qrcode` | QR codes |
-| `pillow` | Imágenes |
-| `pywin32` | Impresoras |
-| `ttkthemes` | Temas |
-
----
-
-## 🎯 Características Implementadas
-
-```
-✅ FacturaVeriFACTU completa
-✅ Tickets 80mm
-✅ Albaranes con workflow
-✅ Métodos pago integrados
-✅ Módulo Presupuestos
-✅ Gestión impresoras
-✅ Escáner código barras
-✅ BD relacional actualizada
-✅ Documentación completa
-✅ Testing automático
-```
-
----
-
-## 🔮 Mejoras Futuras
-
-- [ ] Multi-usuario
-- [ ] Reportes estadísticos
-- [ ] API de bancos
-- [ ] Sincronización nube
-- [ ] App móvil
-- [ ] Devoluciones
-- [ ] Descuentos/Promociones
-
----
-
-## 📄 Version
-
-**v2.0** - 7 nuevas funcionalidades empresariales
-**v1.0** - Sistema original
-
----
-
-**¡Tu sistema está listo! 🚀**
-
-Instala dependencias → Ejecuta `test_nuevas_funcionalidades.py` → Abre `python index.py`
+© 2026 VentaPRO. Se permite el uso, copia, modificación y distribución
+tanto comercial como privada.
