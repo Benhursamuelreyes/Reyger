@@ -95,7 +95,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install briefcase
-          python -m pip install reportlab qrcode[pil] Pillow ttkthemes platformdirs
+          python -m pip install reportlab qrcode[pil] Pillow platformdirs
 
       - name: Build DMG with Briefcase
         run: |

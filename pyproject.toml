@@ -9,7 +9,7 @@ dependencies = [
     "reportlab>=4.0",
     "qrcode[pil]>=7.0",
     "Pillow>=10.0",
-    "ttkthemes>=3.0",
+    "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
 ]
 
@@ -28,7 +28,7 @@ requires = [
     "reportlab>=4.0",
     "qrcode[pil]>=7.0",
     "Pillow>=10.0",
-    "ttkthemes>=3.0",
+    "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
 ]
 main_module = "ventapro.app"
@@ -42,4 +42,4 @@ packaging = "system"
 icon = "src/ventapro/assets/icono"
 
 [tool.briefcase.app.ventapro.macOS]
-icon = "src/ventapro/assets/icono.png"
+icon = "src/ventapro/assets/icono"

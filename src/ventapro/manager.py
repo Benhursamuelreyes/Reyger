@@ -1,7 +1,11 @@
 import os
 
-from tkinter import Tk, Frame, PhotoImage
-from ttkthemes import ThemedStyle
+from tkinter import Tk, Frame, PhotoImage, ttk
+
+try:
+    from ttkthemes import ThemedStyle
+except ImportError:
+    ThemedStyle = None
 
 from .container import Container
 from .config import ConfigManager
@@ -53,11 +57,15 @@ class Manager(Tk):
         self.frames[frame_class].tkraise()
 
     def set_theme(self):
-        style = ThemedStyle(self)
-        if self.config_manager.get("tema") == "oscuro":
-            style.set_theme("equilux")
+        if ThemedStyle is not None:
+            style = ThemedStyle(self)
+            if self.config_manager.get("tema") == "oscuro":
+                style.set_theme("equilux")
+            else:
+                style.set_theme("breeze")
         else:
-            style.set_theme("breeze")
+            style = ttk.Style(self)
+            style.theme_use("clam")
 
 
 def main():
