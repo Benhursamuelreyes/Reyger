@@ -100,7 +100,7 @@ jobs:
       - name: Build DMG with Briefcase
         run: |
           briefcase create
-          briefcase build --adhoc-sign
+          briefcase build
           briefcase package --adhoc-sign
 
       - name: Upload macOS artifact
