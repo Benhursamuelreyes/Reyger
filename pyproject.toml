@@ -1,6 +1,6 @@
 [project]
 name = "ventapro"
-version = "2.0.0"
+version = "2.0.0-beta.1"
 description = "VentaPRO — Sistema de ventas y facturación"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -16,7 +16,7 @@ dependencies = [
 [tool.briefcase]
 project_name = "VentaPRO"
 bundle = "com.ventapro"
-version = "2.0.0"
+version = "2.0.0-beta.1"
 url = "https://github.com/Benhursamuelreyes/sales_system"
 license = "MIT"
 
