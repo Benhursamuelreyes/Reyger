@@ -36,6 +36,7 @@ console = false
 
 [tool.briefcase.app.ventapro.linux]
 icon = "src/ventapro/assets/icono.png"
+system_requires = ["ca-certificates"]
 
 [tool.briefcase.app.ventapro.windows]
 icon = "src/ventapro/assets/icono"
