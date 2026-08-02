@@ -1,7 +1,7 @@
 [project]
-name = "ventapro"
+name = "reyger"
 version = "2.0.0-beta.1"
-description = "VentaPRO — Sistema de ventas y facturación"
+description = "Reyger — Sistema de ventas y facturación"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.9"
@@ -14,16 +14,16 @@ dependencies = [
 ]
 
 [tool.briefcase]
-project_name = "VentaPRO"
-bundle = "com.ventapro"
+project_name = "Reyger"
+bundle = "com.reyger"
 version = "2.0.0-beta.1"
 url = "https://github.com/Benhursamuelreyes/sales_system"
 license = "MIT"
 
-[tool.briefcase.app.ventapro]
-formal_name = "VentaPRO"
+[tool.briefcase.app.reyger]
+formal_name = "Reyger"
 description = "Sistema de ventas y facturación"
-sources = ["src/ventapro"]
+sources = ["src/reyger"]
 requires = [
     "reportlab>=4.0",
     "qrcode[pil]>=7.0",
@@ -31,15 +31,15 @@ requires = [
     "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
 ]
-main_module = "ventapro.app"
+main_module = "reyger.app"
 console = false
 
-[tool.briefcase.app.ventapro.linux]
-icon = "src/ventapro/assets/icono.png"
+[tool.briefcase.app.reyger.linux]
+icon = "src/reyger/assets/icono.png"
 system_requires = ["ca-certificates"]
 
-[tool.briefcase.app.ventapro.windows]
-icon = "src/ventapro/assets/icono"
+[tool.briefcase.app.reyger.windows]
+icon = "src/reyger/assets/icono"
 
-[tool.briefcase.app.ventapro.macOS]
-icon = "src/ventapro/assets/icono"
+[tool.briefcase.app.reyger.macOS]
+icon = "src/reyger/assets/icono"

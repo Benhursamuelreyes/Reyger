@@ -1,4 +1,4 @@
-name: Build VentaPRO Multi-Platform
+name: Build Reyger Multi-Platform
 
 on:
   push:
@@ -35,8 +35,8 @@ jobs:
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VentaPRO-Linux
-          path: dist/VentaPRO-*.AppImage
+          name: Reyger-Linux
+          path: dist/Reyger-*.AppImage
 
   windows:
     runs-on: windows-latest
@@ -63,7 +63,7 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VentaPRO-Windows
+          name: Reyger-Windows
           path: dist/*.msi
 
   macos:
@@ -91,7 +91,7 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VentaPRO-macOS
+          name: Reyger-macOS
           path: dist/*.dmg
 
   release:
@@ -115,8 +115,25 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/VentaPRO-Linux/*.AppImage
-            dist/VentaPRO-Windows/*.msi
-            dist/VentaPRO-macOS/*.dmg
+            dist/Reyger-Linux/*.AppImage
+            dist/Reyger-Windows/*.msi
+            dist/Reyger-macOS/*.dmg
+          body: |
+            ## Reyger ${{ github.ref_name }}
+
+            Instaladores oficiales de la versión **${{ github.ref_name }}** para las tres plataformas.
+
+            ### Descarga
+
+            | Plataforma | Formato | Descripción |
+            |------------|---------|-------------|
+            | Windows | `.msi` | Instalador MSI para Windows 10/11 (asistente de instalación) |
+            | macOS | `.dmg` | Imagen de disco DMG para macOS (arrastra a Aplicaciones) |
+            | Linux | `.AppImage` | Ejecutable portable AppImage (hazlo ejecutable con `chmod +x`) |
+
+            ### Notas
+
+            - Selecciona el archivo correspondiente a tu sistema operativo.
+            - Las notas de versión con el detalle de commits y cambios se incluyen automáticamente a continuación.
           generate_release_notes: true
           fail_on_unmatched_files: true

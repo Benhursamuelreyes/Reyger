@@ -70,7 +70,7 @@ class Container(tk.Frame):
         ruta = get_bundled_path("assets/img/logo.png")
         if os.path.exists(ruta):
             self.logo_image = Image.open(ruta)
-            self.logo_image = self.logo_image.resize((760, 194))
+            self.logo_image.thumbnail((760, 200), Image.LANCZOS)
             self.logo_image = ImageTk.PhotoImage(self.logo_image)
             self.logo_label = tk.Label(
                 frame1, image=self.logo_image, bg=self.colors["bg_principal"]

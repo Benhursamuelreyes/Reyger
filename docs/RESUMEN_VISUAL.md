@@ -260,7 +260,7 @@ dialogo = DialogoAsignarCodigoBarras(
 ### container.py - Botón nuevo
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ VentaPRO v BETA                                             │
+│ Reyger v BETA                                                │
 ├─────────────────────────────────────────────────────────────┤
 │                      [LOGO AQUÍ]                            │
 │                                                             │

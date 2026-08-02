@@ -1,7 +1,7 @@
-# VentaPRO
+# Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/sales_system/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/sales_system/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0-blue.svg)](https://github.com/Benhursamuelreyes/sales_system/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.1-blue.svg)](https://github.com/Benhursamuelreyes/sales_system/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 **Sistema de ventas y facturación multiplataforma** desarrollado en Python.
@@ -33,16 +33,16 @@ catálogo completo de documentos comerciales para Windows, macOS y Linux.
 
 ## Descarga e instalación
 
-Los instaladores oficiales de VentaPRO se publican como **Release assets**
+Los instaladores oficiales de Reyger se publican como **Release assets**
 y pueden descargarse de forma permanente desde:
 
-👉 **[Descargar VentaPRO — Releases](https://github.com/Benhursamuelreyes/sales_system/releases)**
+👉 **[Descargar Reyger — Releases](https://github.com/Benhursamuelreyes/sales_system/releases)**
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `VentaPRO-2.0.0.msi` |
-| **macOS** | `VentaPRO-2.0.0.dmg` |
-| **Linux** | `VentaPRO-2.0.0.AppImage` |
+| **Windows** | `Reyger-2.0.0b1.msi` |
+| **macOS** | `Reyger-2.0.0b1.dmg` |
+| **Linux** | `Reyger-2.0.0b1-x86_64.AppImage` |
 
 Una vez instalado, abre la aplicación y empieza a vender.
 
@@ -108,7 +108,7 @@ briefcase create linux appimage && briefcase build linux appimage && briefcase p
 ```
 sales_system/
 ├── .github/workflows/build.yml   # CI: build + release automático
-├── src/ventapro/                 # Código fuente de la aplicación
+├── src/reyger/                   # Código fuente de la aplicación
 │   ├── app.py                    # Punto de entrada (Briefcase)
 │   ├── manager.py                # Ventana principal
 │   ├── ventas.py                 # Módulo de ventas
@@ -130,5 +130,5 @@ sales_system/
 
 Distribuido bajo la [licencia MIT](./LICENSE).
 
-© 2026 VentaPRO. Se permite el uso, copia, modificación y distribución
+© 2026 Reyger. Se permite el uso, copia, modificación y distribución
 tanto comercial como privada.

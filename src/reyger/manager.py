@@ -18,7 +18,7 @@ class Manager(Tk):
         self.config_manager = ConfigManager()
         self.colors = self.config_manager.get_colors()
 
-        self.title("VentaPRO versión BETA")
+        self.title("Reyger versión BETA")
         self.resizable(False, False)
         self.configure(bg=self.colors["bg_principal"])
         self.geometry("800x400+120+20")

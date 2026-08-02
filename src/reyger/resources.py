@@ -10,7 +10,7 @@ except ImportError:
 
 def _get_dirs():
     if AppDirs is not None:
-        return AppDirs("VentaPRO", "VentaPRO")
+        return AppDirs("Reyger", "Reyger")
     return None
 
 
@@ -19,11 +19,11 @@ def get_user_data_path():
     if dirs:
         path = Path(dirs.user_data_dir)
     elif sys.platform == "win32":
-        path = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "VentaPRO"
+        path = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "Reyger"
     elif sys.platform == "darwin":
-        path = Path.home() / "Library" / "Application Support" / "VentaPRO"
+        path = Path.home() / "Library" / "Application Support" / "Reyger"
     else:
-        path = Path.home() / ".local" / "share" / "VentaPRO"
+        path = Path.home() / ".local" / "share" / "Reyger"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
