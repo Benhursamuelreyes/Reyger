@@ -57,6 +57,7 @@ jobs:
       - name: Build MSI with Briefcase
         run: |
           briefcase create
+          python scripts/bundle_tkinter_windows.py
           briefcase build
           briefcase package
 

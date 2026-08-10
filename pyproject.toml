@@ -33,6 +33,7 @@ requires = [
 ]
 main_module = "reyger.app"
 console = false
+hidden_imports = ["tkinter", "_tkinter", "tcl", "tk"]
 
 [tool.briefcase.app.reyger.linux]
 icon = "src/reyger/assets/icono.png"
