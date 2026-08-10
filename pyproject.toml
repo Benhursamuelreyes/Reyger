@@ -16,7 +16,7 @@ dependencies = [
 [tool.briefcase]
 project_name = "Reyger"
 bundle = "com.reyger"
-version = "2.0.0-beta.1"
+version = "0.1.0b1"
 url = "https://github.com/Benhursamuelreyes/sales_system"
 license = "MIT"
 
