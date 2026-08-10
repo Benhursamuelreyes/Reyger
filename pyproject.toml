@@ -33,10 +33,11 @@ requires = [
 ]
 main_module = "reyger.app"
 console = false
+hidden_imports = ["tkinter", "_tkinter", "tcl", "tk"]
 
 [tool.briefcase.app.reyger.linux]
 icon = "src/reyger/assets/icono.png"
-system_requires = ["ca-certificates"]
+system_requires = ["ca-certificates", "python3-tk", "tk-dev"]
 
 [tool.briefcase.app.reyger.windows]
 icon = "src/reyger/assets/icono"
