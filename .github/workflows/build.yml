@@ -103,11 +103,14 @@ jobs:
 
       - name: Verify tkinter in macOS bundle
         run: |
-          PY=$(ls build/*/macos/*/*.app/Contents/Resources/python/bin/python3 2>/dev/null | head -1)
+          PY=$(find build -path "*/Contents/*" -name "python3" -type f | head -n 1)
           if [ -z "$PY" ]; then
-            echo "Python del bundle no encontrado en build/*/macos/*/*.app"
+            echo "Error: no se encontro el binario python3 dentro de build/ (buscando '*/Contents/*/python3')."
+            echo "Revisa la estructura del bundle generado por Briefcase:"
+            find build -maxdepth 6 -name "python3" -type f 2>/dev/null || echo "  (build/ esta vacio o no existe)"
             exit 1
           fi
+          echo "Verificando tkinter con: $PY"
           "$PY" -c "import tkinter; print('tkinter OK:', tkinter.TkVersion)"
 
       - name: Upload macOS artifact
