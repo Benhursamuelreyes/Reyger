@@ -20,6 +20,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install system dependencies (tkinter)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk-dev
+
       - name: Install Briefcase and dependencies
         run: |
           python -m pip install --upgrade pip
@@ -31,6 +36,15 @@ jobs:
           briefcase create linux appimage
           briefcase build linux appimage
           briefcase package linux appimage
+
+      - name: Verify tkinter in AppImage bundle
+        run: |
+          BUNDLE=$(ls -d build/*/linux/appimage/*.AppDir 2>/dev/null | head -1)
+          if [ -z "$BUNDLE" ]; then
+            echo "AppDir no encontrado en build/*/linux/appimage/"
+            exit 1
+          fi
+          "$BUNDLE/usr/python/bin/python3" -c "import tkinter; print('tkinter OK:', tkinter.TkVersion)"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -88,6 +102,15 @@ jobs:
           briefcase create
           briefcase build
           briefcase package --adhoc-sign
+
+      - name: Verify tkinter in macOS bundle
+        run: |
+          PY=$(ls build/*/macos/*/*.app/Contents/Resources/python/bin/python3 2>/dev/null | head -1)
+          if [ -z "$PY" ]; then
+            echo "Python del bundle no encontrado en build/*/macos/*/*.app"
+            exit 1
+          fi
+          "$PY" -c "import tkinter; print('tkinter OK:', tkinter.TkVersion)"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
