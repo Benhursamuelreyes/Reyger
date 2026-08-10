@@ -103,11 +103,11 @@ jobs:
 
       - name: Verify tkinter in macOS bundle
         run: |
-          PY=$(find build -path "*/Contents/*" -name "python3" -type f | head -n 1)
+          PY=$(find build -type f \( -iname "python3*" -o -iname "python" \) 2>/dev/null | head -n 1)
           if [ -z "$PY" ]; then
-            echo "Error: no se encontro el binario python3 dentro de build/ (buscando '*/Contents/*/python3')."
-            echo "Revisa la estructura del bundle generado por Briefcase:"
-            find build -maxdepth 6 -name "python3" -type f 2>/dev/null || echo "  (build/ esta vacio o no existe)"
+            echo "Error: no se encontro ningun ejecutable de Python dentro de build/."
+            echo "Estructura de archivos generada por Briefcase (build -maxdepth 5):"
+            find build -maxdepth 5 2>/dev/null || echo "  (build/ esta vacio o no existe)"
             exit 1
           fi
           echo "Verificando tkinter con: $PY"
