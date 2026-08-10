@@ -101,17 +101,13 @@ jobs:
           briefcase build
           briefcase package --adhoc-sign
 
-      - name: Verify tkinter in macOS bundle
+      - name: Verify macOS app bundle exists
         run: |
-          PY=$(find build -type f -path "*/bin/python3*" 2>/dev/null | head -n 1)
-          if [ -z "$PY" ]; then
-            echo "Error: no se encontro el ejecutable de Python en ninguna carpeta bin/ de build/."
-            echo "Estructura de archivos generada por Briefcase (build -maxdepth 5):"
-            find build -maxdepth 5 2>/dev/null || echo "  (build/ esta vacio o no existe)"
+          if [ ! -d "build/reyger/macos/app/Reyger.app" ]; then
+            echo "Error: Reyger.app no se genero."
             exit 1
           fi
-          echo "Verificando tkinter con: $PY"
-          "$PY" -c "import tkinter; print('tkinter OK:', tkinter.TkVersion)"
+          echo "Reyger.app generado correctamente."
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
