@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/sales_system/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/sales_system/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.1-blue.svg)](https://github.com/Benhursamuelreyes/sales_system/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.2-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 **Sistema de ventas y facturación multiplataforma** desarrollado en Python.
@@ -40,9 +40,9 @@ y pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-2.0.0b1.msi` |
-| **macOS** | `Reyger-2.0.0b1.dmg` |
-| **Linux** | `Reyger-2.0.0b1-x86_64.AppImage` |
+| **Windows** | `Reyger-2.0.0b2.msi` |
+| **macOS** | `Reyger-2.0.0b2.dmg` |
+| **Linux** | `Reyger-2.0.0b2-x86_64.AppImage` |
 
 Una vez instalado, abre la aplicación y empieza a vender.
 
