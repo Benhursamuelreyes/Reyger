@@ -181,7 +181,7 @@ class Ventas(tk.Frame):
         for child in self.tree.get_children():
             subtotal = float(self.tree.item(child, "values")[3])
             total += subtotal
-        self.label_suma_total.config(text=f"Total a pagar: {total:.0f} €")
+        self.label_suma_total.config(text=f"Total a pagar: {total:.2f} €")
 
     def registrar(self):
         producto = self.entry_nombre.get().strip()
@@ -201,7 +201,7 @@ class Ventas(tk.Frame):
                 return
 
             subtotal = cantidad * precio
-            self.tree.insert("", "end", values=(producto, f"{precio:.0f}", cantidad, f"{subtotal:.0f}"))
+            self.tree.insert("", "end", values=(producto, f"{precio:.2f}", cantidad, f"{subtotal:.2f}"))
 
             self.entry_nombre.set("")
             self.entry_valor.config(state="normal")
