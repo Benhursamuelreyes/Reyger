@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from reportlab.lib.pagesizes import landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
+from reportlab.lib.units import cm, mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 from .config import ConfigManager
