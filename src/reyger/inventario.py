@@ -170,6 +170,12 @@ class Inventario(tk.Frame):
         item_id = self.tre.item(seleccion)["text"]
         item_values = self.tre.item(seleccion)["values"]
         
+        db_row = self.eje_consulta("SELECT precio, costo FROM inventario WHERE id = ?", (item_id,)).fetchone()
+        if db_row is None:
+            messagebox.showwarning("Editar producto", "Producto no encontrado")
+            return
+        precio_original, costo_original = db_row
+        
         ventana_editar = Toplevel(self)
         ventana_editar.title("Editar producto")
         ventana_editar.geometry("400x400")
@@ -191,13 +197,13 @@ class Inventario(tk.Frame):
         lbl_precio.grid(row=2, column=0, padx=10, pady=10)
         entry_precio = Entry(ventana_editar, font="sans 14 bold")
         entry_precio.grid(row=2, column=1, padx=10, pady=10)
-        entry_precio.insert(0, item_values[3])
+        entry_precio.insert(0, precio_original)
         
         lbl_costo = Label(ventana_editar, text="Costo:", font="sans 14 bold", bg="#C6D9E3")
         lbl_costo.grid(row=3, column=0, padx=10, pady=10)
         entry_costo = Entry(ventana_editar, font="sans 14 bold")
         entry_costo.grid(row=3, column=1, padx=10, pady=10)
-        entry_costo.insert(0, item_values[4])
+        entry_costo.insert(0, costo_original)
         
         lbl_stock = Label(ventana_editar, text="Stock:", font="sans 14 bold", bg="#C6D9E3")
         lbl_stock.grid(row=4, column=0, padx=10, pady=10)
