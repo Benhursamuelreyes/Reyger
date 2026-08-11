@@ -112,7 +112,7 @@ jobs:
           path: dist/*.dmg
 
   release:
-    name: Create GitHub Release
+    name: Publish Pre-release
     needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
@@ -127,16 +127,18 @@ jobs:
           path: dist
           merge-multiple: false
 
-      - name: Publish Release and attach assets
+      - name: Publish Pre-release and attach assets
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(github.ref_name, 'beta') }}
           files: |
             dist/Reyger-Linux/*.AppImage
             dist/Reyger-Windows/*.msi
             dist/Reyger-macOS/*.dmg
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
           body: |
-            ## Reyger ${{ github.ref_name }}
+            ## Reyger ${{ github.ref_name }} (Pre-release)
 
             Instaladores oficiales de la versión **${{ github.ref_name }}** para las tres plataformas.
 
@@ -150,7 +152,5 @@ jobs:
 
             ### Notas
 
-            - Selecciona el archivo correspondiente a tu sistema operativo.
-            - Las notas de versión con el detalle de commits y cambios se incluyen automáticamente a continuación.
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+            - Versión **Beta**: revisa las notas de versión a continuación antes de usarla en producción.
+            - Las notas de versión con el detalle de commits y cambios se generan automáticamente.
