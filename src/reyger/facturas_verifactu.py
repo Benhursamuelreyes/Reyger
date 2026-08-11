@@ -13,7 +13,7 @@ from datetime import datetime
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, mm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -361,7 +361,7 @@ class FacturaVeriFACTU:
         # Tabla con QR y texto
         datos_qr_tabla = [
             [
-                "Código QR de Verificación",
+                Image(img_reader, width=3*cm, height=3*cm),
                 Paragraph(
                     f"<i>Escanee este código para verificar<br/>la autenticidad de la factura</i>",
                     self.estilo_normal
