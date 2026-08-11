@@ -390,7 +390,6 @@ class Ajustes(tk.Frame):
             )
             
             # Cerrar la ventana
-            self.master.master.withdraw()
             self.master.destroy()
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar los cambios: {e}")
