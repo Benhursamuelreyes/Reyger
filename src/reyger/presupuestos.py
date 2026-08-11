@@ -374,20 +374,22 @@ class Presupuestos(tk.Frame):
             # Generar número de presupuesto
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM presupuestos")
-            numero = cursor.fetchone()[0] + 1
-            numero_presupuesto = f"PRE-{datetime.now().strftime('%Y')}-{numero:05d}"
             
-            # Insertar presupuesto
+            # Insertar presupuesto con número temporal; el definitivo se deriva
+            # del id autoincremental, que nunca se reutiliza tras borrados
+            numero_temp = f"PRE-TEMP-{datetime.now().timestamp()}"
             cursor.execute("""
                 INSERT INTO presupuestos
                 (numero_presupuesto, cliente_nombre, cliente_email, base_imponible, 
                  tipo_iva, total_iva, total, estado)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (numero_presupuesto, cliente, self.entry_email.get(), base_imponible,
+            """, (numero_temp, cliente, self.entry_email.get(), base_imponible,
                   tipo_iva, total_iva, total, "Pendiente"))
             
             presupuesto_id = cursor.lastrowid
+            numero_presupuesto = f"PRE-{datetime.now().strftime('%Y')}-{presupuesto_id:05d}"
+            cursor.execute("UPDATE presupuestos SET numero_presupuesto = ? WHERE id = ?",
+                           (numero_presupuesto, presupuesto_id))
             
             # Insertar productos
             for child in self.tree.get_children():
