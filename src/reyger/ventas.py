@@ -387,6 +387,7 @@ class Ventas(tk.Frame):
                     c.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
 
                 conn.commit()
+                numero_factura_emitida = self.numero_factura_actual
                 messagebox.showinfo("Exito", f"La venta se ha completado\nMetodo de pago: {metodo_pago}")
                 self.numero_factura_actual += 1
                 self.mostrar_numero_factura()
@@ -397,7 +398,7 @@ class Ventas(tk.Frame):
                 ventana_pago.destroy()
 
                 fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                self.generar_factura_pdf(productos, total, self.numero_factura_actual, fecha, metodo_pago)
+                self.generar_factura_pdf(productos, total, numero_factura_emitida, fecha, metodo_pago)
         except ValueError:
             messagebox.showerror("Error", "Valores ingresados no validos")
 
