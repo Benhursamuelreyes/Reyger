@@ -63,18 +63,12 @@ class EscanerCodigoBarras:
             return None
         
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Buscar por código de barras
-            cursor.execute("""
-                SELECT id, nombre, precio, stock, codigo_barras 
-                FROM inventario 
-                WHERE codigo_barras = ?
-            """, (codigo_barras.strip(),))
-            
-            row = cursor.fetchone()
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute("""
+                    SELECT id, nombre, precio, stock, codigo_barras 
+                    FROM inventario 
+                    WHERE codigo_barras = ?
+                """, (codigo_barras.strip(),)).fetchone()
             
             if row:
                 return {
@@ -104,17 +98,12 @@ class EscanerCodigoBarras:
             return False
         
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                UPDATE inventario 
-                SET codigo_barras = ? 
-                WHERE id = ?
-            """, (codigo_barras.strip(), id_producto))
-            
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    UPDATE inventario 
+                    SET codigo_barras = ? 
+                    WHERE id = ?
+                """, (codigo_barras.strip(), id_producto))
             return True
         except sqlite3.IntegrityError:
             # Código de barras duplicado
@@ -134,17 +123,12 @@ class EscanerCodigoBarras:
             Diccionario con datos del producto
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT id, nombre, precio, stock, codigo_barras 
-                FROM inventario 
-                WHERE id = ?
-            """, (id_producto,))
-            
-            row = cursor.fetchone()
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute("""
+                    SELECT id, nombre, precio, stock, codigo_barras 
+                    FROM inventario 
+                    WHERE id = ?
+                """, (id_producto,)).fetchone()
             
             if row:
                 return {
@@ -167,18 +151,13 @@ class EscanerCodigoBarras:
             Lista de tuplas (id, nombre, código_actual)
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT id, nombre, codigo_barras 
-                FROM inventario 
-                WHERE codigo_barras IS NULL OR codigo_barras = ''
-                ORDER BY nombre
-            """)
-            
-            productos = cursor.fetchall()
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                productos = conn.execute("""
+                    SELECT id, nombre, codigo_barras 
+                    FROM inventario 
+                    WHERE codigo_barras IS NULL OR codigo_barras = ''
+                    ORDER BY nombre
+                """).fetchall()
             return productos
         except Exception as e:
             print(f"Error listando productos: {e}")
