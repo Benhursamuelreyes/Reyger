@@ -141,8 +141,8 @@ class Inventario(tk.Frame):
     def registrar(self):
         nombre = self.nombre.get()
         prov = self.proveedor.get()
-        precio = self.precio.get()
-        costo = self.costo.get()
+        precio = self.precio.get().strip().replace(",", ".")
+        costo = self.costo.get().strip().replace(",", ".")
         stock = self.stock.get()
         
         if self.validacion(nombre, prov, precio, costo, stock):
