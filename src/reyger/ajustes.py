@@ -377,11 +377,14 @@ class Ajustes(tk.Frame):
     def guardar_cambios(self):
         """Guarda todos los cambios de configuración"""
         try:
-            self.config_manager.set("tema", self.var_tema.get())
-            self.config_manager.set("tamaño_fuente", int(self.scale_tamaño.get()))
-            self.config_manager.set("nombre_empresa", self.entry_nombre.get())
-            self.config_manager.set("mostrar_hora", self.var_hora.get())
-            self.config_manager.set("redondear_decimales", self.var_decimales.get())
+            self.config_manager.config_data.update({
+                "tema": self.var_tema.get(),
+                "tamaño_fuente": int(self.scale_tamaño.get()),
+                "nombre_empresa": self.entry_nombre.get(),
+                "mostrar_hora": self.var_hora.get(),
+                "redondear_decimales": self.var_decimales.get(),
+            })
+            self.config_manager.save_config()
             
             messagebox.showinfo(
                 "Éxito",
