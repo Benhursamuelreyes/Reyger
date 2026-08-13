@@ -161,6 +161,18 @@ jobs:
           path: dist
           merge-multiple: false
 
+      - name: Clean previous release for tag
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          RELS=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate -q ".[] | select(.tag_name == \"$TAG\") | .id")
+          for id in $RELS; do
+            echo "Eliminando release/draft $id para $TAG"
+            gh api "repos/${{ github.repository }}/releases/$id" -X DELETE
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Publish Pre-release and attach assets
         uses: softprops/action-gh-release@v2
         with:
