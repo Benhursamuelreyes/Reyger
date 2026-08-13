@@ -67,20 +67,37 @@ jobs:
           briefcase create
           briefcase build
 
-      - name: Inject Tkinter into Windows bundle
+      - name: Inject and enable Tkinter in Windows bundle
+        shell: powershell
         run: |
-          $sysPy = (Get-Command python).Source | Split-Path
-          $targetPy = "build/reyger/windows/app/python"
+          # 1. Buscar la carpeta de Python embebido dentro de build/
+          $targetPy = Get-ChildItem -Path "build" -Recurse -Directory -Filter "python" | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $targetPy) {
+              $pyExe = Get-ChildItem -Path "build" -Recurse -File -Filter "python.exe" | Select-Object -First 1
+              if ($pyExe) { $targetPy = $pyExe.DirectoryName }
+          }
+          Write-Host "Directorio objetivo de Python: $targetPy"
 
-          if (Test-Path $targetPy) {
-              Copy-Item "$sysPy\Lib\tkinter" "$targetPy\Lib\" -Recurse -Force -ErrorAction SilentlyContinue
-              Copy-Item "$sysPy\DLLs\_tkinter.pyd" "$targetPy\" -Force -ErrorAction SilentlyContinue
-              Copy-Item "$sysPy\DLLs\tcl*.dll" "$targetPy\" -Force -ErrorAction SilentlyContinue
-              Copy-Item "$sysPy\DLLs\tk*.dll" "$targetPy\" -Force -ErrorAction SilentlyContinue
-              Copy-Item "$sysPy\tcl" "$targetPy\tcl" -Recurse -Force -ErrorAction SilentlyContinue
-              echo "Tkinter inyectado con éxito en $targetPy"
-          } else {
-              echo "No se encontró el directorio $targetPy, revisa la ruta generada por Briefcase."
+          # 2. Obtener Python del sistema (GitHub Runner)
+          $sysPy = (Get-Command python).Source | Split-Path
+
+          # 3. Copiar binarios, DLLs y archivos TCL/TK
+          New-Item -ItemType Directory -Force -Path "$targetPy\Lib\site-packages"
+          Copy-Item "$sysPy\DLLs\_tkinter.pyd" "$targetPy\" -Force
+          Copy-Item "$sysPy\DLLs\tcl*.dll" "$targetPy\" -Force
+          Copy-Item "$sysPy\DLLs\tk*.dll" "$targetPy\" -Force
+          Copy-Item "$sysPy\tcl" "$targetPy\tcl" -Recurse -Force
+          Copy-Item "$sysPy\Lib\tkinter" "$targetPy\Lib\tkinter" -Recurse -Force
+          Copy-Item "$sysPy\Lib\tkinter" "$targetPy\Lib\site-packages\tkinter" -Recurse -Force
+
+          # 4. DESBLOQUEAR el archivo ._pth para que Python reconozca Tkinter
+          $pthFile = Get-ChildItem -Path $targetPy -Filter "python*._pth" | Select-Object -First 1
+          if ($pthFile) {
+              Write-Host "Habilitando librerías en $($pthFile.FullName)..."
+              Add-Content -Path $pthFile.FullName -Value "Lib"
+              Add-Content -Path $pthFile.FullName -Value "Lib/site-packages"
+              Add-Content -Path $pthFile.FullName -Value "."
+              (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
           }
 
       - name: Package MSI with Briefcase
