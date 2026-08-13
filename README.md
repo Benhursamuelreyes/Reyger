@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.4-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.5-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -68,31 +68,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-2.0.0b4.msi` |
-| **macOS** | `Reyger-2.0.0b4.dmg` |
-| **Linux** | `Reyger-2.0.0b4-x86_64.AppImage` |
+| **Windows** | `Reyger-2.0.0b5.msi` |
+| **macOS** | `Reyger-2.0.0b5.dmg` |
+| **Linux** | `Reyger-2.0.0b5-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-2.0.0b4.msi`.
+1. Descarga el archivo `Reyger-2.0.0b5.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-2.0.0b4.dmg`.
+1. Descarga el archivo `Reyger-2.0.0b5.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-2.0.0b4-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-2.0.0b5-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-2.0.0b4-x86_64.AppImage
-   ./Reyger-2.0.0b4-x86_64.AppImage
+   chmod +x Reyger-2.0.0b5-x86_64.AppImage
+   ./Reyger-2.0.0b5-x86_64.AppImage
    ```
 
 ---
@@ -161,7 +161,7 @@ El flujo `.github/workflows/release.yml` se encarga de todo al etiquetar
 una versión:
 
 ```bash
-git tag v2.0.0-beta.4
+git tag v2.0.0-beta.5
 git push origin main --tags
 ```
 

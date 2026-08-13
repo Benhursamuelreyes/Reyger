@@ -1,6 +1,6 @@
 [project]
 name = "reyger"
-version = "2.0.0b4"
+version = "2.0.0b5"
 description = "Reyger — Sistema de ventas y facturación"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -16,7 +16,7 @@ dependencies = [
 [tool.briefcase]
 project_name = "Reyger"
 bundle = "com.reyger"
-version = "2.0.0b4"
+version = "2.0.0b5"
 url = "https://github.com/Benhursamuelreyes/Reyger"
 license = "MIT"
 

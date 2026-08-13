@@ -65,9 +65,26 @@ jobs:
       - name: Build MSI with Briefcase
         run: |
           briefcase create
-          python scripts/bundle_tkinter_windows.py
           briefcase build
-          briefcase package
+
+      - name: Inject Tkinter into Windows bundle
+        run: |
+          $sysPy = (Get-Command python).Source | Split-Path
+          $targetPy = "build/reyger/windows/app/python"
+
+          if (Test-Path $targetPy) {
+              Copy-Item "$sysPy\Lib\tkinter" "$targetPy\Lib\" -Recurse -Force -ErrorAction SilentlyContinue
+              Copy-Item "$sysPy\DLLs\_tkinter.pyd" "$targetPy\" -Force -ErrorAction SilentlyContinue
+              Copy-Item "$sysPy\DLLs\tcl*.dll" "$targetPy\" -Force -ErrorAction SilentlyContinue
+              Copy-Item "$sysPy\DLLs\tk*.dll" "$targetPy\" -Force -ErrorAction SilentlyContinue
+              Copy-Item "$sysPy\tcl" "$targetPy\tcl" -Recurse -Force -ErrorAction SilentlyContinue
+              echo "Tkinter inyectado con éxito en $targetPy"
+          } else {
+              echo "No se encontró el directorio $targetPy, revisa la ruta generada por Briefcase."
+          }
+
+      - name: Package MSI with Briefcase
+        run: briefcase package
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
