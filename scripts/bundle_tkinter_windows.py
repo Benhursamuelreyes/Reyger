@@ -74,14 +74,15 @@ def find_embedded_python(root: Path, embed_dir: str | None = None) -> Path:
     """
     if embed_dir is not None:
         embed_dir = Path(embed_dir)
-        if not (embed_dir / "Lib").exists():
+        if not any(embed_dir.glob("python*._pth")) and not any(embed_dir.glob("python*.dll")):
             raise SystemExit(f"{embed_dir} no parece el home del runtime embebido")
         return embed_dir.resolve()
 
     for pth in root.glob("**/python*._pth"):
-        candidate = pth.parent
-        if (candidate / "Lib").exists():
-            return candidate
+        return pth.parent
+
+    for dll in root.glob("**/python*.dll"):
+        return dll.parent
 
     for python_dir in root.glob("**/python"):
         if (python_dir / "pythonw.exe").exists():
