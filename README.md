@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.7-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.8-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -173,6 +173,17 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v2.0.0-beta.8 — 2026-08-14
+
+**Arreglado**
+
+- Crash del módulo **Albaranes** con reportlab 5.0.0: `albaranes.py` importaba
+  `Line` desde `reportlab.platypus`, que dejó de existir en reportlab 5
+  (import muerto, sin usos); eliminado.
+- Actualizado `test_nuevas_funcionalidades.py` a la estructura de paquete
+  (imports `reyger.*`, rutas absolutas, `Presupuestos` con `parent` tkinter):
+  ahora refleja el estado real del proyecto y pasa 6/6.
 
 ### v2.0.0-beta.7 — 2026-08-14
 
