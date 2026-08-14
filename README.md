@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.6-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.7-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -174,7 +174,7 @@ de versión generadas automáticamente.
 
 ## Registro de cambios
 
-### v2.0.0-beta.7 — pendiente
+### v2.0.0-beta.7 — 2026-08-14
 
 **Arreglado**
 
