@@ -165,9 +165,89 @@ git tag v2.0.0-beta.6
 git push origin main --tags
 ```
 
-Esto compila los tres instaladores (`.msi`, `.dmg`, `.AppImage`) y crea una
-**publicación en GitHub Releases marcada como *Pre-release*** con los
-artefactos adjuntos y las notas de versión generadas automáticamente.
+Esto compila los tres instaladores (`.msi`, `.dmg`, `.AppImage`), verifica
+que tkinter funciona en el bundle de Windows antes de empaquetar y crea una
+**publicación en GitHub Releases** con los artefactos adjuntos y las notas
+de versión generadas automáticamente.
+
+---
+
+## Registro de cambios
+
+### v2.0.0-beta.6 — 2026-08-14
+
+**Arreglado**
+
+- Crash del instalador `.msi` de Windows al iniciar la app
+  (`ModuleNotFoundError: No module named 'tkinter'`): tkinter no llegaba al
+  runtime embebido del bundle.
+- Nuevo script `scripts/bundle_tkinter_windows.py` que inyecta tkinter,
+  Tcl/Tk y las DLLs en el runtime embebido y **verifica con una ventana
+  `Tk()` real** antes de publicar; si la verificación falla, la publicación
+  se aborta.
+- Detección del runtime embebido basada en `python*._pth`/`python*.dll`:
+  el paquete *embeddable* de python.org no incluye directorio `Lib/`.
+- Esta versión se publica como **Release** completo (no *Pre-release*).
+
+### v2.0.0-beta.5 — 2026-08-13
+
+**Arreglado**
+
+- Inyección de tkinter en el bundle de Windows vía PowerShell.
+- Desbloqueo del archivo `python._pth` del runtime embebido.
+- Publicaciones de tag idempotentes: se limpia el release anterior del
+  mismo tag antes de recrearlo.
+
+**Nota**: el `.msi` de esta versión seguía crasheando en Windows (tkinter
+no se inyectaba en la ruta correcta); corregido en **v2.0.0-beta.6**.
+
+### v2.0.0-beta.4 — 2026-08-11
+
+**Correcciones**
+
+- Insertar el código QR de VeriFACTU en el PDF de la factura.
+- Corregir el off-by-one del número de factura en el PDF.
+- Preservar los céntimos con formato `:.2f` en las ventas.
+- Pre-rellenar la edición de inventario desde la BD sin formato euro.
+- Normalizar la coma decimal al registrar productos.
+- Numerar los presupuestos por id autoincremental.
+- Cerrar correctamente la ventana de ajustes (sin `withdraw` sobre `Frame`).
+- Cerrar conexiones SQLite con gestor de contexto en el escáner.
+- Importar `cm` faltante en `tickets.py`.
+- Agrupar la escritura de configuración en `guardar_cambios`.
+- Documentar el estado BETA y automatizar la publicación de pre-releases.
+
+### v2.0.0-beta.3 — 2026-08-10
+
+**Novedades**
+
+- Rebranding: **VentaPRO** → **Reyger**, con nueva identidad.
+
+**Empaquetado y CI**
+
+- Incluir tkinter en el build del instalador `.msi` de Windows.
+- Verificación del bundle en CI para Linux y macOS (incluidas las
+  dependencias de sistema de tkinter).
+- Flujo de publicación de GitHub Releases separado en `release.yml`.
+
+### v2.0.0-beta.1 — 2026-07-31
+
+**Novedades**
+
+- Primera beta pública de **Reyger**: facturación VeriFACTU con códigos QR,
+  PDF con ReportLab, tickets de 80 mm, inventario, albaranes, presupuestos
+  e instaladores `.msi`, `.dmg` y `.AppImage`.
+
+---
+
+## Bugs conocidos
+
+- **Binarios sin firmar**: Windows SmartScreen y macOS Gatekeeper muestran
+  advertencias al instalar o abrir la aplicación en las versiones beta.
+- **Estado beta**: el software está en desarrollo activo y pueden existir
+  errores no detectados en flujos poco habituales.
+- **macOS**: el módulo de detección y configuración de impresoras solo está
+  disponible en Windows; en macOS y Linux se usa la impresora del sistema.
 
 ---
 
