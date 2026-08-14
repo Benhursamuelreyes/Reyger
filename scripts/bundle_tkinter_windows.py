@@ -14,7 +14,12 @@ Donde ``<home>`` es el directorio del bundle que contiene el runtime
 embebido (``python312._pth``, ``python312.zip``, ``Lib/``, ``app/``). El
 launcher nativo de Briefcase (``Reyger.exe``) usa ``PyConfig`` en modo
 aislado e ignora el ``._pth``; construye sys.path a mano con
-``<home>``, ``<home>\\Lib``, ``<home>\\DLLs`` y ``<home>\\app``.
+``<home>`` y ``<home>\\app``, y (segun la revision del stub) tambien
+``<home>\\Lib`` y ``<home>\\DLLs``. El stub b12 en adelante incluye
+Lib/DLLs; los stubs b10/b11 (los que descarga el branch v0.4.4 del
+template) NO los incluyen. Para cubrir ambos casos, el ``sitecustomize.py``
+inyectado inserta ``<home>\\Lib`` y ``<home>\\DLLs`` al inicio de
+``sys.path`` cuando existen.
 
 Ademas inyecta un ``sitecustomize.py`` en ``<home>`` que define las
 variables de entorno ``TCL_LIBRARY`` y ``TK_LIBRARY`` ANTES de que
@@ -47,8 +52,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 SITECUSTOMIZE = """\
 import os
+import sys
 
 _BASE = os.path.dirname(os.path.abspath(__file__))
+
+# El stub nativo de Briefcase (Reyger.exe) arma sys.path a mano y, segun la
+# revision del stub que descargue el template (b10/b11), omite <home>/Lib y
+# <home>/DLLs. Como el stub importa site ANTES de arrancar la app, anadimos
+# aqui esos directorios para que tkinter sea importable con cualquier stub.
+for _entry in ("Lib", "DLLs"):
+    _path = os.path.join(_BASE, _entry)
+    if os.path.isdir(_path) and _path not in sys.path:
+        sys.path.insert(0, _path)
+
 _TCL = os.path.join(_BASE, "tcl", "tcl8.6")
 _TK = os.path.join(_BASE, "tcl", "tk8.6")
 

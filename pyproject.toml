@@ -41,6 +41,12 @@ system_requires = ["ca-certificates", "python3-tk", "tk-dev"]
 
 [tool.briefcase.app.reyger.windows]
 icon = "src/reyger/assets/icono"
+# Forzar el stub b12: los stubs b10/b11 (los que usa el branch v0.4.4 del
+# template con briefcase 0.4.4) NO añaden <home>\Lib ni <home>\DLLs a
+# sys.path, así que tkinter nunca se encuentra aunque esté en el bundle.
+# El b12 los añade y además sitecustomize.py (scripts/bundle_tkinter_windows.py)
+# los inserta en sys.path como red de seguridad.
+stub_binary_revision = "12"
 
 [tool.briefcase.app.reyger.macOS]
 icon = "src/reyger/assets/icono"

@@ -174,13 +174,36 @@ de versión generadas automáticamente.
 
 ## Registro de cambios
 
-### v2.0.0-beta.6 — 2026-08-14
+### v2.0.0-beta.7 — pendiente
 
 **Arreglado**
 
-- Crash del instalador `.msi` de Windows al iniciar la app
-  (`ModuleNotFoundError: No module named 'tkinter'`): tkinter no llegaba al
-  runtime embebido del bundle.
+- **Causa raíz del crash del `.msi` de Windows** (`ModuleNotFoundError:
+  No module named 'tkinter'`). Aunque beta.6 ya inyectaba tkinter completo en
+  el bundle (`Lib/tkinter`, `tcl/`, `_tkinter.pyd`), el stub de arranque que
+  Briefcase descarga con su **branch `v0.4.4` del template** es la revisión
+  b10/b11, que construye `sys.path` a mano **sin** `<home>\Lib` ni
+  `<home>\DLLs`. El stub b12 (que sí los añade) solo está en la rama `main`
+  del template, sin release de Briefcase todavía.
+- Fix aplicado en dos capas:
+  1. **`sitecustomize.py`** (inyectado por `scripts/bundle_tkinter_windows.py`)
+     inserta `<home>\Lib` y `<home>\DLLs` al inicio de `sys.path` cuando
+     existen. Como el stub importa `site` antes de arrancar la app, tkinter es
+     importable con **cualquier** revisión de stub (validado en wine con el
+     stub real del MSI: `Tk() CREATED OK`).
+  2. **`stub_binary_revision = "12"`** en `[tool.briefcase.app.reyger.windows]`
+     (`pyproject.toml`) fuerza a Briefcase a usar el stub b12, que ya añade
+     Lib/DLLs por sí mismo.
+- El CI no detectaba el fallo porque `bundle_tkinter_windows.py` verificaba
+  con `python.exe` temporal (que respeta el `._pth`), no con el stub real.
+
+### v2.0.0-beta.6 — 2026-08-14
+
+**Arreglado (parcial)**
+
+- Inyección de tkinter/Tcl/Tk en el runtime embebido del `.msi` de Windows
+  (tkinter llegaba al bundle, pero el stub b10/b11 no lo veía; ver
+  v2.0.0-beta.7).
 - Nuevo script `scripts/bundle_tkinter_windows.py` que inyecta tkinter,
   Tcl/Tk y las DLLs en el runtime embebido y **verifica con una ventana
   `Tk()` real** antes de publicar; si la verificación falla, la publicación
@@ -188,6 +211,10 @@ de versión generadas automáticamente.
 - Detección del runtime embebido basada en `python*._pth`/`python*.dll`:
   el paquete *embeddable* de python.org no incluye directorio `Lib/`.
 - Esta versión se publica como **Release** completo (no *Pre-release*).
+
+**Nota**: a pesar del CI en verde, el `.msi` de esta versión seguía
+crasheando al arrancar en Windows (el stub b10/b11 no añade `Lib`/`DLLs`
+a `sys.path`); la causa raíz está corregida en **v2.0.0-beta.7**.
 
 ### v2.0.0-beta.5 — 2026-08-13
 
