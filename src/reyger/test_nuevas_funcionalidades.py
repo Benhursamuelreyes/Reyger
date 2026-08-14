@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Script de testing para verificar que todas las funcionalidades 
+Script de testing para verificar que todas las funcionalidades
 están correctamente implementadas e instaladas.
 
 Ejecuta: python test_nuevas_funcionalidades.py
@@ -10,7 +10,15 @@ Ejecuta: python test_nuevas_funcionalidades.py
 
 import os
 import sys
+import tkinter as tk
 from datetime import datetime
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(SCRIPT_DIR)
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
+
+DB_PATH = os.path.join(PROJECT_ROOT, "database.db")
 
 # Colores para output
 VERDE = '\033[92m'
@@ -32,24 +40,24 @@ def print_resultado(test_nombre, success, mensaje=""):
 
 
 def test_imports():
-    """Test 1: Verificar que todos los módulos nuvos se importan"""
+    """Test 1: Verificar que todos los módulos nuevos se importan"""
     print(f"\n{BOLD}{AZUL}[TEST 1] Importación de módulos{RESET}")
     
     tests = [
-        ("facturas_verifactu.FacturaVeriFACTU", "Factura VeriFACTU"),
-        ("tickets.TicketSimplificado", "Tickets"),
-        ("albaranes.AlbaranEntrega", "Albaranes"),
-        ("presupuestos.Presupuestos", "Presupuestos"),
-        ("impresoras.GestorImpresoras", "Gestor de Impresoras"),
-        ("barcode_scanner.EscanerCodigoBarras", "Escáner de Código de Barras"),
+        ("reyger.facturas_verifactu.FacturaVeriFACTU", "Factura VeriFACTU"),
+        ("reyger.tickets.TicketSimplificado", "Tickets"),
+        ("reyger.albaranes.AlbaranEntrega", "Albaranes"),
+        ("reyger.presupuestos.Presupuestos", "Presupuestos"),
+        ("reyger.impresoras.GestorImpresoras", "Gestor de Impresoras"),
+        ("reyger.barcode_scanner.EscanerCodigoBarras", "Escáner de Código de Barras"),
     ]
     
     resultados = []
-    for modulo_clase, nombre in tests:
+    for ruta, nombre in tests:
         try:
-            partes = modulo_clase.split('.')
-            modulo = __import__(partes[0])
-            clase = getattr(modulo, partes[1])
+            partes = ruta.split('.')
+            modulo = __import__('.'.join(partes[:-1]), fromlist=[partes[-1]])
+            getattr(modulo, partes[-1])
             print_resultado(f"Importar {nombre}", True)
             resultados.append(True)
         except Exception as e:
@@ -98,8 +106,8 @@ def test_base_datos():
     try:
         import sqlite3
         
-        if os.path.exists("database.db"):
-            conn = sqlite3.connect("database.db")
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             
             # Verificar tablas existentes
@@ -132,14 +140,13 @@ def test_estructura_proyecto():
     print(f"\n{BOLD}{AZUL}[TEST 4] Estructura de archivos{RESET}")
     
     archivos_esperados = [
-        "index.py",
+        "app.py",
         "manager.py",
         "container.py",
         "ventas.py",
         "inventario.py",
         "ajustes.py",
         "config.py",
-        "database.db",
         "facturas_verifactu.py",
         "tickets.py",
         "albaranes.py",
@@ -150,13 +157,21 @@ def test_estructura_proyecto():
     
     resultados = []
     for archivo in archivos_esperados:
-        existe = os.path.exists(archivo)
+        ruta = os.path.join(SCRIPT_DIR, archivo)
+        existe = os.path.exists(ruta)
         if existe:
             print_resultado(f"Archivo {archivo}", True)
             resultados.append(True)
         else:
             print_resultado(f"Archivo {archivo}", False, "Descárgalo o créalo")
             resultados.append(False)
+    
+    if os.path.exists(DB_PATH):
+        print_resultado("Base de datos database.db", True)
+        resultados.append(True)
+    else:
+        print_resultado("Base de datos database.db", False, "Se crea al usar la aplicación")
+        resultados.append(False)
     
     return all(resultados)
 
@@ -169,7 +184,7 @@ def test_funcionalidad_basica():
     
     # Test FacturaVeriFACTU
     try:
-        from facturas_verifactu import FacturaVeriFACTU
+        from reyger.facturas_verifactu import FacturaVeriFACTU
         factura = FacturaVeriFACTU()
         print_resultado("Instanciar FacturaVeriFACTU", True)
         resultados.append(True)
@@ -179,7 +194,7 @@ def test_funcionalidad_basica():
     
     # Test TicketSimplificado
     try:
-        from tickets import TicketSimplificado
+        from reyger.tickets import TicketSimplificado
         ticket = TicketSimplificado()
         print_resultado("Instanciar TicketSimplificado", True)
         resultados.append(True)
@@ -189,7 +204,7 @@ def test_funcionalidad_basica():
     
     # Test AlbaranEntrega
     try:
-        from albaranes import AlbaranEntrega
+        from reyger.albaranes import AlbaranEntrega
         albaran = AlbaranEntrega()
         print_resultado("Instanciar AlbaranEntrega", True)
         resultados.append(True)
@@ -197,9 +212,22 @@ def test_funcionalidad_basica():
         print_resultado("Instanciar AlbaranEntrega", False, str(e))
         resultados.append(False)
     
+    # Test Presupuestos (Frame tkinter: necesita un parent)
+    try:
+        from reyger.presupuestos import Presupuestos
+        root = tk.Tk()
+        root.withdraw()
+        presupuestos = Presupuestos(root)
+        root.destroy()
+        print_resultado("Instanciar Presupuestos", True)
+        resultados.append(True)
+    except Exception as e:
+        print_resultado("Instanciar Presupuestos", False, str(e))
+        resultados.append(False)
+    
     # Test EscanerCodigoBarras
     try:
-        from barcode_scanner import EscanerCodigoBarras
+        from reyger.barcode_scanner import EscanerCodigoBarras
         escaner = EscanerCodigoBarras()
         print_resultado("Instanciar EscanerCodigoBarras", True)
         resultados.append(True)
@@ -209,7 +237,7 @@ def test_funcionalidad_basica():
     
     # Test GestorImpresoras
     try:
-        from impresoras import GestorImpresoras
+        from reyger.impresoras import GestorImpresoras
         gestor = GestorImpresoras()
         print_resultado("Instanciar GestorImpresoras", True)
         resultados.append(True)
@@ -234,7 +262,7 @@ def test_directorios_salida():
     
     resultados = []
     for directorio, descripcion in directorios:
-        if os.path.exists(directorio):
+        if os.path.exists(os.path.join(PROJECT_ROOT, directorio)):
             print_resultado(f"Directorio {descripcion} (/{directorio})", True)
             resultados.append(True)
         else:
@@ -290,8 +318,8 @@ def main():
     
     # Información adicional
     print(f"{BOLD}Próximos pasos:{RESET}")
-    print(f"  1. Ejecuta: {AMARILLO}python index.py{RESET}")
-    print(f"  2. Abre menu Presupuestos (nuevo botón púrpura)")
+    print(f"  1. Ejecuta: {AMARILLO}python -m reyger{RESET}")
+    print(f"  2. Abre menú Presupuestos (nuevo botón púrpura)")
     print(f"  3. Prueba los métodos de pago en Ventas")
     print(f"  4. Genera facturas y tickets\n")
     
