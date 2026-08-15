@@ -108,6 +108,19 @@ class Inventario(tk.Frame):
             result = cursor.execute(consulta, parametros)
             conn.commit()
         return result
+
+    def crear_tabla(self):
+        consulta = """
+        CREATE TABLE IF NOT EXISTS inventario (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            proveedor TEXT NOT NULL,
+            precio REAL NOT NULL,
+            costo REAL NOT NULL,
+            stock INTEGER NOT NULL
+        );
+        """
+        self.eje_consulta(consulta)
     
     def validacion(self, nombre, prov, precio, costo, stock):
         if not (nombre and prov and precio and costo and stock):
