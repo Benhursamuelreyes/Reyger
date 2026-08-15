@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.8-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.9-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -173,6 +173,16 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v2.0.0-beta.9 — 2026-08-14
+
+**Arreglado**
+
+- Ventana de **Inventario** en blanco: `inventario.py` llamaba a
+  `self.crear_tabla()` que no existía (se perdió en un refactor anterior);
+  el `AttributeError` abortaba la construcción antes de dibujar los widgets.
+  Restaurado el método con el esquema compatible con el `INSERT` actual
+  (`id INTEGER PRIMARY KEY AUTOINCREMENT`).
 
 ### v2.0.0-beta.8 — 2026-08-14
 
