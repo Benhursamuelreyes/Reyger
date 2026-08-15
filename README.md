@@ -181,8 +181,12 @@ de versión generadas automáticamente.
 - Ventana de **Inventario** en blanco: `inventario.py` llamaba a
   `self.crear_tabla()` que no existía (se perdió en un refactor anterior);
   el `AttributeError` abortaba la construcción antes de dibujar los widgets.
-  Restaurado el método con el esquema compatible con el `INSERT` actual
-  (`id INTEGER PRIMARY KEY AUTOINCREMENT`).
+- Reestructurada la inicialización de la base de datos: `database.db` (con
+  las tablas `ventas` e `inventario`) ahora se **empaqueta** con la app y se
+  **copia al directorio de datos del usuario en el primer arranque** desde
+  `get_db_path()`. Eliminada la creación de tablas en runtime:
+  - Eliminada `crear_tabla()` de `inventario.py` (y su llamada).
+  - `resources.py` hace el *seed* de `database.db` si no existe aún.
 
 ### v2.0.0-beta.8 — 2026-08-14
 

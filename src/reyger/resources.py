@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -29,7 +30,21 @@ def get_user_data_path():
 
 
 def get_db_path():
-    return str(get_user_data_path() / "database.db")
+    """Devuelve la ruta de la base de datos del usuario.
+
+    Si no existe todavía (primer arranque), copia la base incluida con la
+    aplicación (que ya trae las tablas) como plantilla, en vez de depender
+    de que cada módulo cree sus tablas en runtime.
+    """
+    path = get_user_data_path() / "database.db"
+    if not path.exists():
+        bundled = Path(__file__).parent / "assets" / "database.db"
+        if bundled.exists():
+            try:
+                shutil.copyfile(bundled, path)
+            except Exception:
+                pass
+    return str(path)
 
 
 def get_config_path():
