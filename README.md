@@ -68,31 +68,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-2.0.0b6.msi` |
-| **macOS** | `Reyger-2.0.0b6.dmg` |
-| **Linux** | `Reyger-2.0.0b6-x86_64.AppImage` |
+| **Windows** | `Reyger-2.0.0b9.msi` |
+| **macOS** | `Reyger-2.0.0b9.dmg` |
+| **Linux** | `Reyger-2.0.0b9-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-2.0.0b6.msi`.
+1. Descarga el archivo `Reyger-2.0.0b9.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-2.0.0b6.dmg`.
+1. Descarga el archivo `Reyger-2.0.0b9.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-2.0.0b6-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-2.0.0b9-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-2.0.0b6-x86_64.AppImage
-   ./Reyger-2.0.0b6-x86_64.AppImage
+   chmod +x Reyger-2.0.0b9-x86_64.AppImage
+   ./Reyger-2.0.0b9-x86_64.AppImage
    ```
 
 ---
@@ -181,8 +181,14 @@ de versión generadas automáticamente.
 - Ventana de **Inventario** en blanco: `inventario.py` llamaba a
   `self.crear_tabla()` que no existía (se perdió en un refactor anterior);
   el `AttributeError` abortaba la construcción antes de dibujar los widgets.
-- Reestructurada la inicialización de la base de datos: `database.db` (con
-  las tablas `ventas` e `inventario`) ahora se **empaqueta** con la app y se
+
+**Actualización de la release (sobrescrita — los cambios se combinan)**
+
+- La primera corrección publicada restauraba `crear_tabla()` en
+  `inventario.py` para volver a crear la tabla `inventario` en runtime.
+- Después, la release **se sobrescribió** con una solución más robusta y se
+  reestructuró la inicialización de la base de datos: `database.db` (con las
+  tablas `ventas` e `inventario`) ahora se **empaqueta** con la app y se
   **copia al directorio de datos del usuario en el primer arranque** desde
   `get_db_path()`. Eliminada la creación de tablas en runtime:
   - Eliminada `crear_tabla()` de `inventario.py` (y su llamada).
