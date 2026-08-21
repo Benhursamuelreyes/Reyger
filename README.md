@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.2-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.1-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -68,31 +68,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-3.0.0b2.msi` |
-| **macOS** | `Reyger-3.0.0b2.dmg` |
-| **Linux** | `Reyger-3.0.0b2-x86_64.AppImage` |
+| **Windows** | `Reyger-3.0.0b1.msi` |
+| **macOS** | `Reyger-3.0.0b1.dmg` |
+| **Linux** | `Reyger-3.0.0b1-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-3.0.0b2.msi`.
+1. Descarga el archivo `Reyger-3.0.0b1.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-3.0.0b2.dmg`.
+1. Descarga el archivo `Reyger-3.0.0b1.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-3.0.0b2-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-3.0.0b1-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-3.0.0b2-x86_64.AppImage
-   ./Reyger-3.0.0b2-x86_64.AppImage
+   chmod +x Reyger-3.0.0b1-x86_64.AppImage
+   ./Reyger-3.0.0b1-x86_64.AppImage
    ```
 
 ---
@@ -174,7 +174,11 @@ de versión generadas automáticamente.
 
 ## Registro de cambios
 
-### v3.0.0-beta.2 — 2026-08-21
+### v3.0.0-beta.1 — 2026-08-21
+
+**Reinicio de numeración de versión**: tras la gran actualización en 4
+fases (beta.6 → beta.11), el proyecto pasa a la serie **3.x** para marcar
+el nuevo ciclo de desarrollo.
 
 **Añadido — Categorías de productos**
 
@@ -187,25 +191,15 @@ de versión generadas automáticamente.
 - **Ajustes**: panel de gestión — crear, renombrar y eliminar categorías
   (al eliminar, los productos pasan a «General»).
 
-### v3.0.0-beta.1 — 2026-08-21
-
-**Reinicio de numeración de versión**: tras la gran actualización en 4
-fases (beta.6 → beta.11), el proyecto pasa a la serie **3.x** para marcar
-el nuevo ciclo de desarrollo. Mismo código que v2.0.0-beta.11, que incluye
-el arreglo del AppImage (scripts Tcl/Tk empaquetados).
-
-### v2.0.0-beta.11 — 2026-08-21
-
 **Corregido — AppImage de Linux**
 
 - El AppImage no empaquetaba los **scripts de Tcl/Tk** (`init.tcl`/`tk.tcl`)
   que el Python de Briefcase enlaza (Tcl 8.6.8), por lo que la aplicación
   fallaba al arrancar en equipos sin `python3-tk` del sistema
   (*"Can't find a usable init.tcl"*). Bug heredado de versiones anteriores.
-- El CI ahora copia los scripts oficiales 8.6.8 al bundle y verifica que se
-  puede crear una ventana `Tk()` real dentro del AppImage antes de publicar
-  (la verificación anterior solo comprobaba `import tkinter`, que no
-  inicializa Tcl).
+- El CI ahora copia los scripts oficiales 8.6.8 al bundle antes de
+  construir y verifica que se puede crear una ventana `Tk()` real dentro
+  del AppImage empaquetado antes de publicar.
 
 ### v2.0.0-beta.10 — 2026-08-21
 
