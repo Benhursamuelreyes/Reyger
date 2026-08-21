@@ -1,8 +1,14 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import os
 from .config import ConfigManager
+from .impresion_termica import (
+    ANCHO_80MM,
+    construir_ticket_venta,
+    enviar_bytes,
+    listar_impresoras_termicas,
+)
 from .resources import get_user_data_path
 
 class Ajustes(tk.Frame):
@@ -65,7 +71,13 @@ class Ajustes(tk.Frame):
         
         # Sección 5: Opciones adicionales
         self.crear_seccion_opciones(main_frame)
-        
+
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+
+        # Sección 6: Impresora térmica
+        self.crear_seccion_impresora_termica(main_frame)
+
         # Frame de botones
         frame_botones = tk.Frame(main_frame, bg=self.colors["bg_principal"])
         frame_botones.pack(fill="x", pady=20)
@@ -320,6 +332,115 @@ class Ajustes(tk.Frame):
             )
             radio.pack(side="left", padx=10)
     
+    def crear_seccion_impresora_termica(self, parent):
+        """Sección de configuración de la impresora de tickets."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🖨️ Impresora Térmica (tickets)",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        label_impresora = tk.Label(
+            frame,
+            text="Impresora de tickets:",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
+        )
+        label_impresora.pack(anchor="w", padx=20, pady=(10, 5))
+
+        impresoras = ["(Desactivada)"] + listar_impresoras_termicas()
+        self.combo_impresora = ttk.Combobox(
+            frame,
+            values=impresoras,
+            state="readonly",
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+            width=45
+        )
+        actual = self.config_manager.get("impresora_termica")
+        if actual in impresoras:
+            self.combo_impresora.set(actual)
+        else:
+            self.combo_impresora.current(0)
+        self.combo_impresora.pack(anchor="w", padx=20, pady=(0, 10))
+
+        label_ancho = tk.Label(
+            frame,
+            text="Ancho del papel:",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
+        )
+        label_ancho.pack(anchor="w", padx=20, pady=(5, 5))
+
+        self.var_ancho_ticket = tk.IntVar(
+            value=self.config_manager.get("ancho_ticket", 80)
+        )
+        frame_anchos = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_anchos.pack(anchor="w", padx=20, pady=(0, 10))
+        for ancho in (80, 58):
+            radio = tk.Radiobutton(
+                frame_anchos,
+                text=f"{ancho} mm",
+                variable=self.var_ancho_ticket,
+                value=ancho,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+                selectcolor=self.colors["bg_secundario"]
+            )
+            radio.pack(side="left", padx=10)
+
+        btn_prueba = tk.Button(
+            frame,
+            text="🧾 Imprimir página de prueba",
+            bg="#0078D4",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self.imprimir_pagina_prueba,
+            padx=15,
+            pady=8
+        )
+        btn_prueba.pack(anchor="w", padx=20, pady=(0, 10))
+
+    def imprimir_pagina_prueba(self):
+        """Envía un ticket de ejemplo a la impresora seleccionada."""
+        impresora = self.combo_impresora.get()
+        if impresora == "(Desactivada)":
+            messagebox.showwarning(
+                "Impresora térmica",
+                "Seleccione una impresora antes de imprimir la prueba."
+            )
+            return
+        ancho = ANCHO_80MM if self.var_ancho_ticket.get() == 80 else 32
+        datos = construir_ticket_venta(
+            numero_factura="PRUEBA",
+            fecha="01/01/2026 12:00",
+            productos=[("Producto de prueba", 1.10, 1, 1.10)],
+            total=1.10,
+            base=0.91,
+            cuota=0.19,
+            metodo_pago="Efectivo",
+            empresa=self.entry_nombre.get() or "Mi Empresa",
+            ancho=ancho,
+        )
+        if enviar_bytes(datos, None if impresora == "" else impresora):
+            messagebox.showinfo(
+                "Impresora térmica",
+                f"Página de prueba enviada a:\n{impresora}"
+            )
+        else:
+            messagebox.showerror(
+                "Impresora térmica",
+                "No se pudo imprimir la página de prueba.\n"
+                "Compruebe que la impresora está conectada y encendida."
+            )
+
     def cargar_logo(self):
         """Abre el diálogo para cargar una imagen como logo"""
         filetypes = [("Imágenes", "*.png *.jpg *.jpeg *.bmp"), ("Todos", "*.*")]
@@ -383,6 +504,11 @@ class Ajustes(tk.Frame):
                 "nombre_empresa": self.entry_nombre.get(),
                 "mostrar_hora": self.var_hora.get(),
                 "redondear_decimales": self.var_decimales.get(),
+                "impresora_termica": (
+                    None if self.combo_impresora.get() == "(Desactivada)"
+                    else self.combo_impresora.get()
+                ),
+                "ancho_ticket": int(self.var_ancho_ticket.get()),
             })
             self.config_manager.save_config()
             
@@ -406,7 +532,9 @@ class Ajustes(tk.Frame):
                 "logo_path": None,
                 "nombre_empresa": "Mi Empresa",
                 "mostrar_hora": True,
-                "redondear_decimales": 2
+                "redondear_decimales": 2,
+                "impresora_termica": None,
+                "ancho_ticket": 80
             }
             
             self.config_manager.config_data = default_config
@@ -419,6 +547,8 @@ class Ajustes(tk.Frame):
             self.entry_nombre.insert(0, "Mi Empresa")
             self.var_hora.set(True)
             self.var_decimales.set(2)
+            self.combo_impresora.current(0)
+            self.var_ancho_ticket.set(80)
             self.logo_label.config(image="", text="📷\nSin logo")
             self.logo_image_preview = None
             

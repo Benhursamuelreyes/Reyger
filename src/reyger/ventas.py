@@ -10,10 +10,16 @@ import datetime
 import os
 
 from .resources import get_db_path, get_output_path, open_file
+from .config import ConfigManager
 from .fiscal import (
     IVA_POR_DEFECTO,
     desglose_linea,
     desglose_total,
+)
+from .impresion_termica import (
+    ANCHO_58MM,
+    ANCHO_80MM,
+    imprimir_ticket_venta,
 )
 
 
@@ -515,8 +521,30 @@ class Ventas(tk.Frame):
                     base_imponible=base_total, cuota_iva=cuota_total,
                     cliente_nombre=None if cliente_id is None else cliente_nombre,
                 )
+                self._imprimir_ticket_termico(
+                    numero_factura_emitida, fecha, productos, total,
+                    base_total, cuota_total, metodo_pago,
+                    None if cliente_id is None else cliente_nombre,
+                )
         except ValueError:
             messagebox.showerror("Error", "Valores ingresados no validos")
+
+    def _imprimir_ticket_termico(self, numero_factura, fecha, productos, total,
+                                 base, cuota, metodo_pago, cliente):
+        """Imprime el ticket térmico si hay una impresora configurada."""
+        config = ConfigManager()
+        impresora = config.get("impresora_termica")
+        if not impresora:
+            return
+        ancho = ANCHO_58MM if config.get("ancho_ticket") == 58 else ANCHO_80MM
+        empresa = config.get("nombre_empresa", "Mi Empresa")
+        ok, mensaje = imprimir_ticket_venta(
+            numero_factura, fecha, productos, total, base, cuota,
+            metodo_pago, cliente, empresa=empresa, ancho=ancho,
+            impresora=impresora,
+        )
+        if not ok:
+            messagebox.showwarning("Impresora térmica", mensaje)
 
     def generar_factura_pdf(self, productos, total, factura_numero, fecha,
                             metodo_pago="Efectivo", base_imponible=None,
