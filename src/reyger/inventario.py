@@ -146,8 +146,11 @@ class Inventario(tk.Frame):
         
         if self.validacion(nombre, prov, precio, costo, stock):
             try:
-                consulta = "INSERT INTO inventario VALUES(?,?,?,?,?,?)"
-                parametros = (None, nombre, prov, precio, costo, stock)
+                consulta = (
+                    "INSERT INTO inventario (nombre, proveedor, precio, costo, stock) "
+                    "VALUES(?,?,?,?,?)"
+                )
+                parametros = (nombre, prov, precio, costo, stock)
                 self.eje_consulta(consulta, parametros)
                 self.actualizar_inventario()
                 self.nombre.delete(0, END)
