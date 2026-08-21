@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.1-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.2-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -68,31 +68,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-3.0.0b1.msi` |
-| **macOS** | `Reyger-3.0.0b1.dmg` |
-| **Linux** | `Reyger-3.0.0b1-x86_64.AppImage` |
+| **Windows** | `Reyger-3.0.0b2.msi` |
+| **macOS** | `Reyger-3.0.0b2.dmg` |
+| **Linux** | `Reyger-3.0.0b2-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-3.0.0b1.msi`.
+1. Descarga el archivo `Reyger-3.0.0b2.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-3.0.0b1.dmg`.
+1. Descarga el archivo `Reyger-3.0.0b2.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-3.0.0b1-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-3.0.0b2-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-3.0.0b1-x86_64.AppImage
-   ./Reyger-3.0.0b1-x86_64.AppImage
+   chmod +x Reyger-3.0.0b2-x86_64.AppImage
+   ./Reyger-3.0.0b2-x86_64.AppImage
    ```
 
 ---
@@ -173,6 +173,19 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v3.0.0-beta.2 — 2026-08-21
+
+**Añadido — Categorías de productos**
+
+- Nueva tabla `categorias` (migración 3) con la categoría **General**
+  por defecto; los productos existentes quedan agrupados en ella.
+- **Inventario**: campo Categoría en alta y edición, columna «Categoría»
+  en el listado y filtro por categoría.
+- **Ventas**: botonera de categorías (Todos / General / Frutas /
+  Informática...) para filtrar el desplegable de productos al cobrar.
+- **Ajustes**: panel de gestión — crear, renombrar y eliminar categorías
+  (al eliminar, los productos pasan a «General»).
 
 ### v3.0.0-beta.1 — 2026-08-21
 
