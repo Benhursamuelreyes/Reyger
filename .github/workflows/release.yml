@@ -61,9 +61,13 @@ jobs:
             exit 1
           fi
           # Verificacion real: crear una ventana Tk() (no basta con import
-          # tkinter, que no inicializa Tcl). xvfb-run aporta el display que
-          # el runner headless no tiene.
+          # tkinter, que no inicializa Tcl). Se importa reyger.app primero
+          # para ejercer el mecanismo real de la app (_ensure_tcl_library,
+          # que fija TCL_LIBRARY/TK_LIBRARY hacia usr/tcl/). xvfb-run aporta
+          # el display que el runner headless no tiene.
+          PYTHONPATH="$BUNDLE/usr/app:$BUNDLE/usr/app_packages" \
           xvfb-run -a "$BUNDLE/usr/python/bin/python3" -c "
+          import reyger.app
           import tkinter
           raiz = tkinter.Tk()
           print('Tk OK:', raiz.tk_version)
