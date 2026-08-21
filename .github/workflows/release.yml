@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install system dependencies (tkinter)
-        run: sudo apt-get update && sudo apt-get install -y python3-tk tk-dev
+        run: sudo apt-get update && sudo apt-get install -y python3-tk tk-dev xvfb
 
       - name: Install Briefcase and dependencies
         run: |
@@ -29,16 +29,46 @@ jobs:
         run: |
           briefcase create linux appimage
           briefcase build linux appimage
-          briefcase package linux appimage
 
-      - name: Verify tkinter in AppImage bundle
+      - name: Bundle Tcl/Tk scripts into AppImage
         run: |
           BUNDLE=$(ls -d build/*/linux/appimage/*.AppDir 2>/dev/null | head -1)
           if [ -z "$BUNDLE" ]; then
             echo "AppDir no encontrado en build/*/linux/appimage/"
             exit 1
           fi
-          "$BUNDLE/usr/python/bin/python3" -c "import tkinter; print('tkinter OK:', tkinter.TkVersion)"
+          # El Python de Briefcase (python-build-standalone) enlaza Tcl/Tk
+          # 8.6.8 pero NO incluye los scripts (init.tcl/tk.tcl). Sin ellos,
+          # tkinter falla con "Can't find a usable init.tcl" en maquinas sin
+          # python3-tk del sistema. Se descargan del repo oficial (tag
+          # core-8-6-8 = version exacta que exige la lib embebida; una
+          # version distinta dispara "version conflict for package Tcl") y
+          # se copian a usr/tcl/, donde _ensure_tcl_library() los busca.
+          mkdir -p "$BUNDLE/usr/tcl"
+          curl -sL https://github.com/tcltk/tcl/archive/refs/tags/core-8-6-8.tar.gz | tar xz
+          curl -sL https://github.com/tcltk/tk/archive/refs/tags/core-8-6-8.tar.gz | tar xz
+          cp -r tcl-core-8-6-8/library "$BUNDLE/usr/tcl/tcl8.6"
+          cp -r tk-core-8-6-8/library "$BUNDLE/usr/tcl/tk8.6"
+
+      - name: Package AppImage with Briefcase
+        run: briefcase package linux appimage
+
+      - name: Verify Tk() in AppImage bundle
+        run: |
+          BUNDLE=$(ls -d build/*/linux/appimage/*.AppDir 2>/dev/null | head -1)
+          if [ -z "$BUNDLE" ]; then
+            echo "AppDir no encontrado en build/*/linux/appimage/"
+            exit 1
+          fi
+          # Verificacion real: crear una ventana Tk() (no basta con import
+          # tkinter, que no inicializa Tcl). xvfb-run aporta el display que
+          # el runner headless no tiene.
+          xvfb-run -a "$BUNDLE/usr/python/bin/python3" -c "
+import tkinter
+raiz = tkinter.Tk()
+print('Tk OK:', raiz.tk_version)
+raiz.destroy()
+"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -174,5 +204,5 @@ jobs:
 
             ### Notas
 
-            - Versión **2.0.0-beta.10**: revisa las notas de versión a continuación.
+            - Versión **2.0.0-beta.11**: revisa las notas de versión a continuación.
             - Las notas de versión con el detalle de commits y cambios se generan automáticamente.
