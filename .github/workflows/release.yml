@@ -64,11 +64,11 @@ jobs:
           # tkinter, que no inicializa Tcl). xvfb-run aporta el display que
           # el runner headless no tiene.
           xvfb-run -a "$BUNDLE/usr/python/bin/python3" -c "
-import tkinter
-raiz = tkinter.Tk()
-print('Tk OK:', raiz.tk_version)
-raiz.destroy()
-"
+          import tkinter
+          raiz = tkinter.Tk()
+          print('Tk OK:', raiz.tk_version)
+          raiz.destroy()
+          "
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
