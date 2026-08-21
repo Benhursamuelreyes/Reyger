@@ -10,6 +10,7 @@ except ImportError:
 from .container import Container
 from .config import ConfigManager
 from .resources import get_bundled_path
+from .ui import GEOMETRIA_PRINCIPAL, MINIMO_PRINCIPAL
 
 
 class Manager(Tk):
@@ -19,9 +20,10 @@ class Manager(Tk):
         self.colors = self.config_manager.get_colors()
 
         self.title("Reyger versión BETA")
-        self.resizable(False, False)
+        self.resizable(True, True)
+        self.minsize(*MINIMO_PRINCIPAL)
         self.configure(bg=self.colors["bg_principal"])
-        self.geometry("800x400+120+20")
+        self.geometry(GEOMETRIA_PRINCIPAL)
 
         self._set_icon()
 

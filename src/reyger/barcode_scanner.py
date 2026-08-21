@@ -181,8 +181,9 @@ class DialogoAsignarCodigoBarras(tk.Toplevel):
         """
         super().__init__(parent)
         self.title("Asignar Código de Barras")
-        self.geometry("400x250")
-        self.resizable(False, False)
+        self.geometry("480x320")
+        self.resizable(True, True)
+        self.minsize(440, 300)
         
         self.id_producto = id_producto
         self.nombre_producto = nombre_producto

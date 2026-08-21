@@ -177,8 +177,9 @@ class DialogoSeleccionImpresora(tk.Toplevel):
         """
         super().__init__(parent)
         self.title("Seleccionar Impresora")
-        self.geometry("500x300")
-        self.resizable(False, False)
+        self.geometry("640x480")
+        self.resizable(True, True)
+        self.minsize(560, 420)
         self.ruta_archivo = ruta_archivo
         self.gestor = gestor_impresoras or GestorImpresoras()
         self.impresora_seleccionada = None

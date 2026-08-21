@@ -5,6 +5,7 @@ from PIL import Image, ImageTk
 
 from .ventas import Ventas
 from .inventario import Inventario
+from .clientes import Clientes
 from .ajustes import Ajustes
 from .presupuestos import Presupuestos
 from .config import ConfigManager
@@ -16,18 +17,18 @@ class Container(tk.Frame):
         super().__init__(padre)
         self.controlador = controlador
         self.config_manager = ConfigManager()
-        self.pack()
-        self.place(x=0, y=0, width=800, height=400)
         self.colors = self.config_manager.get_colors()
         self.configure(bg=self.colors["bg_principal"])
+        self.pack(fill="both", expand=True)
         self.widgets()
 
     def show_frames(self, container):
         top_level = tk.Toplevel(self)
         frame = container(top_level)
         frame.pack(fill="both", expand=True)
-        top_level.geometry("1100x650+120+20")
-        top_level.resizable(False, False)
+        top_level.geometry("1280x800")
+        top_level.resizable(True, True)
+        top_level.minsize(1100, 700)
         self._set_window_icon(top_level)
         top_level.transient(self.master)
         top_level.grab_set()
@@ -56,6 +57,9 @@ class Container(tk.Frame):
     def inventario(self):
         self.show_frames(Inventario)
 
+    def clientes(self):
+        self.show_frames(Clientes)
+
     def ajustes(self):
         self.show_frames(Ajustes)
 
@@ -63,9 +67,9 @@ class Container(tk.Frame):
         self.show_frames(Presupuestos)
 
     def widgets(self):
-        frame1 = tk.Frame(self, bg=self.colors["bg_principal"])
-        frame1.pack()
-        frame1.place(x=0, y=0, width=800, height=400)
+        # Zona superior: logos
+        frame_top = tk.Frame(self, bg=self.colors["bg_principal"])
+        frame_top.pack(fill="x", pady=30, padx=20)
 
         ruta = get_bundled_path("assets/img/logo.png")
         if os.path.exists(ruta):
@@ -73,62 +77,47 @@ class Container(tk.Frame):
             self.logo_image.thumbnail((760, 200), Image.LANCZOS)
             self.logo_image = ImageTk.PhotoImage(self.logo_image)
             self.logo_label = tk.Label(
-                frame1, image=self.logo_image, bg=self.colors["bg_principal"]
+                frame_top, image=self.logo_image, bg=self.colors["bg_principal"]
             )
-            self.logo_label.place(x=20, y=60)
-
-        btnVentas = Button(
-            frame1,
-            bg="#f4b400",
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            text="Ventas",
-            command=self.ventas,
-        )
-        btnVentas.place(x=30, y=300, width=170, height=70)
-
-        btnInventario = Button(
-            frame1,
-            bg="#c62e26",
-            fg="white",
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            text="Inventario",
-            command=self.inventario,
-        )
-        btnInventario.place(x=225, y=300, width=170, height=70)
-
-        btnAjustes = Button(
-            frame1,
-            bg="#17A2B8",
-            fg="white",
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            text="Ajustes",
-            command=self.ajustes,
-        )
-        btnAjustes.place(x=420, y=300, width=170, height=70)
-
-        btnPresupuestos = Button(
-            frame1,
-            bg="#9B59B6",
-            fg="white",
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            text="Presupuestos",
-            command=self.presupuestos,
-        )
-        btnPresupuestos.place(x=615, y=300, width=170, height=70)
+            self.logo_label.pack(side="left", padx=20)
 
         logo_path = self.config_manager.get("logo_path")
         if logo_path and os.path.exists(logo_path):
             try:
                 self.custom_logo_image = Image.open(logo_path)
-                self.custom_logo_image = self.custom_logo_image.resize((300, 80))
+                self.custom_logo_image.thumbnail((300, 80), Image.LANCZOS)
                 self.custom_logo_image = ImageTk.PhotoImage(self.custom_logo_image)
-                logo_frame = tk.Frame(frame1, bg=self.colors["bg_principal"])
-                logo_frame.place(x=250, y=20, width=300, height=80)
                 logo_label_custom = tk.Label(
-                    logo_frame,
+                    frame_top,
                     image=self.custom_logo_image,
                     bg=self.colors["bg_principal"],
                 )
-                logo_label_custom.pack(fill="both", expand=True)
+                logo_label_custom.pack(side="right", padx=20)
             except Exception:
                 pass
+
+        # Zona central elástica
+        frame_centro = tk.Frame(self, bg=self.colors["bg_principal"])
+        frame_centro.pack(fill="both", expand=True)
+
+        # Zona inferior: botones de navegación (se reparten el ancho)
+        frame_botones = tk.Frame(self, bg=self.colors["bg_principal"])
+        frame_botones.pack(fill="x", side="bottom", pady=40, padx=20)
+
+        botones = [
+            ("Ventas", "#f4b400", None, self.ventas),
+            ("Inventario", "#c62e26", "white", self.inventario),
+            ("Clientes", "#2ECC71", "white", self.clientes),
+            ("Presupuestos", "#9B59B6", "white", self.presupuestos),
+            ("Ajustes", "#17A2B8", "white", self.ajustes),
+        ]
+        for texto, bg, fg, comando in botones:
+            boton = Button(
+                frame_botones,
+                bg=bg,
+                fg=fg or "black",
+                font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+                text=texto,
+                command=comando,
+            )
+            boton.pack(side="left", expand=True, fill="x", padx=8, ipady=18)

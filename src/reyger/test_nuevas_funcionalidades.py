@@ -50,6 +50,7 @@ def test_imports():
         ("reyger.presupuestos.Presupuestos", "Presupuestos"),
         ("reyger.impresoras.GestorImpresoras", "Gestor de Impresoras"),
         ("reyger.barcode_scanner.EscanerCodigoBarras", "Escáner de Código de Barras"),
+        ("reyger.clientes.Clientes", "Clientes"),
     ]
     
     resultados = []
@@ -145,8 +146,13 @@ def test_estructura_proyecto():
         "container.py",
         "ventas.py",
         "inventario.py",
+        "clientes.py",
         "ajustes.py",
         "config.py",
+        "db.py",
+        "migrations.py",
+        "auth.py",
+        "ui.py",
         "facturas_verifactu.py",
         "tickets.py",
         "albaranes.py",
