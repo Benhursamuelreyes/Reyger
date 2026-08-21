@@ -22,7 +22,7 @@ class Presupuestos(tk.Frame):
     Ventana para gestión de presupuestos.
     """
     
-    def __init__(self, parent):
+    def __init__(self, parent, usuario=None):
         super().__init__(parent)
         self.config_manager = ConfigManager()
         self.db_path = get_db_path()

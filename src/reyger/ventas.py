@@ -10,13 +10,20 @@ import datetime
 import os
 
 from .resources import get_db_path, get_output_path, open_file
+from .fiscal import (
+    IVA_POR_DEFECTO,
+    desglose_linea,
+    desglose_total,
+)
 
 
 class Ventas(tk.Frame):
     db_name = get_db_path()
 
-    def __init__(self, parent):
-        super().__init__(parent)
+    def __init__(self, padre, usuario=None):
+        super().__init__(padre)
+        self.usuario = usuario or {}
+        self.productos_info = {}
         self.crear_tabla_ventas()
         self.numero_factura_actual = self.obtener_numero_factura_actual()
         self.widgets()
@@ -95,6 +102,13 @@ class Ventas(tk.Frame):
         self.entry_cantidad = ttk.Entry(lblframe, font="sans 14 bold", width=8)
         self.entry_cantidad.grid(row=0, column=7, padx=(6, 10), sticky="w")
 
+        label_cliente = tk.Label(lblframe, text="Cliente (opcional): ", bg="#C6D9E3", font="sans 14 bold")
+        label_cliente.grid(row=1, column=0, padx=(10, 0), pady=(0, 12), sticky="w")
+
+        self.combo_cliente = ttk.Combobox(lblframe, font="sans 12", state="readonly", width=38)
+        self.combo_cliente.grid(row=1, column=1, columnspan=4, padx=6, pady=(0, 12), sticky="w")
+        self.cargar_clientes_venta()
+
         lblframe.columnconfigure(3, weight=1)
 
         treFrame = tk.Frame(frame2, bg="#C6D9E3")
@@ -105,24 +119,30 @@ class Ventas(tk.Frame):
         scrol_x = ttk.Scrollbar(treFrame, orient=HORIZONTAL)
         scrol_x.pack(side=BOTTOM, fill=X)
 
-        self.tree = ttk.Treeview(treFrame, columns=("producto", "Precio", "Cantidad", "Subtotal"), show="headings", height=10, yscrollcommand=scrol_y.set, xscrollcommand=scrol_x.set)
+        self.tree = ttk.Treeview(treFrame, columns=("producto", "Precio", "Cantidad", "IVA", "Subtotal"), show="headings", height=10, yscrollcommand=scrol_y.set, xscrollcommand=scrol_x.set)
         scrol_y.config(command=self.tree.yview)
         scrol_x.config(command=self.tree.xview)
 
         self.tree.heading("producto", text="Producto")
         self.tree.heading("Precio", text="Precio")
         self.tree.heading("Cantidad", text="Cantidad")
+        self.tree.heading("IVA", text="IVA")
         self.tree.heading("Subtotal", text="Subtotal")
 
         self.tree.column("producto", anchor="center")
         self.tree.column("Precio", anchor="center")
         self.tree.column("Cantidad", anchor="center")
+        self.tree.column("IVA", anchor="center", width=80)
         self.tree.column("Subtotal", anchor="center")
 
         self.tree.pack(expand=True, fill=BOTH)
 
         frame_total = tk.Frame(frame2, bg="#C6D9E3")
         frame_total.pack(fill="x", padx=20)
+        self.label_base = tk.Label(frame_total, text="Base imponible: 0.00 €", bg="#C6D9E3", font="sans 13")
+        self.label_base.pack(anchor="e")
+        self.label_cuota = tk.Label(frame_total, text="Cuota IVA: 0.00 €", bg="#C6D9E3", font="sans 13")
+        self.label_cuota.pack(anchor="e")
         self.label_suma_total = tk.Label(frame_total, text="Total a pagar: 0 €", bg="#C6D9E3", font="sans 25 bold")
         self.label_suma_total.pack(anchor="e")
 
@@ -142,9 +162,16 @@ class Ventas(tk.Frame):
         try:
             with sqlite3.connect(self.db_name) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT nombre FROM inventario")
+                cursor.execute("SELECT nombre, precio, tipo_iva FROM inventario")
                 resultados = cursor.fetchall()
-                nombres = [producto[0] for producto in resultados]
+                nombres = []
+                self.productos_info = {}
+                for nombre, precio, tipo_iva in resultados:
+                    nombres.append(nombre)
+                    self.productos_info[nombre] = (
+                        float(precio),
+                        float(tipo_iva) if tipo_iva is not None else IVA_POR_DEFECTO,
+                    )
                 self.entry_nombre["values"] = nombres
                 if not nombres:
                     print("Advertencia: La base de datos no contiene productos registrados")
@@ -152,6 +179,22 @@ class Ventas(tk.Frame):
             print(f"Error al cargar productos desde la base de datos: {e}")
         except Exception as ex:
             print(f"Error inesperado: {ex}")
+
+    def cargar_clientes_venta(self):
+        try:
+            with sqlite3.connect(self.db_name) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT nombre FROM clientes ORDER BY nombre")
+                nombres = ["(Sin cliente)"] + [fila[0] for fila in cursor.fetchall()]
+                self.combo_cliente["values"] = nombres
+                self.combo_cliente.current(0)
+        except sqlite3.Error:
+            self.combo_cliente["values"] = ["(Sin cliente)"]
+            self.combo_cliente.current(0)
+
+    def _tipo_iva_de(self, producto):
+        info = self.productos_info.get(producto)
+        return info[1] if info else IVA_POR_DEFECTO
 
     def actualizar_precio(self, event):
         nombre_producto = self.entry_nombre.get()
@@ -177,11 +220,26 @@ class Ventas(tk.Frame):
             if conn:
                 conn.close()
 
-    def actualizar_total(self):
-        total = 0.0
+    def _lineas_carrito(self):
+        """Devuelve las líneas del carrito como tuplas numéricas."""
+        lineas = []
         for child in self.tree.get_children():
-            subtotal = float(self.tree.item(child, "values")[3])
-            total += subtotal
+            valores = self.tree.item(child, "values")
+            precio = float(valores[1])
+            cantidad = int(valores[2])
+            tipo_iva = float(str(valores[3]).replace("%", ""))
+            subtotal = float(valores[4])
+            lineas.append((producto := valores[0], precio, cantidad, tipo_iva, subtotal))
+        return lineas
+
+    def actualizar_total(self):
+        lineas = [
+            (precio, cantidad, tipo_iva)
+            for _, precio, cantidad, tipo_iva, _ in self._lineas_carrito()
+        ]
+        total, base, cuota = desglose_total(lineas)
+        self.label_base.config(text=f"Base imponible: {base:.2f} €")
+        self.label_cuota.config(text=f"Cuota IVA: {cuota:.2f} €")
         self.label_suma_total.config(text=f"Total a pagar: {total:.2f} €")
 
     def registrar(self):
@@ -201,8 +259,12 @@ class Ventas(tk.Frame):
                 messagebox.showerror("Error", "Stock insuficiente para el producto seleccionado")
                 return
 
-            subtotal = cantidad * precio
-            self.tree.insert("", "end", values=(producto, f"{precio:.2f}", cantidad, f"{subtotal:.2f}"))
+            tipo_iva = self._tipo_iva_de(producto)
+            subtotal = round(cantidad * precio, 2)
+            self.tree.insert(
+                "", "end",
+                values=(producto, f"{precio:.2f}", cantidad, f"{tipo_iva:g}%", f"{subtotal:.2f}"),
+            )
 
             self.entry_nombre.set("")
             self.entry_valor.config(state="normal")
@@ -234,9 +296,9 @@ class Ventas(tk.Frame):
     def obtener_total(self):
         total = 0.0
         for child in self.tree.get_children():
-            subtotal = float(self.tree.item(child, "values")[3])
+            subtotal = float(self.tree.item(child, "values")[4])
             total += subtotal
-        return total
+        return round(total, 2)
 
     def _actualizar_campos_pago(self, var_metodo, label_efe=None, entry_efe=None, label_tar=None, entry_tar=None):
         if label_efe is None:
@@ -271,7 +333,17 @@ class Ventas(tk.Frame):
         ventana_pago.minsize(560, 700)
 
         total = self.obtener_total()
-        label_total = tk.Label(ventana_pago, bg="#C6D9E3", text=f"Total a pagar: {total:.2f} €", font="sans 18 bold")
+        lineas = [
+            (precio, cantidad, tipo_iva)
+            for _, precio, cantidad, tipo_iva, _ in self._lineas_carrito()
+        ]
+        _, base, cuota = desglose_total(lineas)
+        label_total = tk.Label(
+            ventana_pago, bg="#C6D9E3",
+            text=(f"Total a pagar: {total:.2f} €\n"
+                  f"Base imponible: {base:.2f} €   |   Cuota IVA: {cuota:.2f} €"),
+            font="sans 16 bold", justify="left",
+        )
         label_total.grid(row=0, column=0, sticky="w", padx=50, pady=(20, 5))
 
         label_metodo = tk.Label(ventana_pago, bg="#C6D9E3", text="Método de pago:", font="sans 14 bold")
@@ -374,26 +446,56 @@ class Ventas(tk.Frame):
                     messagebox.showerror("Error", "Pago insuficiente (efectivo + tarjeta)")
                     return
 
+            cliente_nombre = self.combo_cliente.get()
+            cliente_id = None
+            if cliente_nombre and cliente_nombre != "(Sin cliente)":
+                with sqlite3.connect(self.db_name) as conn_cli:
+                    c_cli = conn_cli.cursor()
+                    c_cli.execute("SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,))
+                    fila_cliente = c_cli.fetchone()
+                    cliente_id = fila_cliente[0] if fila_cliente else None
+
+            usuario_id = self.usuario.get("id")
+            sesion_id = self.usuario.get("sesion_id")
+
+            productos = []
+            lineas_fiscales = []
+
             with sqlite3.connect(self.db_name) as conn:
                 c = conn.cursor()
-                productos = []
 
                 for i in self.tree.get_children():
                     item = self.tree.item(i, "values")
                     producto = item[0]
-                    precio = item[1]
+                    precio = float(item[1])
                     cantidad_vendida = int(item[2])
-                    subtotal = float(item[3])
-                    productos.append((producto, precio, cantidad_vendida, subtotal))
+                    tipo_iva = float(str(item[3]).replace("%", ""))
+                    subtotal_linea, base_linea, cuota_linea = desglose_linea(
+                        precio, cantidad_vendida, tipo_iva
+                    )
+                    productos.append((
+                        producto, precio, cantidad_vendida, subtotal_linea,
+                        tipo_iva, base_linea, cuota_linea,
+                    ))
+                    lineas_fiscales.append((precio, cantidad_vendida, tipo_iva))
 
                     c.execute("""
-                        INSERT INTO ventas (factura, nombre_articulo, valor_articulo, cantidad, subtotal, metodo_pago, cantidad_efectivo, cantidad_tarjeta)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (self.numero_factura_actual, producto, float(precio), cantidad_vendida, subtotal, metodo_pago, cantidad_efectivo, cantidad_tarjeta))
+                        INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
+                            cantidad, subtotal, metodo_pago, cantidad_efectivo,
+                            cantidad_tarjeta, cliente_id, usuario_id, sesion_id,
+                            tipo_iva, cuota_iva, base_imponible)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        self.numero_factura_actual, producto, precio,
+                        cantidad_vendida, subtotal_linea, metodo_pago,
+                        cantidad_efectivo, cantidad_tarjeta, cliente_id,
+                        usuario_id, sesion_id, tipo_iva, cuota_linea, base_linea,
+                    ))
 
                     c.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
 
                 conn.commit()
+                total, base_total, cuota_total = desglose_total(lineas_fiscales)
                 numero_factura_emitida = self.numero_factura_actual
                 messagebox.showinfo("Exito", f"La venta se ha completado\nMetodo de pago: {metodo_pago}")
                 self.numero_factura_actual += 1
@@ -401,15 +503,24 @@ class Ventas(tk.Frame):
 
                 for i in self.tree.get_children():
                     self.tree.delete(i)
+                self.label_base.config(text="Base imponible: 0.00 €")
+                self.label_cuota.config(text="Cuota IVA: 0.00 €")
                 self.label_suma_total.config(text="Total a pagar: 0 €")
+                self.combo_cliente.current(0)
                 ventana_pago.destroy()
 
                 fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                self.generar_factura_pdf(productos, total, numero_factura_emitida, fecha, metodo_pago)
+                self.generar_factura_pdf(
+                    productos, total, numero_factura_emitida, fecha, metodo_pago,
+                    base_imponible=base_total, cuota_iva=cuota_total,
+                    cliente_nombre=None if cliente_id is None else cliente_nombre,
+                )
         except ValueError:
             messagebox.showerror("Error", "Valores ingresados no validos")
 
-    def generar_factura_pdf(self, productos, total, factura_numero, fecha, metodo_pago="Efectivo"):
+    def generar_factura_pdf(self, productos, total, factura_numero, fecha,
+                            metodo_pago="Efectivo", base_imponible=None,
+                            cuota_iva=None, cliente_nombre=None):
         pdf_dir = get_output_path("facturas")
         archivo_pdf = os.path.join(pdf_dir, f"factura_{factura_numero}.pdf")
         c = canvas.Canvas(archivo_pdf, pagesize=letter)
@@ -420,15 +531,26 @@ class Ventas(tk.Frame):
         c.setFont("Helvetica", 12)
         c.drawString(100, height - 70, f"Fecha: {fecha}")
         c.drawString(100, height - 90, f"Metodo de pago: {metodo_pago}")
+        if cliente_nombre:
+            c.drawString(100, height - 110, f"Cliente: {cliente_nombre}")
 
-        data = [["Producto", "Precio", "Cantidad", "Subtotal"]] + [[p[0], p[1], p[2], p[3]] for p in productos]
+        data = [
+            ["Producto", "Precio", "Cantidad", "IVA", "Subtotal"]
+        ] + [
+            [p[0], f"{p[1]:.2f}", p[2], f"{p[4]:g}%", f"{p[3]:.2f}"]
+            for p in productos
+        ]
         table = Table(data)
         table.wrapOn(c, width, height)
-        table.drawOn(c, 100, height - 200)
+        table.drawOn(c, 100, height - 220)
 
+        y_total = height - 270
         c.setFont("Helvetica-Bold", 16)
-        c.drawString(100, height - 250, f"Total a pagar: {total:.2f} €")
+        c.drawString(100, y_total, f"Total a pagar: {total:.2f} €")
         c.setFont("Helvetica", 12)
+        if base_imponible is not None and cuota_iva is not None:
+            c.drawString(100, y_total + 40, f"Base imponible: {base_imponible:.2f} €")
+            c.drawString(100, y_total + 22, f"Cuota IVA: {cuota_iva:.2f} €")
         c.drawString(100, height - 370, "Gracias por su compra, vuelva pronto")
 
         c.save()

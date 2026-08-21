@@ -14,8 +14,9 @@ Para añadir un cambio de esquema:
 """
 
 from .auth import hash_password
+from .fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 1
+LATEST_VERSION = 2
 
 MIGRACIONES = []
 
@@ -273,6 +274,17 @@ def _migracion_1(conn):
         VALUES (?, ?, ?, ?)
         """,
         ("admin", hash_password("admin"), "Administrador", "admin"),
+    )
+
+
+@migracion(2)
+def _migracion_2(conn):
+    """Fase 3: IVA por producto en el inventario."""
+
+    _add_column(
+        conn,
+        "inventario",
+        f"tipo_iva REAL NOT NULL DEFAULT {IVA_POR_DEFECTO}",
     )
 
 

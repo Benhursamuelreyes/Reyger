@@ -104,7 +104,7 @@ def test_crud_clientes():
     try:
         root = tk.Tk()
         root.withdraw()
-        clientes = Clientes(root)
+        clientes = Clientes(root, usuario={"nombre": "Administrador", "rol": "admin"})
 
         clientes.campos["nombre"].insert(0, "Ana García")
         clientes.campos["tipo_documento"].set("NIF")
@@ -221,7 +221,7 @@ def test_ventanas_redimensionables():
         root.withdraw()
         ventas = Ventas(root)
 
-        ventas.tree.insert("", "end", values=("Producto X", "10.00", 2, "20.00"))
+        ventas.tree.insert("", "end", values=("Producto X", "10.00", 2, "21%", "20.00"))
         ventas.abrir_ventana_paga()
         toplevels = [
             w for w in ventas.winfo_children() if isinstance(w, tk.Toplevel)

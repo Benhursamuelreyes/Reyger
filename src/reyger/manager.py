@@ -27,13 +27,10 @@ class Manager(Tk):
 
         self._set_icon()
 
-        self.Container = Frame(self, bg=self.colors["bg_principal"])
-        self.Container.pack(fill="both", expand=True)
-
-        self.frames = {Container: None}
-        self.load_frames()
-        self.show_frame(Container)
-        self.set_theme()
+        self.usuario_actual = None
+        self.sesion_actual = None
+        self.Container = None
+        self.mostrar_login()
 
     def _set_icon(self):
         for name in ("assets/icono.png", "assets/icono.ico"):
@@ -50,13 +47,38 @@ class Manager(Tk):
             except Exception:
                 continue
 
-    def load_frames(self):
-        for FrameClass in self.frames:
-            frame = FrameClass(self.Container, self)
-            self.frames[FrameClass] = frame
+    def mostrar_login(self):
+        from .login import DialogoLogin
 
-    def show_frame(self, frame_class):
-        self.frames[frame_class].tkraise()
+        DialogoLogin(self, al_acceder=self._iniciar_sesion)
+
+    def _iniciar_sesion(self, usuario):
+        from .sesiones import abrir_sesion
+
+        self.usuario_actual = usuario
+        try:
+            self.sesion_actual = abrir_sesion(usuario["id"])
+        except Exception:
+            self.sesion_actual = None
+        datos_sesion = dict(usuario)
+        datos_sesion["sesion_id"] = self.sesion_actual
+        self.construir_container(datos_sesion)
+
+    def construir_container(self, usuario):
+        if self.Container is not None:
+            self.Container.destroy()
+        self.Container = Frame(self, bg=self.colors["bg_principal"])
+        self.Container.pack(fill="both", expand=True)
+        Container(self.Container, self, usuario=usuario)
+        self.set_theme()
+
+    def cerrar_sesion(self):
+        from .sesiones import cerrar_sesion
+
+        cerrar_sesion(self.sesion_actual)
+        self.sesion_actual = None
+        self.usuario_actual = None
+        self.mostrar_login()
 
     def set_theme(self):
         if ThemedStyle is not None:

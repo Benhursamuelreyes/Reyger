@@ -8,7 +8,7 @@ from .resources import get_user_data_path
 class Ajustes(tk.Frame):
     """Ventana de configuración y ajustes del sistema"""
     
-    def __init__(self, parent):
+    def __init__(self, parent, usuario=None):
         super().__init__(parent)
         self.config_manager = ConfigManager()
         self.pack(fill="both", expand=True)
