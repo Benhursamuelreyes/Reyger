@@ -25,12 +25,10 @@ jobs:
           python -m pip install briefcase
           python -m pip install reportlab qrcode[pil] Pillow ttkthemes platformdirs
 
-      - name: Build AppImage with Briefcase
-        run: |
-          briefcase create linux appimage
-          briefcase build linux appimage
+      - name: Create AppDir with Briefcase
+        run: briefcase create linux appimage
 
-      - name: Bundle Tcl/Tk scripts into AppImage
+      - name: Bundle Tcl/Tk scripts into AppDir
         run: |
           BUNDLE=$(ls -d build/*/linux/appimage/*.AppDir 2>/dev/null | head -1)
           if [ -z "$BUNDLE" ]; then
@@ -44,29 +42,39 @@ jobs:
           # core-8-6-8 = version exacta que exige la lib embebida; una
           # version distinta dispara "version conflict for package Tcl") y
           # se copian a usr/tcl/, donde _ensure_tcl_library() los busca.
+          # IMPORTANTE: inyectar ANTES de build, porque es build quien genera
+          # el squashfs del AppImage; lo anadido despues no llega al paquete.
           mkdir -p "$BUNDLE/usr/tcl"
           curl -sL https://github.com/tcltk/tcl/archive/refs/tags/core-8-6-8.tar.gz | tar xz
           curl -sL https://github.com/tcltk/tk/archive/refs/tags/core-8-6-8.tar.gz | tar xz
           cp -r tcl-core-8-6-8/library "$BUNDLE/usr/tcl/tcl8.6"
           cp -r tk-core-8-6-8/library "$BUNDLE/usr/tcl/tk8.6"
 
-      - name: Package AppImage with Briefcase
-        run: briefcase package linux appimage
-
-      - name: Verify Tk() in AppImage bundle
+      - name: Build and package AppImage
         run: |
-          BUNDLE=$(ls -d build/*/linux/appimage/*.AppDir 2>/dev/null | head -1)
-          if [ -z "$BUNDLE" ]; then
-            echo "AppDir no encontrado en build/*/linux/appimage/"
+          briefcase build linux appimage
+          briefcase package linux appimage
+
+      - name: Verify Tk() inside packaged AppImage
+        run: |
+          APPIMAGE=$(ls dist/Reyger-*.AppImage 2>/dev/null | head -1)
+          if [ -z "$APPIMAGE" ]; then
+            echo "AppImage no encontrado en dist/"
             exit 1
           fi
-          # Verificacion real: crear una ventana Tk() (no basta con import
-          # tkinter, que no inicializa Tcl). Se importa reyger.app primero
-          # para ejercer el mecanismo real de la app (_ensure_tcl_library,
-          # que fija TCL_LIBRARY/TK_LIBRARY hacia usr/tcl/). xvfb-run aporta
-          # el display que el runner headless no tiene.
-          PYTHONPATH="$BUNDLE/usr/app:$BUNDLE/usr/app_packages" \
-          xvfb-run -a "$BUNDLE/usr/python/bin/python3" -c "
+          chmod +x "$APPIMAGE"
+          # Verificacion sobre el PAQUETE final (no el AppDir): extraer y
+          # comprobar que init.tcl viajo dentro y que se puede crear una
+          # ventana Tk() real usando el bootstrap de la app
+          # (_ensure_tcl_library). xvfb-run aporta el display.
+          rm -rf _verify && mkdir _verify && cd _verify
+          "../$APPIMAGE" --appimage-extract > /dev/null
+          test -f squashfs-root/usr/tcl/tcl8.6/init.tcl || {
+            echo "ERROR: init.tcl no viajo dentro del AppImage"
+            exit 1
+          }
+          PYTHONPATH="squashfs-root/usr/app:squashfs-root/usr/app_packages" \
+          xvfb-run -a squashfs-root/usr/python/bin/python3 -c "
           import reyger.app
           import tkinter
           raiz = tkinter.Tk()
