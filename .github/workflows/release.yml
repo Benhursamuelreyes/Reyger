@@ -70,7 +70,7 @@ jobs:
           import reyger.app
           import tkinter
           raiz = tkinter.Tk()
-          print('Tk OK:', raiz.tk_version)
+          print('Tk OK:', tkinter.TkVersion)
           raiz.destroy()
           "
 
