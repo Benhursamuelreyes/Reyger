@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import os
+from . import categorias as mod_categorias
 from .config import ConfigManager
 from .impresion_termica import (
     ANCHO_80MM,
@@ -77,6 +78,12 @@ class Ajustes(tk.Frame):
 
         # Sección 6: Impresora térmica
         self.crear_seccion_impresora_termica(main_frame)
+
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+
+        # Sección 7: Categorías de productos
+        self.crear_seccion_categorias(main_frame)
 
         # Frame de botones
         frame_botones = tk.Frame(main_frame, bg=self.colors["bg_principal"])
@@ -494,6 +501,133 @@ class Ajustes(tk.Frame):
         """Actualiza el preview del tema seleccionado"""
         # Aquí podrías agregar una vista previa actual del tema
         pass
+
+    def crear_seccion_categorias(self, parent):
+        """Sección de gestión de categorías de productos."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🗂️ Categorías de productos",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        tk.Label(
+            frame,
+            text="Agrupa tus productos (frutas, carnes, informática, móviles...).\n"
+                 "Al eliminar una categoría, sus productos pasan a «General».",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font="sans 10",
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        frame_lista = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_lista.pack(fill="x")
+
+        scrol = ttk.Scrollbar(frame_lista, orient="vertical")
+        self.lista_categorias = tk.Listbox(
+            frame_lista, height=6, font="sans 12",
+            yscrollcommand=scrol.set, exportselection=False,
+        )
+        scrol.config(command=self.lista_categorias.yview)
+        scrol.pack(side="right", fill="y")
+        self.lista_categorias.pack(side="left", fill="both", expand=True)
+        self.refrescar_categorias()
+
+        frame_acciones = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_acciones.pack(fill="x", pady=(10, 0))
+
+        self.entry_categoria_nombre = ttk.Entry(frame_acciones, font="sans 12")
+        self.entry_categoria_nombre.pack(side="left", fill="x", expand=True, padx=(0, 8), ipady=3)
+
+        btn_añadir = tk.Button(
+            frame_acciones, text="➕ Añadir",
+            bg="#28A745", fg="white", font="sans 11 bold",
+            command=self.categoria_añadir,
+        )
+        btn_añadir.pack(side="left", padx=(0, 6))
+
+        btn_renombra = tk.Button(
+            frame_acciones, text="✏️ Renombrar",
+            bg="#17A2B8", fg="white", font="sans 11 bold",
+            command=self.categoria_renombrar,
+        )
+        btn_renombra.pack(side="left", padx=(0, 6))
+
+        btn_elimina = tk.Button(
+            frame_acciones, text="🗑️ Eliminar",
+            bg="#DC3545", fg="white", font="sans 11 bold",
+            command=self.categoria_eliminar,
+        )
+        btn_elimina.pack(side="left")
+
+    def _categoria_seleccionada(self):
+        seleccion = self.lista_categorias.curselection()
+        if not seleccion:
+            messagebox.showwarning("Categorías", "Seleccione una categoría de la lista.")
+            return None
+        return mod_categorias.listar()[seleccion[0]]
+
+    def refrescar_categorias(self):
+        self.lista_categorias.delete(0, "end")
+        for _, nombre in mod_categorias.listar():
+            self.lista_categorias.insert("end", nombre)
+
+    def categoria_añadir(self):
+        try:
+            nuevo_id = mod_categorias.crear(self.entry_categoria_nombre.get())
+        except ValueError as e:
+            messagebox.showwarning("Categorías", str(e))
+            return
+        if nuevo_id is None:
+            messagebox.showwarning("Categorías", "Esa categoría ya existe.")
+            return
+        self.entry_categoria_nombre.delete(0, "end")
+        self.refrescar_categorias()
+
+    def categoria_renombrar(self):
+        sel = self._categoria_seleccionada()
+        if not sel:
+            return
+        categoria_id, nombre_actual = sel
+        nombre_nuevo = self.entry_categoria_nombre.get().strip()
+        if not nombre_nuevo:
+            messagebox.showwarning(
+                "Categorías",
+                f"Escriba el nuevo nombre en el campo de texto y pulse Renombrar.\n"
+                f"(Categoría seleccionada: {nombre_actual})",
+            )
+            return
+        try:
+            ok = mod_categorias.renombrar(categoria_id, nombre_nuevo)
+        except ValueError as e:
+            messagebox.showwarning("Categorías", str(e))
+            return
+        if not ok:
+            messagebox.showwarning("Categorías", "Ese nombre ya existe en otra categoría.")
+            return
+        self.entry_categoria_nombre.delete(0, "end")
+        self.refrescar_categorias()
+
+    def categoria_eliminar(self):
+        sel = self._categoria_seleccionada()
+        if not sel:
+            return
+        categoria_id, nombre = sel
+        if nombre == mod_categorias.GENERAL:
+            messagebox.showinfo("Categorías", "La categoría «General» no se puede eliminar.")
+            return
+        if not messagebox.askyesno(
+            "Eliminar categoría",
+            f"¿Eliminar «{nombre}»? Sus productos pasarán a «General».",
+        ):
+            return
+        mod_categorias.eliminar(categoria_id)
+        self.refrescar_categorias()
     
     def guardar_cambios(self):
         """Guarda todos los cambios de configuración"""

@@ -16,7 +16,7 @@ Para añadir un cambio de esquema:
 from .auth import hash_password
 from .fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 2
+LATEST_VERSION = 3
 
 MIGRACIONES = []
 
@@ -285,6 +285,31 @@ def _migracion_2(conn):
         conn,
         "inventario",
         f"tipo_iva REAL NOT NULL DEFAULT {IVA_POR_DEFECTO}",
+    )
+
+
+@migracion(3)
+def _migracion_3(conn):
+    """Categorias de productos (frutas, carnes, informatica, moviles...)."""
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS categorias (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE,
+            fecha_alta TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("INSERT OR IGNORE INTO categorias (nombre) VALUES ('General')")
+    _add_column(conn, "inventario", "categoria_id INTEGER REFERENCES categorias(id)")
+    # Los productos existentes quedan agrupados en la categoria General
+    conn.execute(
+        """
+        UPDATE inventario SET categoria_id =
+            (SELECT id FROM categorias WHERE nombre = 'General')
+        WHERE categoria_id IS NULL
+        """
     )
 
 

@@ -222,7 +222,11 @@ def test_migracion_v1_a_v2():
         ).fetchone()
         conn.close()
 
-        chequear("Base migrada a user_version 2", version == 2, f"versión {version}")
+        chequear(
+            f"Base migrada a user_version {modulo_migrations.LATEST_VERSION}",
+            version == modulo_migrations.LATEST_VERSION,
+            f"versión {version}",
+        )
         chequear("Columna tipo_iva añadida", "tipo_iva" in columnas)
         chequear(
             "Datos antiguos conservados con IVA por defecto",

@@ -30,6 +30,7 @@ class Ventas(tk.Frame):
         super().__init__(padre)
         self.usuario = usuario or {}
         self.productos_info = {}
+        self.productos_por_categoria = {}
         self.crear_tabla_ventas()
         self.numero_factura_actual = self.obtener_numero_factura_actual()
         self.widgets()
@@ -117,6 +118,12 @@ class Ventas(tk.Frame):
 
         lblframe.columnconfigure(3, weight=1)
 
+        frame_categorias = tk.Frame(frame2, bg="#C6D9E3")
+        frame_categorias.pack(fill="x", padx=10)
+        tk.Label(frame_categorias, text="Categorías:", bg="#C6D9E3", font="sans 12 bold").pack(side="left", padx=(0, 8))
+        self.frame_botones_categoria = frame_categorias
+        self.crear_botones_categorias()
+
         treFrame = tk.Frame(frame2, bg="#C6D9E3")
         treFrame.pack(fill="both", expand=True, padx=150, pady=10)
 
@@ -168,23 +175,67 @@ class Ventas(tk.Frame):
         try:
             with sqlite3.connect(self.db_name) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT nombre, precio, tipo_iva FROM inventario")
+                cursor.execute(
+                    "SELECT i.nombre, i.precio, i.tipo_iva, COALESCE(c.nombre, 'General') "
+                    "FROM inventario i LEFT JOIN categorias c ON c.id = i.categoria_id"
+                )
                 resultados = cursor.fetchall()
                 nombres = []
                 self.productos_info = {}
-                for nombre, precio, tipo_iva in resultados:
+                self.productos_por_categoria = {}
+                for nombre, precio, tipo_iva, categoria in resultados:
                     nombres.append(nombre)
                     self.productos_info[nombre] = (
                         float(precio),
                         float(tipo_iva) if tipo_iva is not None else IVA_POR_DEFECTO,
                     )
+                    self.productos_por_categoria.setdefault(categoria, []).append(nombre)
                 self.entry_nombre["values"] = nombres
+                if hasattr(self, "botones_categoria"):
+                    self.filtrar_por_categoria("Todos")
                 if not nombres:
                     print("Advertencia: La base de datos no contiene productos registrados")
         except sqlite3.Error as e:
             print(f"Error al cargar productos desde la base de datos: {e}")
         except Exception as ex:
             print(f"Error inesperado: {ex}")
+
+    def _categorias_disponibles(self):
+        try:
+            with sqlite3.connect(self.db_name) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
+                )
+                return [fila[0] for fila in cursor.fetchall()]
+        except sqlite3.Error:
+            return ["General"]
+
+    def crear_botones_categorias(self):
+        self.botones_categoria = {}
+        for nombre in ["Todos"] + self._categorias_disponibles():
+            btn = tk.Button(
+                self.frame_botones_categoria, text=nombre, font="sans 11 bold",
+                bg="#17A2B8", fg="white", relief="flat", cursor="hand2",
+                command=lambda n=nombre: self.filtrar_por_categoria(n),
+            )
+            btn.pack(side="left", padx=(0, 6), pady=(0, 8), ipadx=8, ipady=3)
+            self.botones_categoria[nombre] = btn
+        self.filtrar_por_categoria("Todos")
+
+    def filtrar_por_categoria(self, categoria):
+        if categoria == "Todos":
+            valores = list(self.productos_info.keys())
+        else:
+            valores = list(self.productos_por_categoria.get(categoria, []))
+        self.entry_nombre["values"] = valores
+        if self.entry_nombre.get() not in valores:
+            self.entry_nombre.set("")
+            self.entry_valor.config(state="normal")
+            self.entry_valor.delete(0, tk.END)
+            self.entry_valor.config(state="readonly")
+        for nombre, btn in getattr(self, "botones_categoria", {}).items():
+            btn.config(bg="#000CFF" if nombre == categoria else "#17A2B8")
 
     def cargar_clientes_venta(self):
         try:
