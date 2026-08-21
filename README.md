@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.9-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v2.0.0--beta.10-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -68,31 +68,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-2.0.0b9.msi` |
-| **macOS** | `Reyger-2.0.0b9.dmg` |
-| **Linux** | `Reyger-2.0.0b9-x86_64.AppImage` |
+| **Windows** | `Reyger-2.0.0b10.msi` |
+| **macOS** | `Reyger-2.0.0b10.dmg` |
+| **Linux** | `Reyger-2.0.0b10-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-2.0.0b9.msi`.
+1. Descarga el archivo `Reyger-2.0.0b10.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-2.0.0b9.dmg`.
+1. Descarga el archivo `Reyger-2.0.0b10.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-2.0.0b9-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-2.0.0b10-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-2.0.0b9-x86_64.AppImage
-   ./Reyger-2.0.0b9-x86_64.AppImage
+   chmod +x Reyger-2.0.0b10-x86_64.AppImage
+   ./Reyger-2.0.0b10-x86_64.AppImage
    ```
 
 ---
@@ -173,6 +173,60 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v2.0.0-beta.10 — 2026-08-21
+
+**Actualización masiva en 4 fases** (base de datos, interfaz, lógica de
+negocio y hardware).
+
+**Añadido — Base de datos relacional y migraciones versionadas**
+
+- Nueva capa centralizada de acceso a datos (`db.py`): conexión única con
+  claves foráneas activadas y helpers `query`/`query_one`/`execute`/`transaccion`.
+- Sistema de **migraciones versionadas** (`migrations.py`) basado en
+  `PRAGMA user_version`: las instalaciones existentes se actualizan solas al
+  arrancar sin perder datos.
+- Nuevas tablas: `clientes`, `proveedores`, `usuarios`, `sesiones_caja`,
+  `facturas_borradores(+productos)`; esquema completo garantizado para
+  presupuestos, albaranes, facturas VeriFACTU, ventas e inventario.
+- Columnas nuevas: `ventas` (+cliente, usuario, sesión, IVA), `inventario`
+  (+proveedor_id FK, tipo_iva).
+- Autenticación PBKDF2-SHA256 (`auth.py`) y plantilla de base de datos
+  regenerada (`user_version=2`).
+
+**Añadido — Interfaz moderna y responsiva**
+
+- Ventana principal y módulos a **1280x800 redimensionables** con tamaño
+  mínimo por ventana; layouts convertidos de `place()` fijo a `pack`/`grid`
+  elásticos (menú, Ventas, Inventario).
+- Nuevo módulo **Clientes**: CRUD completo con datos personales/fiscales y
+  validación oficial de **NIF/NIE/CIF** (dígito de control, RD 1065/2007),
+  búsqueda y listado.
+- Inventario: proveedor como desplegable alimentado por la tabla
+  `proveedores` + alta rápida modal; campo **IVA** por producto (21/10/4%)
+  en alta, edición y listado.
+
+**Añadido — Lógica de negocio**
+
+- **Login con roles** (admin/cajero): diálogo modal al arrancar con 3
+  intentos, sesiones de caja registradas (apertura/cierre) y botón
+  *Cerrar sesión* en el menú.
+- Restricciones por rol: el cajero no ve **Ajustes** ni puede eliminar
+  productos o clientes; cada venta audita `usuario_id` y `sesion_id`.
+- **Desglose de IVA** en ventas: columna IVA por línea, Base imponible /
+  Cuota / Total calculados en vivo y guardados por línea
+  (`tipo_iva`, `cuota_iva`, `base_imponible`); factura PDF con desglose.
+- Cliente opcional asociado a cada venta.
+
+**Añadido — Impresión térmica (ESC/POS)**
+
+- Tickets térmicos sin dependencias externas: constructor ESC/POS propio
+  (negrita, doble tamaño, corte parcial) con codificación CP858 y papel de
+  80 mm o 58 mm.
+- Envío multiplataforma solo con stdlib: cola RAW de Windows vía
+  ctypes/winspool, `/dev/usb/lp*` o CUPS (`lp -o raw`) en Linux/macOS.
+- Impresión automática del ticket al cobrar (si hay impresora configurada)
+  y nueva sección **Impresora Térmica** en Ajustes con página de prueba.
 
 ### v2.0.0-beta.9 — 2026-08-14
 
