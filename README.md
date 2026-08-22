@@ -180,6 +180,17 @@ de versión generadas automáticamente.
 fases (beta.6 → beta.11), el proyecto pasa a la serie **3.x** para marcar
 el nuevo ciclo de desarrollo.
 
+**Eliminado — Inicio de sesión**
+
+- La aplicación ya **no pide usuario ni contraseña**: abre directamente
+  la ventana principal.
+- Eliminados los módulos de login, autenticación y sesiones de caja,
+  junto con los roles (admin/cajero) y sus restricciones: **Ajustes**
+  y las acciones de eliminación son accesibles siempre.
+- Migración 4: borra las tablas `usuarios`/`sesiones_caja` y las
+  columnas `usuario_id`/`sesion_id` de `ventas`, conservando todos los
+  datos.
+
 **Añadido — Categorías de productos**
 
 - Nueva tabla `categorias` (migración 3) con la categoría **General**
