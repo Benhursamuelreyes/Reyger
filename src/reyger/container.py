@@ -14,10 +14,9 @@ from .resources import get_bundled_path
 
 
 class Container(tk.Frame):
-    def __init__(self, padre, controlador, usuario=None):
+    def __init__(self, padre, controlador):
         super().__init__(padre)
         self.controlador = controlador
-        self.usuario = usuario or {}
         self.config_manager = ConfigManager()
         self.colors = self.config_manager.get_colors()
         self.configure(bg=self.colors["bg_principal"])
@@ -26,7 +25,7 @@ class Container(tk.Frame):
 
     def show_frames(self, container):
         top_level = tk.Toplevel(self)
-        frame = container(top_level, usuario=self.usuario)
+        frame = container(top_level)
         frame.pack(fill="both", expand=True)
         top_level.geometry("1280x800")
         top_level.resizable(True, True)
@@ -66,21 +65,7 @@ class Container(tk.Frame):
         self.show_frames(Presupuestos)
 
     def ajustes(self):
-        if self.usuario.get("rol") != "admin":
-            messagebox.showwarning(
-                "Acceso restringido",
-                "Solo un administrador puede acceder a los Ajustes.",
-            )
-            return
         self.show_frames(Ajustes)
-
-    def cerrar_sesion(self):
-        if not messagebox.askyesno(
-            "Cerrar sesión", "¿Desea cerrar la sesión actual?"
-        ):
-            return
-        if self.controlador is not None:
-            self.controlador.cerrar_sesion()
 
     def widgets(self):
         # Zona superior: logos
@@ -112,22 +97,6 @@ class Container(tk.Frame):
             except Exception:
                 pass
 
-        # Barra de usuario: identidad y cierre de sesión
-        if self.usuario:
-            frame_usuario = tk.Frame(self, bg=self.colors["bg_principal"])
-            frame_usuario.pack(fill="x", padx=20)
-            rol = self.usuario.get("rol", "")
-            tk.Label(
-                frame_usuario,
-                text=f"👤 {self.usuario.get('nombre', '')} ({rol})",
-                bg=self.colors["bg_principal"],
-                font="sans 12 bold",
-            ).pack(side="left")
-            tk.Button(
-                frame_usuario, text="Cerrar sesión", command=self.cerrar_sesion,
-                bg="#C0392B", fg="white", font="sans 11 bold",
-            ).pack(side="right", ipady=3)
-
         # Zona central elástica
         frame_centro = tk.Frame(self, bg=self.colors["bg_principal"])
         frame_centro.pack(fill="both", expand=True)
@@ -141,9 +110,8 @@ class Container(tk.Frame):
             ("Inventario", "#c62e26", "white", self.inventario),
             ("Clientes", "#2ECC71", "white", self.clientes),
             ("Presupuestos", "#9B59B6", "white", self.presupuestos),
+            ("Ajustes", "#17A2B8", "white", self.ajustes),
         ]
-        if self.usuario.get("rol") == "admin":
-            botones.append(("Ajustes", "#17A2B8", "white", self.ajustes))
         for texto, bg, fg, comando in botones:
             boton = Button(
                 frame_botones,

@@ -108,7 +108,10 @@ def test_migracion3():
         conn = sqlite3.connect(ruta_vieja)
         modulo_migrations.run_migrations(conn)
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        chequear("user_version == 3 tras migrar", version == 3)
+        chequear(
+            f"user_version == {modulo_migrations.LATEST_VERSION} tras migrar",
+            version == modulo_migrations.LATEST_VERSION,
+        )
         tablas = {
             fila[0]
             for fila in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -158,7 +161,7 @@ def test_crud_categorias():
         root.withdraw()
         inv_db = ruta
         Inventario.db_name = inv_db
-        inventario = Inventario(root, usuario={"rol": "admin"})
+        inventario = Inventario(root)
         inventario.nombre.insert(0, "Pera")
         inventario.proveedor.set("Prov")
         inventario.precio.insert(0, "2")
@@ -236,7 +239,7 @@ def test_mapas_y_filtro_ventas():
 
         root = tk.Tk()
         root.withdraw()
-        ventas = Ventas(root, usuario={"nombre": "A", "rol": "admin"})
+        ventas = Ventas(root)
         chequear(
             "botones de categoria creados",
             set(ventas.botones_categoria) >= {"Todos", "Frutas", "Informática"},
@@ -282,7 +285,7 @@ def test_inventario_filtro_y_columna():
 
         root = tk.Tk()
         root.withdraw()
-        inventario = Inventario(root, usuario={"rol": "admin"})
+        inventario = Inventario(root)
         valores_combo = list(inventario.filtro_categoria["values"])
         chequear(
             "combo filtro tiene Todas + categorias",

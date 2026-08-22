@@ -104,7 +104,7 @@ def test_crud_clientes():
     try:
         root = tk.Tk()
         root.withdraw()
-        clientes = Clientes(root, usuario={"nombre": "Administrador", "rol": "admin"})
+        clientes = Clientes(root)
 
         clientes.campos["nombre"].insert(0, "Ana García")
         clientes.campos["tipo_documento"].set("NIF")

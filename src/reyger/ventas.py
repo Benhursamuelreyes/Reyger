@@ -26,9 +26,8 @@ from .impresion_termica import (
 class Ventas(tk.Frame):
     db_name = get_db_path()
 
-    def __init__(self, padre, usuario=None):
+    def __init__(self, padre):
         super().__init__(padre)
-        self.usuario = usuario or {}
         self.productos_info = {}
         self.productos_por_categoria = {}
         self.crear_tabla_ventas()
@@ -512,9 +511,6 @@ class Ventas(tk.Frame):
                     fila_cliente = c_cli.fetchone()
                     cliente_id = fila_cliente[0] if fila_cliente else None
 
-            usuario_id = self.usuario.get("id")
-            sesion_id = self.usuario.get("sesion_id")
-
             productos = []
             lineas_fiscales = []
 
@@ -539,14 +535,14 @@ class Ventas(tk.Frame):
                     c.execute("""
                         INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
                             cantidad, subtotal, metodo_pago, cantidad_efectivo,
-                            cantidad_tarjeta, cliente_id, usuario_id, sesion_id,
-                            tipo_iva, cuota_iva, base_imponible)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            cantidad_tarjeta, cliente_id, tipo_iva, cuota_iva,
+                            base_imponible)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         self.numero_factura_actual, producto, precio,
                         cantidad_vendida, subtotal_linea, metodo_pago,
                         cantidad_efectivo, cantidad_tarjeta, cliente_id,
-                        usuario_id, sesion_id, tipo_iva, cuota_linea, base_linea,
+                        tipo_iva, cuota_linea, base_linea,
                     ))
 
                     c.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))

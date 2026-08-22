@@ -13,10 +13,9 @@ Para añadir un cambio de esquema:
        posible: CREATE TABLE IF NOT EXISTS, _add_column, ...).
 """
 
-from .auth import hash_password
 from .fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 3
+LATEST_VERSION = 4
 
 MIGRACIONES = []
 
@@ -46,7 +45,7 @@ def _add_column(conn, tabla, definicion):
 
 @migracion(1)
 def _migracion_1(conn):
-    """Fase 2: catálogos relacionales, usuarios/sesiones, borradores e IVA."""
+    """Fase 2: catálogos relacionales, borradores e IVA."""
 
     # --- Catálogos nuevos -------------------------------------------------
     conn.execute(
@@ -78,32 +77,6 @@ def _migracion_1(conn):
             direccion TEXT,
             codigo_postal TEXT,
             fecha_alta TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-
-    # --- Usuarios y sesiones de caja --------------------------------------
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            nombre TEXT NOT NULL,
-            rol TEXT NOT NULL DEFAULT 'cajero',
-            activo INTEGER NOT NULL DEFAULT 1,
-            fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sesiones_caja (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
-            apertura TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            cierre TIMESTAMP,
-            estado TEXT NOT NULL DEFAULT 'abierta'
         )
         """
     )
@@ -257,8 +230,6 @@ def _migracion_1(conn):
 
     # --- Columnas nuevas en tablas existentes ------------------------------
     _add_column(conn, "ventas", "cliente_id INTEGER")
-    _add_column(conn, "ventas", "usuario_id INTEGER")
-    _add_column(conn, "ventas", "sesion_id INTEGER")
     _add_column(conn, "ventas", "tipo_iva INTEGER")
     _add_column(conn, "ventas", "cuota_iva REAL DEFAULT 0")
     _add_column(conn, "ventas", "base_imponible REAL DEFAULT 0")
@@ -266,15 +237,6 @@ def _migracion_1(conn):
     _add_column(conn, "presupuestos", "cliente_id INTEGER REFERENCES clientes(id)")
     _add_column(conn, "albaranes", "cliente_id INTEGER REFERENCES clientes(id)")
     _add_column(conn, "facturas_verifactu", "cliente_id INTEGER REFERENCES clientes(id)")
-
-    # --- Usuario administrador por defecto ---------------------------------
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO usuarios (usuario, password_hash, nombre, rol)
-        VALUES (?, ?, ?, ?)
-        """,
-        ("admin", hash_password("admin"), "Administrador", "admin"),
-    )
 
 
 @migracion(2)
@@ -311,6 +273,46 @@ def _migracion_3(conn):
         WHERE categoria_id IS NULL
         """
     )
+
+
+@migracion(4)
+def _migracion_4(conn):
+    """Se elimina el inicio de sesión: fuera usuarios, sesiones de caja
+    y las columnas usuario_id/sesion_id de las ventas."""
+
+    conn.execute("DROP TABLE IF EXISTS sesiones_caja")
+    conn.execute("DROP TABLE IF EXISTS usuarios")
+
+    actuales = [fila[1] for fila in conn.execute("PRAGMA table_info(ventas)")]
+    if not any(c in actuales for c in ("usuario_id", "sesion_id")):
+        return
+
+    objetivo = (
+        "id INTEGER PRIMARY KEY AUTOINCREMENT",
+        "factura INTEGER NOT NULL",
+        "nombre_articulo TEXT NOT NULL",
+        "valor_articulo REAL NOT NULL",
+        "cantidad INTEGER NOT NULL",
+        "subtotal REAL NOT NULL",
+        "metodo_pago TEXT DEFAULT 'Efectivo'",
+        "cantidad_efectivo REAL DEFAULT 0",
+        "cantidad_tarjeta REAL DEFAULT 0",
+        "fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "cliente_id INTEGER",
+        "tipo_iva INTEGER",
+        "cuota_iva REAL DEFAULT 0",
+        "base_imponible REAL DEFAULT 0",
+    )
+    conservar = [
+        c for c in (parte.split()[0] for parte in objetivo) if c in actuales
+    ]
+    conn.execute(
+        "CREATE TABLE ventas_sin_usuario (" + ", ".join(objetivo) + ")"
+    )
+    lista = ", ".join(conservar)
+    conn.execute(f"INSERT INTO ventas_sin_usuario ({lista}) SELECT {lista} FROM ventas")
+    conn.execute("DROP TABLE ventas")
+    conn.execute("ALTER TABLE ventas_sin_usuario RENAME TO ventas")
 
 
 def run_migrations(conn):

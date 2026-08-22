@@ -18,7 +18,6 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)
 sys.path.insert(0, SRC_DIR)
 
 from reyger import db as modulo_db
-from reyger.auth import hash_password, verify_password
 from reyger.migrations import LATEST_VERSION, run_migrations
 
 VERDE = "\033[92m"
@@ -40,8 +39,8 @@ def chequear(nombre, condicion, detalle=""):
 
 
 TABLAS_ESPERADAS = {
-    "ventas", "inventario", "clientes", "proveedores", "usuarios",
-    "sesiones_caja", "facturas_borradores", "facturas_borradores_productos",
+    "ventas", "inventario", "clientes", "proveedores",
+    "facturas_borradores", "facturas_borradores_productos",
     "presupuestos", "presupuestos_productos",
     "albaranes", "albaranes_productos",
     "facturas_verifactu", "facturas_verifactu_productos",
@@ -71,22 +70,18 @@ def test_plantilla():
         f"obtenido {version}",
     )
     chequear(
-        "ventas con columnas de IVA/sesión",
+        "ventas con columnas de IVA",
         all(c in columnas(conn, "ventas") for c in (
-            "cliente_id", "usuario_id", "sesion_id", "tipo_iva",
-            "cuota_iva", "base_imponible")),
+            "cliente_id", "tipo_iva", "cuota_iva", "base_imponible")),
     )
     chequear(
         "inventario con proveedor_id",
         "proveedor_id" in columnas(conn, "inventario"),
     )
-    admin = conn.execute(
-        "SELECT usuario, password_hash, rol FROM usuarios WHERE usuario='admin'"
-    ).fetchone()
-    chequear("Usuario admin sembrado", admin is not None)
-    if admin:
-        chequear("Hash del admin verifica 'admin'", verify_password("admin", admin[1]))
-        chequear("Rol del admin es 'admin'", admin[2] == "admin")
+    chequear(
+        "Sin tablas de usuarios ni sesiones",
+        not ({"usuarios", "sesiones_caja"} & tablas),
+    )
     conn.close()
 
 
@@ -154,8 +149,7 @@ def test_migracion_desde_vieja():
     chequear(
         "Columnas añadidas a ventas",
         all(c in columnas(conn, "ventas") for c in (
-            "cliente_id", "usuario_id", "sesion_id", "tipo_iva",
-            "cuota_iva", "base_imponible")),
+            "cliente_id", "tipo_iva", "cuota_iva", "base_imponible")),
     )
     chequear("cliente_id añadido a presupuestos", "cliente_id" in columnas(conn, "presupuestos"))
     venta = conn.execute(
@@ -170,8 +164,10 @@ def test_migracion_desde_vieja():
         "SELECT cliente_nombre FROM presupuestos WHERE numero_presupuesto='PRE-0001'"
     ).fetchone()
     chequear("Datos de presupuestos preservados", pres is not None)
-    admin = conn.execute("SELECT usuario FROM usuarios WHERE usuario='admin'").fetchone()
-    chequear("Admin sembrado en la base migrada", admin is not None)
+    chequear(
+        "Tablas de login eliminadas en la base migrada",
+        not ({"usuarios", "sesiones_caja"} & tablas),
+    )
     conn.close()
     shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
 

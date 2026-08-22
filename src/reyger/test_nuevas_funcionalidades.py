@@ -151,7 +151,6 @@ def test_estructura_proyecto():
         "config.py",
         "db.py",
         "migrations.py",
-        "auth.py",
         "ui.py",
         "facturas_verifactu.py",
         "tickets.py",

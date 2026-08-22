@@ -11,9 +11,8 @@ from .resources import get_db_path
 class Inventario(tk.Frame):
     db_name = get_db_path()
 
-    def __init__(self, padre, usuario=None):
+    def __init__(self, padre):
         super().__init__(padre)
-        self.usuario = usuario or {}
         self.pack()
         self.escaner = EscanerCodigoBarras(self.db_name)
         self.widgets()
@@ -139,9 +138,8 @@ class Inventario(tk.Frame):
         frame_botones.pack(fill="x", pady=(15, 0))
         btn_actualizar = Button(frame_botones, text="🔄 Actualizar inventario", bg="#000CFF", fg="white", font="sans 14 bold", command=self.actualizar_inventario)
         btn_actualizar.pack(side="left", expand=True, fill="x", padx=(0, 8), ipady=6)
-        if self.usuario.get("rol") == "admin":
-            boton_eliminar = tk.Button(frame_botones, text="🗑️ Eliminar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.eliminar_producto)
-            boton_eliminar.pack(side="left", expand=True, fill="x", ipady=6)
+        boton_eliminar = tk.Button(frame_botones, text="🗑️ Eliminar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.eliminar_producto)
+        boton_eliminar.pack(side="left", expand=True, fill="x", ipady=6)
 
     def cargar_proveedores(self):
         try:

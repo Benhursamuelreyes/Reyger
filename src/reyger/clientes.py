@@ -60,9 +60,8 @@ def _validar_cif(cif):
 class Clientes(tk.Frame):
     """Ventana de administración de clientes."""
 
-    def __init__(self, parent, usuario=None):
+    def __init__(self, parent):
         super().__init__(parent)
-        self.usuario = usuario or {}
         self.config_manager = ConfigManager()
         self.colors = self.config_manager.get_colors()
         self.configure(bg=self.colors["bg_principal"])
@@ -180,15 +179,14 @@ class Clientes(tk.Frame):
             font="sans 11 bold",
             command=self.limpiar_formulario,
         ).pack(side="left", padx=5)
-        if self.usuario.get("rol") == "admin":
-            tk.Button(
-                frame_botones_form,
-                text="🗑️ Eliminar",
-                bg="#C0392B",
-                fg="white",
-                font="sans 11 bold",
-                command=self.eliminar,
-            ).pack(side="left", padx=5)
+        tk.Button(
+            frame_botones_form,
+            text="🗑️ Eliminar",
+            bg="#C0392B",
+            fg="white",
+            font="sans 11 bold",
+            command=self.eliminar,
+        ).pack(side="left", padx=5)
 
         # --- Listado (derecha) --------------------------------------------
         frame_lista = tk.Frame(frame_contenido, bg=self.colors["bg_principal"])
@@ -354,12 +352,6 @@ class Clientes(tk.Frame):
         self.cargar_clientes()
 
     def eliminar(self):
-        if self.usuario.get("rol") != "admin":
-            messagebox.showwarning(
-                "Acceso restringido",
-                "Solo un administrador puede eliminar clientes.",
-            )
-            return
         if self.cliente_id_actual is None:
             seleccion = self.tree.selection()
             if not seleccion:

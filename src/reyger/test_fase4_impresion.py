@@ -20,12 +20,10 @@ SRC_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SRC_DIR)
 
 import reyger.db as modulo_db
-import reyger.login as modulo_login
 import reyger.container as modulo_container
 import reyger.clientes as modulo_clientes
 import reyger.inventario as modulo_inventario
 import reyger.ventas as modulo_ventas
-from reyger.auth import autenticar
 from reyger.impresion_termica import (
     ANCHO_58MM,
     ANCHO_80MM,
@@ -36,7 +34,6 @@ from reyger.impresion_termica import (
     enviar_bytes,
     listar_impresoras_termicas,
 )
-from reyger.sesiones import abrir_sesion
 from reyger.ventas import Ventas
 
 VERDE = "\033[92m"
@@ -67,7 +64,6 @@ def silenciar_messageboxes():
     modulo_container.messagebox = nulo
     modulo_clientes.messagebox = nulo
     modulo_inventario.messagebox = nulo
-    modulo_login.messagebox = nulo
     modulo_ventas.messagebox = nulo
 
 
@@ -255,14 +251,9 @@ def test_integracion_ventas():
         modulo_ventas.ConfigManager = ConfigFalsa
         modulo_ventas.imprimir_ticket_venta = ticket_falso
 
-        admin = autenticar("admin", "admin")
-        sid = abrir_sesion(admin["id"])
         root = tk.Tk()
         root.withdraw()
-        ventas = Ventas(
-            root,
-            usuario={"id": admin["id"], "sesion_id": sid, "rol": "admin"},
-        )
+        ventas = Ventas(root)
 
         ventas.entry_nombre.set("Café")
         ventas.actualizar_precio(None)
