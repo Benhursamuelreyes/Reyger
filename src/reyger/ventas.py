@@ -8,9 +8,16 @@ from reportlab.platypus import Table
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import datetime
 import os
+import time
 
 from .resources import get_db_path, get_output_path, open_file
 from .config import ConfigManager
+from .hilos import en_hilo
+from .barcode_scanner import (
+    CapturaEscanero,
+    DialogoRegistroRapido,
+    EscanerCodigoBarras,
+)
 from .fiscal import (
     IVA_POR_DEFECTO,
     desglose_linea,
@@ -30,10 +37,17 @@ class Ventas(tk.Frame):
         super().__init__(padre)
         self.productos_info = {}
         self.productos_por_categoria = {}
+        self.config_manager = ConfigManager()
+        self.escaner = EscanerCodigoBarras(self.db_name)
+        self.captura = CapturaEscanero(self.winfo_toplevel(), self._procesar_codigo)
+        self._ult_codigo = None
+        self._ult_momento = 0.0
         self.crear_tabla_ventas()
         self.numero_factura_actual = self.obtener_numero_factura_actual()
         self.widgets()
         self.mostrar_numero_factura()
+        if self.var_escaner.get():
+            self.captura.iniciar()
 
     def crear_tabla_ventas(self):
         try:
@@ -96,7 +110,7 @@ class Ventas(tk.Frame):
         self.entry_nombre.bind("<<ComboboxSelected>>", self.actualizar_precio)
         self.cargar_productos()
 
-        label_valor = tk.Label(lblframe, text="Precio: ", bg="#C6D9E3", font="sans 14 bold")
+        label_valor = tk.Label(lblframe, text="Precio de venta: ", bg="#C6D9E3", font="sans 14 bold")
         label_valor.grid(row=0, column=4, padx=(20, 0), sticky="w")
 
         self.entry_valor = ttk.Entry(lblframe, font="sans 14 bold", state="readonly", width=16)
@@ -114,6 +128,14 @@ class Ventas(tk.Frame):
         self.combo_cliente = ttk.Combobox(lblframe, font="sans 12", state="readonly", width=38)
         self.combo_cliente.grid(row=1, column=1, columnspan=4, padx=6, pady=(0, 12), sticky="w")
         self.cargar_clientes_venta()
+
+        # Barra de entrada manual de códigos de barras (scanner o teclado)
+        label_codigo = tk.Label(lblframe, text="🏷️ Código: ", bg="#C6D9E3", font="sans 14 bold")
+        label_codigo.grid(row=1, column=5, padx=(20, 0), pady=(0, 12), sticky="w")
+
+        self.entry_codigo_barras = ttk.Entry(lblframe, font="sans 14 bold", width=22)
+        self.entry_codigo_barras.grid(row=1, column=6, columnspan=2, padx=6, pady=(0, 12), sticky="w")
+        self.entry_codigo_barras.bind("<Return>", self._desde_barra)
 
         lblframe.columnconfigure(3, weight=1)
 
@@ -136,7 +158,7 @@ class Ventas(tk.Frame):
         scrol_x.config(command=self.tree.xview)
 
         self.tree.heading("producto", text="Producto")
-        self.tree.heading("Precio", text="Precio")
+        self.tree.heading("Precio", text="P. venta")
         self.tree.heading("Cantidad", text="Cantidad")
         self.tree.heading("IVA", text="IVA")
         self.tree.heading("Subtotal", text="Subtotal")
@@ -160,6 +182,25 @@ class Ventas(tk.Frame):
 
         lblframe1 = LabelFrame(frame2, text="Opciones", bg="#C6D9E3", font="sans 14 bold")
         lblframe1.pack(fill="x", padx=10, pady=10)
+
+        # Interruptor de escáner (persistente en config.json)
+        self.var_escaner = tk.BooleanVar(
+            value=bool(self.config_manager.get("escaner_activo", False))
+        )
+        self.toggle_escaner = tk.Checkbutton(
+            lblframe1,
+            variable=self.var_escaner,
+            command=self._alternar_escaner,
+            indicatoron=False,
+            selectcolor="#C6D9E3",
+            font="sans 13 bold",
+            relief="ridge",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+        )
+        self.toggle_escaner.pack(side="left", padx=(10, 20), pady=10)
+        self._pintar_toggle()
 
         boton_agregar = tk.Button(lblframe1, text="Agregar artículo", bg="#000CFF", fg="white", font="sans 14 bold", command=self.registrar)
         boton_agregar.pack(side="left", expand=True, fill="x", padx=40, pady=10, ipady=6)
@@ -331,6 +372,104 @@ class Ventas(tk.Frame):
             self.actualizar_total()
         except ValueError:
             messagebox.showerror("Error", "Cantidad o precio no válidos. Asegúrese de ingresar números válidos")
+
+    # ------------------------------------------------------------------
+    # Escáner de códigos de barras
+    # ------------------------------------------------------------------
+
+    def _pintar_toggle(self):
+        if self.var_escaner.get():
+            self.toggle_escaner.config(
+                text="🟢 Escáner ACTIVO", bg="#27AE60", fg="white",
+                activebackground="#27AE60", activeforeground="white",
+            )
+        else:
+            self.toggle_escaner.config(
+                text="⚫ Escáner INACTIVO", bg="#B0BEC5", fg="black",
+                activebackground="#B0BEC5", activeforeground="black",
+            )
+
+    def _alternar_escaner(self):
+        activo = self.var_escaner.get()
+        self.config_manager.set("escaner_activo", activo)
+        if activo:
+            self.captura.iniciar()
+            self.entry_codigo_barras.focus_set()
+        else:
+            self.captura.detener()
+        self._pintar_toggle()
+
+    def _desde_barra(self, _evento=None):
+        """Entrada manual desde el campo de código (scanner apuntado o teclado)."""
+        codigo = self.entry_codigo_barras.get().strip()
+        if not codigo:
+            return
+        self.entry_codigo_barras.delete(0, tk.END)
+        self._procesar_codigo(codigo)
+
+    def _procesar_codigo(self, codigo):
+        """Busca el código y añade el producto al carrito.
+
+        Si el código no está registrado ofrece darlo de alta al vuelo;
+        un anti-doble-disparo ignora repeticiones del mismo código en
+        menos de 1.5 s (el scanner y el Enter del campo pueden solaparse).
+        """
+        ahora = time.monotonic()
+        if (
+            self._ult_codigo == codigo
+            and (ahora - self._ult_momento) < 1.5
+        ):
+            return
+        self._ult_codigo, self._ult_momento = codigo, ahora
+
+        producto = self.escaner.buscar_producto_por_codigo(codigo)
+        if producto is None:
+            registrar = messagebox.askyesno(
+                "Código no registrado",
+                f"El código «{codigo}» no está registrado en el inventario.\n"
+                "¿Desea registrar un producto nuevo con él?",
+                parent=self,
+            )
+            if not registrar:
+                return
+            dialogo = DialogoRegistroRapido(self, codigo, self.db_name)
+            producto = dialogo.resultado
+            if producto is None:
+                return
+            self.cargar_productos()
+
+        cantidad_texto = self.entry_cantidad.get().strip()
+        try:
+            cantidad = int(cantidad_texto) if cantidad_texto else 1
+        except ValueError:
+            cantidad = 1
+        if cantidad < 1:
+            cantidad = 1
+
+        if not self.validar_stock(producto["nombre"], cantidad):
+            messagebox.showerror(
+                "Stock insuficiente",
+                f"No hay stock suficiente de «{producto['nombre']}».",
+                parent=self,
+            )
+            return
+
+        tipo_iva = self._tipo_iva_de(producto["nombre"])
+        subtotal = round(cantidad * float(producto["precio"]), 2)
+        self.tree.insert(
+            "", "end",
+            values=(
+                producto["nombre"],
+                f"{float(producto['precio']):.2f}",
+                cantidad,
+                f"{tipo_iva:g}%",
+                f"{subtotal:.2f}",
+            ),
+        )
+        self.actualizar_total()
+
+        if self.var_escaner.get():
+            self.entry_codigo_barras.focus_set()
 
     def validar_stock(self, nombre_producto, cantidad):
         conn = None
@@ -578,20 +717,37 @@ class Ventas(tk.Frame):
 
     def _imprimir_ticket_termico(self, numero_factura, fecha, productos, total,
                                  base, cuota, metodo_pago, cliente):
-        """Imprime el ticket térmico si hay una impresora configurada."""
+        """Imprime el ticket térmico si hay una impresora configurada.
+
+        El envío al spooler/subproceso puede tardar segundos: corre en
+        hilo demonio y el aviso vuelve por ``after`` si falla.
+        """
         config = ConfigManager()
         impresora = config.get("impresora_termica")
         if not impresora:
             return
         ancho = ANCHO_58MM if config.get("ancho_ticket") == 58 else ANCHO_80MM
+        letra = config.get("letra_ticket", "grande")
         empresa = config.get("nombre_empresa", "Mi Empresa")
-        ok, mensaje = imprimir_ticket_venta(
-            numero_factura, fecha, productos, total, base, cuota,
-            metodo_pago, cliente, empresa=empresa, ancho=ancho,
-            impresora=impresora,
-        )
-        if not ok:
-            messagebox.showwarning("Impresora térmica", mensaje)
+
+        def trabajo():
+            return imprimir_ticket_venta(
+                numero_factura, fecha, productos, total, base, cuota,
+                metodo_pago, cliente, empresa=empresa, ancho=ancho,
+                letra=letra, impresora=impresora,
+            )
+
+        def al_terminar(resultado, error):
+            if error is not None:
+                messagebox.showwarning(
+                    "Impresora térmica", f"No se pudo imprimir: {error}"
+                )
+                return
+            ok, mensaje = resultado
+            if not ok:
+                messagebox.showwarning("Impresora térmica", mensaje)
+
+        en_hilo(self, trabajo, al_terminar)
 
     def generar_factura_pdf(self, productos, total, factura_numero, fecha,
                             metodo_pago="Efectivo", base_imponible=None,
@@ -675,7 +831,7 @@ class Ventas(tk.Frame):
         tree_facturas.heading("ID", text="ID")
         tree_facturas.heading("Factura", text="Factura")
         tree_facturas.heading("Producto", text="Producto")
-        tree_facturas.heading("Precio", text="Precio")
+        tree_facturas.heading("Precio", text="P. venta")
         tree_facturas.heading("Cantidad", text="Cantidad")
         tree_facturas.heading("Subtotal", text="Subtotal")
 

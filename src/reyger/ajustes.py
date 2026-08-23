@@ -2,8 +2,12 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import os
+from datetime import datetime
+
+from . import backup as mod_backup
 from . import categorias as mod_categorias
 from .config import ConfigManager
+from .hilos import en_hilo
 from .impresion_termica import (
     ANCHO_80MM,
     construir_ticket_venta,
@@ -11,6 +15,13 @@ from .impresion_termica import (
     listar_impresoras_termicas,
 )
 from .resources import get_user_data_path
+
+#: Etiquetas visibles del selector de letra ↔ claves de ESCALAS_LETRA
+ETIQUETAS_LETRA = {
+    "pequena": "Pequeña",
+    "grande": "Grande",
+    "muy_grande": "Muy grande",
+}
 
 class Ajustes(tk.Frame):
     """Ventana de configuración y ajustes del sistema"""
@@ -42,9 +53,48 @@ class Ajustes(tk.Frame):
         )
         titulo.pack(pady=10)
         
-        # Frame principal con scroll
-        main_frame = tk.Frame(self, bg=self.colors["bg_principal"])
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Frame principal con scroll vertical (el contenido excede la
+        # altura de la ventana en pantallas pequeñas)
+        contenedor = tk.Frame(self, bg=self.colors["bg_principal"])
+        contenedor.pack(fill="both", expand=True, padx=20, pady=20)
+
+        barra = ttk.Scrollbar(contenedor, orient="vertical")
+        barra.pack(side="right", fill="y")
+
+        lienzo = tk.Canvas(
+            contenedor,
+            bg=self.colors["bg_principal"],
+            highlightthickness=0,
+            yscrollcommand=barra.set,
+        )
+        lienzo.pack(side="left", fill="both", expand=True)
+        barra.config(command=lienzo.yview)
+
+        main_frame = tk.Frame(lienzo, bg=self.colors["bg_principal"])
+        ventana_contenido = lienzo.create_window(
+            (0, 0), window=main_frame, anchor="nw"
+        )
+
+        main_frame.bind(
+            "<Configure>",
+            lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")),
+        )
+
+        def _ajustar_ancho(evento):
+            lienzo.itemconfigure(ventana_contenido, width=evento.width)
+
+        lienzo.bind("<Configure>", _ajustar_ancho)
+
+        def _rueda(evento):
+            # Linux: Button-4/5; Windows/macOS: MouseWheel con delta
+            if getattr(evento, "num", None) == 4 or evento.delta > 0:
+                lienzo.yview_scroll(-2, "units")
+            elif getattr(evento, "num", None) == 5 or evento.delta < 0:
+                lienzo.yview_scroll(2, "units")
+
+        toplevel = self.winfo_toplevel()
+        for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            toplevel.bind(secuencia, _rueda)
         
         # Sección 1: Tema
         self.crear_seccion_tema(main_frame)
@@ -84,6 +134,12 @@ class Ajustes(tk.Frame):
 
         # Sección 7: Categorías de productos
         self.crear_seccion_categorias(main_frame)
+
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+
+        # Sección 8: Base de datos (exportar/importar)
+        self.crear_seccion_base_datos(main_frame)
 
         # Frame de botones
         frame_botones = tk.Frame(main_frame, bg=self.colors["bg_principal"])
@@ -403,6 +459,30 @@ class Ajustes(tk.Frame):
             )
             radio.pack(side="left", padx=10)
 
+        label_letra = tk.Label(
+            frame,
+            text="Tamaño de la letra del ticket:",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
+        )
+        label_letra.pack(anchor="w", padx=20, pady=(5, 5))
+
+        self.var_letra_ticket = tk.StringVar(
+            value=ETIQUETAS_LETRA.get(
+                self.config_manager.get("letra_ticket", "grande"), "Grande"
+            )
+        )
+        self.combo_letra_ticket = ttk.Combobox(
+            frame,
+            textvariable=self.var_letra_ticket,
+            values=list(ETIQUETAS_LETRA.values()),
+            state="readonly",
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+            width=20
+        )
+        self.combo_letra_ticket.pack(anchor="w", padx=20, pady=(0, 10))
+
         btn_prueba = tk.Button(
             frame,
             text="🧾 Imprimir página de prueba",
@@ -425,6 +505,10 @@ class Ajustes(tk.Frame):
             )
             return
         ancho = ANCHO_80MM if self.var_ancho_ticket.get() == 80 else 32
+        letra = next(
+            clave for clave, etiqueta in ETIQUETAS_LETRA.items()
+            if etiqueta == self.var_letra_ticket.get()
+        )
         datos = construir_ticket_venta(
             numero_factura="PRUEBA",
             fecha="01/01/2026 12:00",
@@ -435,6 +519,7 @@ class Ajustes(tk.Frame):
             metodo_pago="Efectivo",
             empresa=self.entry_nombre.get() or "Mi Empresa",
             ancho=ancho,
+            letra=letra,
         )
         if enviar_bytes(datos, None if impresora == "" else impresora):
             messagebox.showinfo(
@@ -628,6 +713,210 @@ class Ajustes(tk.Frame):
             return
         mod_categorias.eliminar(categoria_id)
         self.refrescar_categorias()
+
+    def crear_seccion_base_datos(self, parent):
+        """Sección de exportación/importación de la base de datos."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🗄️ Base de datos",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        tk.Label(
+            frame,
+            text="Lleva tus datos a otro equipo o haz copias de seguridad.\n"
+                 "Al importar se crea automáticamente una copia de seguridad "
+                 "de la base actual.",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font="sans 10",
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        frame_formatos = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_formatos.pack(anchor="w", padx=20, pady=(0, 10))
+
+        self.var_formato_bd = tk.StringVar(value="db")
+        for valor, texto in (
+            ("db", "Base SQLite (.db) — copia completa"),
+            ("excel", "Excel (.xlsx) — una hoja por tabla"),
+            ("csv", "CSV comprimido (.zip) — un CSV por tabla"),
+        ):
+            radio = tk.Radiobutton(
+                frame_formatos,
+                text=texto,
+                variable=self.var_formato_bd,
+                value=valor,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+                selectcolor=self.colors["bg_secundario"],
+            )
+            if valor == "excel" and not mod_backup.EXCEL_DISPONIBLE:
+                radio.config(state="disabled")
+            radio.pack(side="left", padx=(0, 15))
+
+        frame_acciones = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_acciones.pack(fill="x", padx=20, pady=(0, 5))
+
+        btn_exportar = tk.Button(
+            frame_acciones,
+            text="📤 Exportar base de datos…",
+            bg="#28A745",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self.exportar_base_datos,
+            padx=15,
+            pady=8
+        )
+        btn_exportar.pack(side="left", padx=(0, 10))
+        self.btn_exportar_bd = btn_exportar
+
+        btn_importar = tk.Button(
+            frame_acciones,
+            text="📥 Importar base de datos…",
+            bg="#0078D4",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self.importar_base_datos,
+            padx=15,
+            pady=8
+        )
+        btn_importar.pack(side="left")
+        self.btn_importar_bd = btn_importar
+
+    def _ocupar_botones_bd(self, ocupado):
+        """Deshabilita la botonera de BD mientras hay una tarea en hilo."""
+        estado = "disabled" if ocupado else "normal"
+        self.btn_exportar_bd.config(
+            state=estado,
+            text="⏳ Exportando…" if ocupado else "📤 Exportar base de datos…",
+        )
+        self.btn_importar_bd.config(state=estado)
+
+    def exportar_base_datos(self):
+        """Exporta la base en el formato seleccionado.
+
+        El trabajo pesado corre fuera del hilo de la interfaz para que
+        la ventana no se congele durante la escritura del fichero.
+        """
+        formato = self.var_formato_bd.get()
+        descripcion, extension = mod_backup.FORMATOS_EXPORTACION[formato]
+        ruta = filedialog.asksaveasfilename(
+            title=f"Exportar base de datos — {descripcion}",
+            defaultextension=extension,
+            initialfile=f"reyger_{datetime.now():%Y%m%d}{extension}",
+            filetypes=[(descripcion, f"*{extension}")],
+        )
+        if not ruta:
+            return
+
+        if formato == "db":
+            trabajo = lambda: mod_backup.exportar_sqlite(ruta)  # noqa: E731
+        elif formato == "excel":
+            trabajo = lambda: mod_backup.exportar_excel(ruta)  # noqa: E731
+        else:
+            trabajo = lambda: mod_backup.exportar_csv_zip(ruta)  # noqa: E731
+
+        def al_terminar(final, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                messagebox.showerror(
+                    "Exportar base de datos", f"No se pudo exportar: {error}"
+                )
+                return
+            messagebox.showinfo(
+                "Exportar base de datos",
+                f"Exportación completada correctamente:\n{final}"
+            )
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, trabajo, al_terminar)
+
+    def importar_base_datos(self):
+        """Importa la base desde .db, .xlsx o .zip con confirmación previa."""
+        filetypes = [
+            ("Bases compatibles (*.db *.xlsx *.zip)",
+             "*.db *.sqlite *.sqlite3 *.xlsx *.zip"),
+            ("Base de datos SQLite", "*.db *.sqlite *.sqlite3"),
+            ("Libro de Excel", "*.xlsx"),
+            ("CSV comprimido", "*.zip"),
+            ("Todos los ficheros", "*.*"),
+        ]
+        ruta = filedialog.askopenfilename(
+            title="Importar base de datos", filetypes=filetypes
+        )
+        if not ruta:
+            return
+
+        extension = os.path.splitext(ruta)[1].lower()
+        if extension in (".db", ".sqlite", ".sqlite3"):
+            aviso = (
+                "Se SUSTITUIRÁ la base de datos completa por el fichero "
+                "seleccionado."
+            )
+        else:
+            aviso = (
+                "Se sustituirá el CONTENIDO de las tablas incluidas en el "
+                "fichero seleccionado."
+            )
+        aviso += (
+            "\n\nAntes se guardará automáticamente una copia de seguridad "
+            "de la base actual.\n\n¿Desea continuar?"
+        )
+        if not messagebox.askyesno("Importar base de datos", aviso):
+            return
+
+        def al_terminar(resultado, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                if isinstance(error, mod_backup.BackupError):
+                    messagebox.showerror(
+                        "Importar base de datos", str(error)
+                    )
+                else:
+                    messagebox.showerror(
+                        "Importar base de datos",
+                        f"No se pudo importar (no se cambió nada):\n{error}"
+                    )
+                return
+            if resultado["modo"] == "completa":
+                texto = "Base de datos importada y sustituida correctamente."
+            else:
+                lineas = [
+                    f"• {tabla}: {filas} fila(s)"
+                    for tabla, filas in sorted(
+                        resultado["resumen"].items()
+                    )
+                ]
+                texto = (
+                    "Datos importados:\n"
+                    + ("\n".join(lineas) or "(sin datos)")
+                )
+                if resultado["ignoradas"]:
+                    texto += (
+                        "\n\nTablas ignoradas (no existen en el esquema "
+                        "actual): "
+                        + ", ".join(sorted(resultado["ignoradas"]))
+                    )
+
+            if resultado["respaldo"]:
+                texto += (
+                    f"\n\nCopia de seguridad previa:\n{resultado['respaldo']}"
+                )
+            texto += (
+                "\n\n⚠️ Reinicie la aplicación para que todos los módulos "
+                "vean los datos actualizados."
+            )
+            messagebox.showinfo("Importación completada", texto)
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, lambda: mod_backup.importar_datos(ruta), al_terminar)
     
     def guardar_cambios(self):
         """Guarda todos los cambios de configuración"""
@@ -643,6 +932,10 @@ class Ajustes(tk.Frame):
                     else self.combo_impresora.get()
                 ),
                 "ancho_ticket": int(self.var_ancho_ticket.get()),
+                "letra_ticket": next(
+                    clave for clave, etiqueta in ETIQUETAS_LETRA.items()
+                    if etiqueta == self.var_letra_ticket.get()
+                ),
             })
             self.config_manager.save_config()
             
@@ -667,8 +960,10 @@ class Ajustes(tk.Frame):
                 "nombre_empresa": "Mi Empresa",
                 "mostrar_hora": True,
                 "redondear_decimales": 2,
+                "escaner_activo": False,
                 "impresora_termica": None,
-                "ancho_ticket": 80
+                "ancho_ticket": 80,
+                "letra_ticket": "grande"
             }
             
             self.config_manager.config_data = default_config
@@ -683,6 +978,7 @@ class Ajustes(tk.Frame):
             self.var_decimales.set(2)
             self.combo_impresora.current(0)
             self.var_ancho_ticket.set(80)
+            self.var_letra_ticket.set(ETIQUETAS_LETRA["grande"])
             self.logo_label.config(image="", text="📷\nSin logo")
             self.logo_image_preview = None
             

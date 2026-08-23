@@ -3,7 +3,11 @@ import sqlite3
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk, messagebox
-from .barcode_scanner import EscanerCodigoBarras, DialogoAsignarCodigoBarras
+from .barcode_scanner import (
+    DialogoAsignarCodigoBarras,
+    DialogoRegistroRapido,
+    EscanerCodigoBarras,
+)
 from .fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
 from .resources import get_db_path
 
@@ -48,12 +52,12 @@ class Inventario(tk.Frame):
         btn_nuevo_proveedor.pack(side="left", padx=(6, 0))
         self.cargar_proveedores()
 
-        lblPrecio = Label(labelFrame, text="Precio: ", font="sans 14 bold", bg="#C6D9E3")
+        lblPrecio = Label(labelFrame, text="Precio de venta: ", font="sans 14 bold", bg="#C6D9E3")
         lblPrecio.grid(row=2, column=0, sticky="e", padx=10, pady=10)
         self.precio = ttk.Entry(labelFrame, font="sans 14 bold")
         self.precio.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
 
-        lblCosto = Label(labelFrame, text="Costo: ", font="sans 14 bold", bg="#C6D9E3")
+        lblCosto = Label(labelFrame, text="Precio de costo: ", font="sans 14 bold", bg="#C6D9E3")
         lblCosto.grid(row=3, column=0, sticky="e", padx=10, pady=10)
         self.costo = ttk.Entry(labelFrame, font="sans 14 bold")
         self.costo.grid(row=3, column=1, sticky="ew", padx=10, pady=10)
@@ -99,6 +103,22 @@ class Inventario(tk.Frame):
         self.filtro_categoria.bind("<<ComboboxSelected>>", lambda _evento: self.aplicar_filtro())
         self.cargar_categorias()
 
+        # Barra de entrada manual de códigos de barras
+        frame_codigo = tk.Frame(frame_derecha, bg="#C6D9E3")
+        frame_codigo.pack(fill="x", pady=(0, 10))
+        Label(frame_codigo, text="🏷️ Código de barras:", font="sans 13 bold", bg="#C6D9E3").pack(side="left", padx=(0, 8))
+        self.entry_busca_codigo = ttk.Entry(frame_codigo, font="sans 13")
+        self.entry_busca_codigo.pack(side="left", fill="x", expand=True)
+        self.entry_busca_codigo.bind("<Return>", lambda _evento: self.buscar_por_codigo())
+        Button(
+            frame_codigo, text="🔍 Buscar", font="sans 12 bold",
+            bg="#000CFF", fg="white", command=self.buscar_por_codigo,
+        ).pack(side="left", padx=(8, 0), ipadx=6, ipady=2)
+        Button(
+            frame_codigo, text="🏷️ Asignar al seleccionado", font="sans 12 bold",
+            bg="#17A2B8", fg="white", command=self.asignar_codigo_seleccionado,
+        ).pack(side="left", padx=(8, 0), ipadx=6, ipady=2)
+
         treeFrame = Frame(frame_derecha, bg="white")
         treeFrame.pack(fill="both", expand=True)
 
@@ -116,8 +136,8 @@ class Inventario(tk.Frame):
         self.tre.heading("ID", text="ID")
         self.tre.heading("PRODUCTO", text="Producto")
         self.tre.heading("PROVEEDOR", text="Proveedor")
-        self.tre.heading("PRECIO", text="Precio")
-        self.tre.heading("COSTO", text="Costo")
+        self.tre.heading("PRECIO", text="P. venta")
+        self.tre.heading("COSTO", text="P. costo")
         self.tre.heading("STOCK", text="Stock")
         self.tre.heading("IVA", text="IVA")
         self.tre.heading("CATEGORIA", text="Categoría")
@@ -242,20 +262,98 @@ class Inventario(tk.Frame):
         eleccion = self.filtro_categoria.get()
         self.mostrar(None if eleccion == "Todas" else eleccion)
 
-    def mostrar(self, filtro_categoria=None):
-        if filtro_categoria:
-            consulta = (
-                "SELECT i.*, c.nombre FROM inventario i "
-                "LEFT JOIN categorias c ON c.id = i.categoria_id "
-                "WHERE c.nombre = ? ORDER BY i.id DESC"
+    # ------------------------------------------------------------------
+    # Códigos de barras: búsqueda manual y alta automática
+    # ------------------------------------------------------------------
+
+    def _refrescar_listado(self):
+        for item in self.tre.get_children():
+            self.tre.delete(item)
+        eleccion = self.filtro_categoria.get() if hasattr(self, "filtro_categoria") else "Todas"
+        self.mostrar(None if eleccion == "Todas" else eleccion)
+
+    def _seleccionar_producto(self, id_producto):
+        """Selecciona y hace visible la fila del producto indicado."""
+        objetivo = str(id_producto)
+        for item in self.tre.get_children():
+            if str(self.tre.item(item)["text"]) == objetivo:
+                self.tre.selection_set(item)
+                self.tre.see(item)
+                self.tre.focus(item)
+                return True
+        return False
+
+    def buscar_por_codigo(self):
+        """Localiza el producto por código; si no existe, ofrece registrarlo."""
+        codigo = self.entry_busca_codigo.get().strip()
+        if not codigo:
+            return
+        self.entry_busca_codigo.delete(0, tk.END)
+
+        producto = self.escaner.buscar_producto_por_codigo(codigo)
+        if producto is not None:
+            encontrado = self._seleccionar_producto(producto["id"])
+            if not encontrado:
+                messagebox.showinfo(
+                    "Código de barras",
+                    f"«{producto['nombre']}» tiene ese código pero no está "
+                    "visible con el filtro actual.",
+                )
+            return
+
+        registrar = messagebox.askyesno(
+            "Código no registrado",
+            f"El código «{codigo}» no está registrado en el inventario.\n"
+            "¿Desea registrar un producto nuevo con él?",
+        )
+        if not registrar:
+            return
+        dialogo = DialogoRegistroRapido(self, codigo, self.db_name)
+        nuevo = dialogo.resultado
+        if nuevo is None:
+            return
+        self._refrescar_listado()
+        self.categoria["values"] = self._categorias_disponibles_nombres()
+        self._seleccionar_producto(nuevo["id"])
+        messagebox.showinfo(
+            "Código de barras",
+            f"Producto «{nuevo['nombre']}» registrado con el código {codigo}.",
+        )
+
+    def _categorias_disponibles_nombres(self):
+        try:
+            filas = self.eje_consulta(
+                "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
+            ).fetchall()
+            return [fila[0] for fila in filas]
+        except sqlite3.Error:
+            return ["General"]
+
+    def asignar_codigo_seleccionado(self):
+        """Abre el diálogo para asignar/editar el código del producto elegido."""
+        seleccion = self.tre.selection()
+        if not seleccion:
+            messagebox.showwarning(
+                "Asignar código", "Seleccione un producto en el listado."
             )
+            return
+        item_id = self.tre.item(seleccion)["text"]
+        valores = self.tre.item(seleccion)["values"]
+        DialogoAsignarCodigoBarras(self, item_id, valores[1], self.escaner)
+
+    def mostrar(self, filtro_categoria=None):
+        # Columnas explícitas: i.* es frágil porque ALTER TABLE añade
+        # las columnas nuevas al final y desplaza los índices posicionales.
+        base = (
+            "SELECT i.id, i.nombre, i.proveedor, i.precio, i.costo,"
+            " i.stock, i.tipo_iva, c.nombre FROM inventario i "
+            "LEFT JOIN categorias c ON c.id = i.categoria_id "
+        )
+        if filtro_categoria:
+            consulta = base + "WHERE c.nombre = ? ORDER BY i.id DESC"
             result = self.eje_consulta(consulta, (filtro_categoria,))
         else:
-            consulta = (
-                "SELECT i.*, c.nombre FROM inventario i "
-                "LEFT JOIN categorias c ON c.id = i.categoria_id "
-                "ORDER BY i.id DESC"
-            )
+            consulta = base + "ORDER BY i.id DESC"
             result = self.eje_consulta(consulta)
         for elem in result:
             try:
@@ -264,8 +362,8 @@ class Inventario(tk.Frame):
             except ValueError:
                 precio_eur = elem[3]
                 costo_eur = elem[4]
-            iva_txt = f"{elem[7]:g}%" if len(elem) > 7 and elem[7] is not None else ""
-            categoria_txt = elem[9] if len(elem) > 9 and elem[9] else ""
+            iva_txt = f"{elem[6]:g}%" if elem[6] is not None else ""
+            categoria_txt = elem[7] if len(elem) > 7 and elem[7] else ""
             self.tre.insert("", 0, text=elem[0], values=(elem[0], elem[1], elem[2], precio_eur, costo_eur, elem[5], iva_txt, categoria_txt))
     
     def actualizar_inventario(self):
@@ -352,13 +450,13 @@ class Inventario(tk.Frame):
         entry_proveedor.grid(row=1, column=1, padx=10, pady=10)
         entry_proveedor.insert(0, item_values[2])
         
-        lbl_precio = Label(ventana_editar, text="Precio:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_precio = Label(ventana_editar, text="Precio de venta:", font="sans 14 bold", bg="#C6D9E3")
         lbl_precio.grid(row=2, column=0, padx=10, pady=10)
         entry_precio = Entry(ventana_editar, font="sans 14 bold")
         entry_precio.grid(row=2, column=1, padx=10, pady=10)
         entry_precio.insert(0, precio_original)
         
-        lbl_costo = Label(ventana_editar, text="Costo:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_costo = Label(ventana_editar, text="Precio de costo:", font="sans 14 bold", bg="#C6D9E3")
         lbl_costo.grid(row=3, column=0, padx=10, pady=10)
         entry_costo = Entry(ventana_editar, font="sans 14 bold")
         entry_costo.grid(row=3, column=1, padx=10, pady=10)
@@ -413,7 +511,7 @@ class Inventario(tk.Frame):
                 costo = float(costo.replace(",", "."))
                 stock = int(stock)
             except ValueError:
-                messagebox.showwarning("Guardar cambios", "Ingrese valores numéricos válidos para precio, costo y stock")
+                messagebox.showwarning("Guardar cambios", "Ingrese valores numéricos válidos para precio de venta, precio de costo y stock")
                 return
 
             fila_cat_nueva = self.eje_consulta(

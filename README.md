@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.1-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.2-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -24,12 +24,16 @@ macOS y Linux**.
   ventanas optimizadas para uso en punto de venta (POS).
 - **Base de datos SQLite** — Sin servidor, portable y de fácil respaldo.
   Se crea automáticamente en la primera ejecución.
+- **Copia de seguridad** — Exporta e importa la base de datos desde
+  Ajustes en SQLite (`.db`), Excel (`.xlsx`) o CSV comprimido (`.zip`),
+  con respaldo automático antes de cada importación.
 - **Tickets de 80 mm** — Formato compacto para impresoras térmicas.
 - **Métodos de pago** — Efectivo (con cálculo de vuelto), tarjeta y mixto.
 - **Albaranes** — Documentos de entrega con estados y firma.
 - **Presupuestos** — Módulo con IVA configurable (4%, 10%, 21%).
 - **Gestión de impresoras** — Detección y configuración (Windows).
-- **Escáner de código de barras** — Búsqueda rápida de productos por código.
+- **Escáner de código de barras** — Captura en vivo en Ventas, barras
+  manuales en Ventas e Inventario y alta automática de códigos nuevos.
 - **Empaquetado multiplataforma con Briefcase** — Instaladores `.msi`,
   `.dmg` y `.AppImage` generados automáticamente en CI.
 
@@ -68,31 +72,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-3.0.0b1.msi` |
-| **macOS** | `Reyger-3.0.0b1.dmg` |
-| **Linux** | `Reyger-3.0.0b1-x86_64.AppImage` |
+| **Windows** | `Reyger-3.0.0b2.msi` |
+| **macOS** | `Reyger-3.0.0b2.dmg` |
+| **Linux** | `Reyger-3.0.0b2-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-3.0.0b1.msi`.
+1. Descarga el archivo `Reyger-3.0.0b2.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-3.0.0b1.dmg`.
+1. Descarga el archivo `Reyger-3.0.0b2.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-3.0.0b1-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-3.0.0b2-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-3.0.0b1-x86_64.AppImage
-   ./Reyger-3.0.0b1-x86_64.AppImage
+   chmod +x Reyger-3.0.0b2-x86_64.AppImage
+   ./Reyger-3.0.0b2-x86_64.AppImage
    ```
 
 ---
@@ -173,6 +177,105 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v3.0.0-beta.2 — 2026-08-23
+
+**Añadido — Importación/exportación de la base de datos**
+
+- Nueva sección «Base de datos» en **Ajustes** con acciones de exportar
+  e importar, y **elección de formato por parte del usuario**: SQLite
+  (`.db`, copia binaria completa vía API de backup), Excel (`.xlsx`,
+  una hoja por tabla) o CSV comprimido (`.zip`, un fichero por tabla).
+- Importación validada: `PRAGMA integrity_check`, comprobación de las
+  tablas núcleo (`ventas`/`inventario`) y rechazo de bases corruptas,
+  ajenas a Reyger o de un esquema más moderno que la instalación.
+- Los `.db` antiguos se migran al esquema actual en el acto; si esa
+  actualización falla, se restaura automáticamente el estado anterior.
+- **Respaldo automático** de la base antes de cualquier importación
+  (`database_respaldo_<fecha>.bak`); se conservan las 5 copias más
+  recientes.
+- Importación por tablas (Excel/CSV): empareja columnas por nombre,
+  ignora las tablas desconocidas informando de ellas y opera en una
+  única transacción — si algo falla, no se cambia nada.
+- Nueva dependencia `openpyxl>=3.1`, incluida en los instaladores.
+
+**Cambiado — Nomenclatura de precios en la interfaz**
+
+- «Costo» pasa a **«Precio de costo»** y «Precio» a **«Precio de venta»**
+  en Inventario (alta, edición y listado), Ventas (selector y carrito) y
+  Presupuestos (selector de producto).
+- Cabeceras compactas de los listados: «P. venta» / «P. costo». La
+  etiqueta «Precio Unitario» de presupuestos se conserva por ser ya
+  específica.
+- Solo cambian los textos visibles: las columnas SQL `precio`/`costo`
+  quedan intactas (sin migración de datos).
+
+**Cambiado — Pantalla principal**
+
+- El logotipo se muestra ahora **con fondo transparente**: se conserva el
+  canal alfa del PNG en todos los reescalados (también en el logo
+  personalizado de Ajustes).
+- **Escalado dinámico**: el logo ocupa y rellena el espacio libre de la
+  ventana al redimensionarla, conservando su proporción y un margen
+  estricto de 5–10 px respecto a la botonera inferior (objetivo 8 px).
+  El repintado usa debounce y una auto-verificación que corrige el
+  tamaño si la geometría sigue moviéndose durante el arrastre.
+
+**Añadido — Escáner de código de barras en vivo**
+
+- **Ventas**: interruptor «Escanear» que activa la captura en vivo: el
+  escáner HID puede disparar directamente sobre la ventana sin campo
+  enfocado. La preferencia se guarda entre sesiones.
+- **Barras manuales de código**: en Ventas (junto al interruptor) y en
+  Inventario (encima del listado) hay un campo para teclear un código
+  con acción inmediata al pulsar Enter o «Buscar».
+- **Alta automática de códigos desconocidos**: si el código no existe,
+  ambos módulos ofrecen registrarlo al momento con un formulario mínimo
+  (nombre, precio de venta, costo opcional y stock) y lo añaden ya
+  asignado a ese código — al carrito en Ventas, seleccionado en el
+  listado de Inventario.
+- Detección por ráfaga con anti-tecleo (pausas largas descartan el
+  buffer), longitud mínima de código e ignorado de teclas cuando el
+  foco está en otro campo editable. Guarda anti-doble-disparo para que
+  barra y captura no procesen dos veces el mismo código.
+- Inventario permite además asignar un código al producto seleccionado.
+
+**Rendimiento — Optimización para terminales modestos**
+
+- **Índices SQLite (migración 5)**: búsquedas y listados acelerados por
+  `nombre` en inventario y clientes, `fecha`/`factura` en ventas y un
+  índice único sobre `codigo_barras`, que además ahora se crea siempre
+  (antes solo existía tras usar el escáner). La migración es tolerante
+  con esquemas antiguos incompletos.
+- **PRAGMA de rendimiento**: `synchronous=NORMAL`, caché de ~2 MB y
+  tablas temporales en memoria en la conexión compartida.
+- **Memoria**: el escalado del logotipo reduce primero por factores
+  enteros y libera explícitamente la imagen anterior (sin esperar al
+  recolector de basura); al cerrar Ventas/Inventario/… se detiene la
+  captura del escáner, se libera el bloqueo modal y se fuerza una
+  pasada de GC.
+- **Interfaz siempre viva**: exportar/importar la base de datos y el
+  envío del ticket térmico corren en hilo secundario (demonio) con la
+  botonera deshabilitada durante la tarea; ningún hilo toca Tk — los
+  avisos vuelven por el bucle de eventos.
+- **Instaladores más ligeros**: los ficheros de prueba salieron del
+  paquete (`tests/` en la raíz), así que ya no viajan dentro de los
+  `.msi`/`.dmg`/`.AppImage`.
+- Corregido de paso: la columna «Categoría» del listado de inventario
+  salía vacía desde que existe `codigo_barras` (consulta con columnas
+  explícitas ahora).
+
+**Ajustes finales**
+
+- **Letra del ticket más grande**: el cuerpo del ticket térmico se
+  imprime por defecto a doble altura (antes 1×1, difícil de leer). En
+  **Ajustes → Impresora Térmica** hay un selector con tres tamaños
+  (Pequeña / Grande / Muy grande); «Muy grande» duplica también el
+  ancho y el ticket recalcula sus columnas automáticamente. La página
+  de prueba usa el tamaño elegido.
+- **Scroll en Ajustes**: la ventana de configuración incorpora barra
+  de desplazamiento vertical y respuesta a la rueda del ratón, para
+  acceder a todas las secciones en pantallas pequeñas.
 
 ### v3.0.0-beta.1 — 2026-08-21
 

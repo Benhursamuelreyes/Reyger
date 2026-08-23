@@ -27,6 +27,14 @@ DOBLE = b"\x1d!\x11"
 NORMAL = b"\x1d!\x00"
 CORTE_PARCIAL = b"\x1dV\x42\x00"
 
+#: Tamaños de letra del cuerpo del ticket (comando ``GS ! n``):
+#: nibble alto = multiplicador de ancho, nibble bajo = de altura.
+ESCALAS_LETRA = {
+    "pequena": b"\x1d!\x00",     # 1×1 (la original)
+    "grande": b"\x1d!\x01",      # doble altura, mismos caracteres por línea
+    "muy_grande": b"\x1d!\x11",  # doble ancho y alto
+}
+
 
 def _codificar(texto):
     """Codifica texto a bytes de impresora (CP858 con retroceso)."""
@@ -54,12 +62,25 @@ def _fila_dos_columnas(izquierda, derecha, ancho):
 
 
 class TicketTermico:
-    """Constructor de tickets ESC/POS."""
+    """Constructor de tickets ESC/POS.
 
-    def __init__(self, ancho=ANCHO_80MM, empresa="Mi Empresa"):
+    *letra* elige el tamaño del cuerpo entre las claves de
+    :data:`ESCALAS_LETRA` («pequena», «grande», «muy_grande»); por
+    defecto «grande» (doble altura) para que el texto sea legible sin
+    perder caracteres por línea.
+    """
+
+    def __init__(self, ancho=ANCHO_80MM, empresa="Mi Empresa", letra="grande"):
         self.ancho = ancho
         self.empresa = empresa
-        self._partes = [INICIO]
+        if letra not in ESCALAS_LETRA:
+            letra = "grande"
+        self.letra = letra
+        # Con doble ancho caben la mitad de caracteres por línea
+        multiplicador = 2 if letra == "muy_grande" else 1
+        self.columnas = max(16, self.ancho // multiplicador)
+        self._fuente_cuerpo = ESCALAS_LETRA[letra]
+        self._partes = [INICIO, self._fuente_cuerpo]
 
     # ---------------------------------------------------------- bloques
     def encabezado(self):
@@ -67,8 +88,8 @@ class TicketTermico:
             CENTRO,
             DOBLE,
             NEGRITA_ON,
-            _linea(self.empresa.upper()[: self.ancho]),
-            NORMAL,
+            _linea(self.empresa.upper()[: self.columnas]),
+            self._fuente_cuerpo,
             NEGRITA_OFF,
             _linea("RECIBO DE VENTA"),
             b"\n",
@@ -78,20 +99,22 @@ class TicketTermico:
     def info(self, numero_factura, fecha, cliente=None):
         self._partes += [
             IZQUIERDA,
-            _fila_dos_columnas(f"Recibo: {numero_factura}", fecha, self.ancho),
+            _fila_dos_columnas(
+                f"Recibo: {numero_factura}", fecha, self.columnas
+            ),
         ]
         if cliente:
             self._partes.append(_linea(f"Cliente: {cliente}"))
         return self
 
     def separador(self):
-        self._partes.append(_linea("-" * self.ancho))
+        self._partes.append(_linea("-" * self.columnas))
         return self
 
     def linea_producto(self, nombre, cantidad, precio, subtotal):
-        nombre = str(nombre)[: self.ancho]
+        nombre = str(nombre)[: self.columnas]
         self._partes.append(
-            _fila_dos_columnas(nombre, f"{float(subtotal):.2f}", self.ancho)
+            _fila_dos_columnas(nombre, f"{float(subtotal):.2f}", self.columnas)
         )
         self._partes.append(
             _linea(f"  {cantidad} x {float(precio):.2f} €")
@@ -101,16 +124,22 @@ class TicketTermico:
     def totales(self, total, base=None, cuota=None):
         self._partes.append(NEGRITA_ON)
         self._partes.append(
-            _fila_dos_columnas("TOTAL", f"{float(total):.2f} €", self.ancho)
+            _fila_dos_columnas(
+                "TOTAL", f"{float(total):.2f} €", self.columnas
+            )
         )
         self._partes.append(NEGRITA_OFF)
         if base is not None:
             self._partes.append(
-                _fila_dos_columnas("Base imponible", f"{float(base):.2f} €", self.ancho)
+                _fila_dos_columnas(
+                    "Base imponible", f"{float(base):.2f} €", self.columnas
+                )
             )
         if cuota is not None:
             self._partes.append(
-                _fila_dos_columnas("Cuota IVA", f"{float(cuota):.2f} €", self.ancho)
+                _fila_dos_columnas(
+                    "Cuota IVA", f"{float(cuota):.2f} €", self.columnas
+                )
             )
         return self
 
@@ -148,6 +177,7 @@ def construir_ticket_venta(
     cliente=None,
     empresa="Mi Empresa",
     ancho=ANCHO_80MM,
+    letra="grande",
 ):
     """Genera los bytes del ticket completo de una venta.
 
@@ -155,7 +185,7 @@ def construir_ticket_venta(
     ``(nombre, precio, cantidad, subtotal[, ...])`` tal y como las
     produce el módulo de ventas.
     """
-    ticket = TicketTermico(ancho=ancho, empresa=empresa)
+    ticket = TicketTermico(ancho=ancho, empresa=empresa, letra=letra)
     ticket.encabezado().info(numero_factura, fecha, cliente).separador()
     for producto in productos:
         nombre, precio, cantidad, subtotal = producto[0], producto[1], producto[2], producto[3]
@@ -337,11 +367,11 @@ def _enviar_posix(datos, impresora):
 def imprimir_ticket_venta(numero_factura, fecha, productos, total, base=None,
                           cuota=None, metodo_pago="Efectivo", cliente=None,
                           empresa="Mi Empresa", ancho=ANCHO_80MM,
-                          impresora=None):
+                          letra="grande", impresora=None):
     """Construye y envía el ticket. Devuelve (ok, mensaje)."""
     datos = construir_ticket_venta(
         numero_factura, fecha, productos, total, base, cuota,
-        metodo_pago, cliente, empresa, ancho,
+        metodo_pago, cliente, empresa, ancho, letra,
     )
     if enviar_bytes(datos, impresora):
         return True, "Ticket impreso correctamente"

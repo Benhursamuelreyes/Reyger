@@ -19,7 +19,12 @@ def get_connection():
     if _conexion is None:
         _conexion = sqlite3.connect(get_db_path())
         _conexion.row_factory = sqlite3.Row
+        # Rendimiento en terminales modestos: la integridad ante cortes
+        # de luz la cubre el respaldo automático previo a importaciones.
         _conexion.execute("PRAGMA foreign_keys = ON")
+        _conexion.execute("PRAGMA synchronous = NORMAL")
+        _conexion.execute("PRAGMA temp_store = MEMORY")
+        _conexion.execute("PRAGMA cache_size = -2000")  # ~2 MB de página caché
     return _conexion
 
 

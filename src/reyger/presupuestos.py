@@ -139,7 +139,7 @@ class Presupuestos(tk.Frame):
         self.cargar_productos_combo()
         self.combo_productos.bind("<<ComboboxSelected>>", lambda e: self.actualizar_precio_producto())
         
-        tk.Label(frame_productos, text="Precio:", bg=self.colors["bg_principal"], fg=self.colors["fg_texto"], font="sans 10 bold").pack(side="left", padx=5)
+        tk.Label(frame_productos, text="Precio de venta:", bg=self.colors["bg_principal"], fg=self.colors["fg_texto"], font="sans 10 bold").pack(side="left", padx=5)
         self.entry_precio = ttk.Entry(frame_productos, font="sans 10", width=10, state="readonly")
         self.entry_precio.pack(side="left", padx=5)
         

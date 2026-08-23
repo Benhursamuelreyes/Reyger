@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from .fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 4
+LATEST_VERSION = 5
 
 MIGRACIONES = []
 
@@ -313,6 +313,50 @@ def _migracion_4(conn):
     conn.execute(f"INSERT INTO ventas_sin_usuario ({lista}) SELECT {lista} FROM ventas")
     conn.execute("DROP TABLE ventas")
     conn.execute("ALTER TABLE ventas_sin_usuario RENAME TO ventas")
+
+
+def _indexar(conn, nombre, tabla, columnas, unico=False):
+    """Crea un índice si la tabla y todas sus columnas existen.
+
+    Las bases antiguas pueden carecer de columnas que las modernas dan
+    por sentadas; en ese caso se omite el índice sin fallar la migración.
+    """
+    tablas = {
+        fila[0] for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    if tabla not in tablas:
+        return
+    presentes = {fila[1] for fila in conn.execute(f"PRAGMA table_info({tabla})")}
+    if not set(columnas) <= presentes:
+        return
+    prefijo = "UNIQUE INDEX" if unico else "INDEX"
+    conn.execute(
+        f"CREATE {prefijo} IF NOT EXISTS {nombre} ON {tabla}({', '.join(columnas)})"
+    )
+
+
+@migracion(5)
+def _migracion_5(conn):
+    """Fase 6: índices de rendimiento y columna codigo_barras centralizada.
+
+    La columna ``codigo_barras`` deja de depender de que el usuario haya
+    usado el escáner: se crea aquí (si falta) junto a su índice único.
+    """
+    _add_column(conn, "inventario", "codigo_barras TEXT")
+
+    _indexar(
+        conn,
+        "idx_inventario_codigo_barras",
+        "inventario",
+        ["codigo_barras"],
+        unico=True,
+    )
+    _indexar(conn, "idx_inventario_nombre", "inventario", ["nombre"])
+    _indexar(conn, "idx_ventas_fecha", "ventas", ["fecha"])
+    _indexar(conn, "idx_ventas_factura", "ventas", ["factura"])
+    _indexar(conn, "idx_clientes_nombre", "clientes", ["nombre"])
 
 
 def run_migrations(conn):

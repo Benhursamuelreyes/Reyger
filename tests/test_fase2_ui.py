@@ -16,10 +16,12 @@ import tkinter as tk
 from tkinter import ttk
 from types import SimpleNamespace
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SRC_DIR = os.path.dirname(SCRIPT_DIR)
-PROJECT_ROOT = os.path.dirname(SRC_DIR)
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(TESTS_DIR)
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
 sys.path.insert(0, SRC_DIR)
+# Recursos y módulos del paquete (assets incluidos) para las pruebas
+SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
 import reyger.db as modulo_db
 import reyger.clientes as modulo_clientes

@@ -21,6 +21,9 @@ class ConfigManager:
             "nombre_empresa": "Mi Empresa",
             "mostrar_hora": True,
             "redondear_decimales": 2,
+            "escaner_activo": False,
+            "ancho_ticket": 80,
+            "letra_ticket": "grande",
         }
         if os.path.exists(self.config_file):
             try:

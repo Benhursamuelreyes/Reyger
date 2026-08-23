@@ -12,12 +12,16 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 import tkinter as tk
 from types import SimpleNamespace
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SRC_DIR = os.path.dirname(SCRIPT_DIR)
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(TESTS_DIR)
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
 sys.path.insert(0, SRC_DIR)
+# Recursos y módulos del paquete (assets incluidos) para las pruebas
+SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
 import reyger.db as modulo_db
 import reyger.container as modulo_container
@@ -239,11 +243,13 @@ def test_integracion_ventas():
 
         def ticket_falso(numero_factura, fecha, productos, total, base=None,
                          cuota=None, metodo_pago="Efectivo", cliente=None,
-                         empresa="Mi Empresa", ancho=ANCHO_80MM, impresora=None):
+                         empresa="Mi Empresa", ancho=ANCHO_80MM, letra="grande",
+                         impresora=None):
             capturas.update({
                 "numero": numero_factura, "total": total, "base": base,
                 "cuota": cuota, "metodo": metodo_pago, "cliente": cliente,
-                "empresa": empresa, "ancho": ancho, "impresora": impresora,
+                "empresa": empresa, "ancho": ancho, "letra": letra,
+                "impresora": impresora,
                 "productos": list(productos),
             })
             return True, "ok"
@@ -267,6 +273,13 @@ def test_integracion_ventas():
             SimpleNamespace(config=lambda **k: None),
             4.40,
         )
+
+        # Desde la Fase 6 el ticket se imprime en hilo secundario y el
+        # aviso vuelve por el bucle de eventos: bombear hasta que llegue.
+        limite = time.time() + 5
+        while not capturas and time.time() < limite:
+            root.update()
+            time.sleep(0.02)
 
         chequear("Ticket enviado al cobrar", bool(capturas))
         if capturas:
