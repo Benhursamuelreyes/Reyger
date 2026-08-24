@@ -1,8 +1,10 @@
 # inventario.py
+import os
 import sqlite3
+from datetime import datetime
 from tkinter import *
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from .barcode_scanner import (
     DialogoAsignarCodigoBarras,
     DialogoRegistroRapido,
@@ -10,6 +12,8 @@ from .barcode_scanner import (
 )
 from .fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
 from . import categorias as gestor_categorias
+from .backup import BackupError, importar_datos, exportar_sqlite
+from .hilos import en_hilo
 from .resources import get_db_path
 
 
@@ -172,8 +176,111 @@ class Inventario(tk.Frame):
         frame_botones.pack(fill="x", pady=(15, 0))
         btn_actualizar = Button(frame_botones, text="🔄 Actualizar inventario", bg="#000CFF", fg="white", font="sans 14 bold", command=self.actualizar_inventario)
         btn_actualizar.pack(side="left", expand=True, fill="x", padx=(0, 8), ipady=6)
-        boton_eliminar = tk.Button(frame_botones, text="🗑️ Eliminar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.eliminar_producto)
+        boton_eliminar = tk.Button(frame_botones, text="🗑️ Eliminar", font="sans 14 bold", bg="#C0392B", fg="white", command=self.eliminar_producto)
         boton_eliminar.pack(side="left", expand=True, fill="x", ipady=6)
+
+        # Accesos rápidos a respaldo/restauración de la base de datos
+        frame_bd = tk.Frame(frame_derecha, bg="#C6D9E3")
+        frame_bd.pack(fill="x", pady=(8, 0))
+        self.btn_exportar_bd = tk.Button(
+            frame_bd, text="📤 Exportar base de datos…",
+            font="sans 12 bold", bg="#28A745", fg="white",
+            command=self.exportar_bd_rapido,
+        )
+        self.btn_exportar_bd.pack(side="left", expand=True, fill="x", padx=(0, 8), ipady=5)
+        self.btn_importar_bd = tk.Button(
+            frame_bd, text="📥 Importar base de datos…",
+            font="sans 12 bold", bg="#0078D4", fg="white",
+            command=self.importar_bd_rapido,
+        )
+        self.btn_importar_bd.pack(side="left", expand=True, fill="x", ipady=5)
+
+    # ------------------------------------------------------------------
+    # Respaldo / restauración rápida de la base de datos
+    # ------------------------------------------------------------------
+    def _ocupar_botones_bd(self, ocupado):
+        estado = "disabled" if ocupado else "normal"
+        self.btn_exportar_bd.config(
+            state=estado,
+            text="⏳ Exportando…" if ocupado else "📤 Exportar base de datos…",
+        )
+        self.btn_importar_bd.config(state=estado)
+
+    def exportar_bd_rapido(self):
+        """Exporta una copia .db completa eligiendo destino y nombre."""
+        ruta = filedialog.asksaveasfilename(
+            title="Exportar base de datos — SQLite",
+            defaultextension=".db",
+            initialfile=f"reyger_{datetime.now():%Y%m%d}.db",
+            filetypes=[("Base de datos SQLite", "*.db")],
+        )
+        if not ruta:
+            return
+
+        def al_terminar(final, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                messagebox.showerror(
+                    "Exportar base de datos", f"No se pudo exportar: {error}"
+                )
+                return
+            messagebox.showinfo(
+                "Exportar base de datos",
+                f"Exportación completada correctamente:\n{final}",
+            )
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, lambda: exportar_sqlite(ruta), al_terminar)
+
+    def importar_bd_rapido(self):
+        """Importa un respaldo (.db/.xlsx/.zip) con confirmación previa."""
+        filetypes = [
+            ("Bases compatibles (*.db *.xlsx *.zip)",
+             "*.db *.sqlite *.sqlite3 *.xlsx *.zip"),
+            ("Base de datos SQLite", "*.db *.sqlite *.sqlite3"),
+            ("Libro de Excel", "*.xlsx"),
+            ("CSV comprimido", "*.zip"),
+            ("Todos los ficheros", "*.*"),
+        ]
+        ruta = filedialog.askopenfilename(
+            title="Importar base de datos", filetypes=filetypes
+        )
+        if not ruta:
+            return
+
+        aviso = (
+            "Se SUSTITUIRÁ la base de datos completa por el fichero "
+            "seleccionado."
+            if os.path.splitext(ruta)[1].lower() in (".db", ".sqlite", ".sqlite3")
+            else "Se sustituirá el CONTENIDO de las tablas incluidas en el "
+                 "fichero seleccionado."
+        )
+        aviso += (
+            "\n\nAntes se guardará automáticamente una copia de seguridad "
+            "de la base actual.\n\n¿Desea continuar?"
+        )
+        if not messagebox.askyesno("Importar base de datos", aviso):
+            return
+
+        def al_terminar(resultado, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                messagebox.showerror(
+                    "Importar base de datos",
+                    str(error) if isinstance(error, BackupError)
+                    else f"No se pudo importar (no se cambió nada):\n{error}",
+                )
+                return
+            messagebox.showinfo(
+                "Importación completada",
+                "Base de datos importada correctamente.\n\n"
+                f"Copia de seguridad previa:\n{resultado.get('respaldo', '')}"
+                "\n\n⚠️ Reinicie la aplicación para que todos los módulos "
+                "vean los datos actualizados.",
+            )
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, lambda: importar_datos(ruta), al_terminar)
 
     def cargar_proveedores(self):
         try:
@@ -233,7 +340,7 @@ class Inventario(tk.Frame):
         Button(
             ventana, text="💾 Guardar proveedor", font="sans 13 bold",
             bg="#27AE60", fg="white", command=guardar_proveedor,
-        ).grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(20, 10), ipady=4)
+        ).grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
     
     def eje_consulta(self, consulta, parametros=()):
         with sqlite3.connect(self.db_name) as conn:

@@ -198,14 +198,14 @@ class DialogoAsignarCodigoBarras(tk.Toplevel):
         self.codigo_asignado = False
         
         # Frame principal
-        frame = tk.Frame(self, bg="#C5D9E3")
+        frame = tk.Frame(self, bg="#C6D9E3")
         frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Título
         titulo = tk.Label(
             frame,
             text=f"Asignar Código de Barras",
-            bg="#C5D9E3",
+            bg="#C6D9E3",
             font="sans 14 bold"
         )
         titulo.pack(pady=10)
@@ -214,7 +214,7 @@ class DialogoAsignarCodigoBarras(tk.Toplevel):
         info = tk.Label(
             frame,
             text=f"Producto: {nombre_producto}",
-            bg="#C5D9E3",
+            bg="#C6D9E3",
             font="sans 11",
             wraplength=350
         )
@@ -224,7 +224,7 @@ class DialogoAsignarCodigoBarras(tk.Toplevel):
         instruccion = tk.Label(
             frame,
             text="Escanee el código de barras o ingreselo manualmente:",
-            bg="#C5D9E3",
+            bg="#C6D9E3",
             font="sans 10"
         )
         instruccion.pack(pady=10)
@@ -236,7 +236,7 @@ class DialogoAsignarCodigoBarras(tk.Toplevel):
         self.entry_codigo.bind("<Return>", lambda e: self._guardar_codigo())
         
         # Botones
-        frame_botones = tk.Frame(frame, bg="#C5D9E3")
+        frame_botones = tk.Frame(frame, bg="#C6D9E3")
         frame_botones.pack(pady=15)
         
         btn_guardar = tk.Button(
@@ -352,24 +352,26 @@ class DialogoRegistroRapido(tk.Toplevel):
     def __init__(self, parent, codigo_barras, db_path):
         super().__init__(parent)
         self.title("Registrar producto nuevo")
-        self.resizable(False, False)
-        self.configure(bg="#C5D9E3")
+        self.geometry("480x320")
+        self.resizable(True, True)
+        self.minsize(440, 300)
+        self.configure(bg="#C6D9E3")
         self.resultado = None
         self.db_path = db_path
         self._codigo = codigo_barras
 
-        frame = tk.Frame(self, bg="#C5D9E3", padx=15, pady=10)
+        frame = tk.Frame(self, bg="#C6D9E3", padx=15, pady=10)
         frame.pack(fill="both", expand=True)
 
         tk.Label(
             frame, text=f"Código: {codigo_barras}",
-            bg="#C5D9E3", font="sans 12 bold",
+            bg="#C6D9E3", font="sans 12 bold",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         tk.Label(
             frame,
             text="Complete los datos mínimos; podrá editarlos después\n"
                  "en Inventario.",
-            bg="#C5D9E3", font="sans 9", justify="left",
+            bg="#C6D9E3", font="sans 9", justify="left",
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         campos = (
@@ -381,7 +383,7 @@ class DialogoRegistroRapido(tk.Toplevel):
         self.entradas = {}
         for fila, (etiqueta, clave) in enumerate(campos, start=2):
             tk.Label(
-                frame, text=etiqueta, bg="#C5D9E3", font="sans 11 bold",
+                frame, text=etiqueta, bg="#C6D9E3", font="sans 11 bold",
             ).grid(row=fila, column=0, sticky="e", padx=6, pady=4)
             entrada = ttk.Entry(frame, font="sans 12", width=24)
             entrada.grid(row=fila, column=1, sticky="ew", padx=6, pady=4)
@@ -389,7 +391,7 @@ class DialogoRegistroRapido(tk.Toplevel):
         self.entradas["stock"].insert(0, "1")
         self.entradas["nombre"].focus()
 
-        botones = tk.Frame(frame, bg="#C5D9E3")
+        botones = tk.Frame(frame, bg="#C6D9E3")
         botones.grid(row=6, column=0, columnspan=2, pady=(12, 0))
         tk.Button(
             botones, text="💾 Registrar", bg="#27AE60", fg="white",

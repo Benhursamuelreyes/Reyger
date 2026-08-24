@@ -301,11 +301,61 @@ def test_ventana_albaranes():
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def test_exportar_bd_desde_inventario():
+    print(f"\n{BOLD}{AZUL}[TEST 5] Exportar BD desde Inventario{RESET}")
+    from tkinter import messagebox
+    from reyger import inventario as mod_inventario
+    from reyger import db as mod_db
+
+    tmpdir, bd = preparar_bd("reyger_fix_expbd_")
+    destino = os.path.join(tmpdir, "copia.db")
+    mod_db.get_db_path = lambda: bd
+    mod_db._conexion = None
+    mod_inventario.Inventario.db_name = bd
+
+    with patch.object(messagebox, "showinfo"), \
+         patch.object(messagebox, "showwarning"), \
+         patch.object(mod_inventario.filedialog, "asksaveasfilename",
+                      return_value=destino), \
+         patch.object(messagebox, "showerror") as mock_error:
+        root = tk.Tk()
+        root.withdraw()
+        marco = mod_inventario.Inventario(root)
+        root.update()
+
+        chequear("Botones Exportar/Importar presentes en Inventario",
+                 hasattr(marco, "btn_exportar_bd")
+                 and hasattr(marco, "btn_importar_bd"))
+
+        marco.exportar_bd_rapido()
+        listo = bombear_hasta(
+            root,
+            lambda: os.path.exists(destino)
+            and str(marco.btn_exportar_bd["state"]) == "normal",
+        )
+        chequear("Copia .db creada por el hilo secundario", os.path.exists(destino))
+        chequear("Botón rehabilitado tras exportar",
+                 str(marco.btn_exportar_bd["state"]) == "normal")
+        chequear("Sin errores reportados", not mock_error.called)
+
+        # Cancelar el diálogo no debe bloquear ni deshabilitar nada
+        with patch.object(mod_inventario.filedialog, "asksaveasfilename",
+                          return_value=""):
+            marco.exportar_bd_rapido()
+            root.update()
+        chequear("Cancelar la exportación es inofensivo",
+                 str(marco.btn_exportar_bd["state"]) == "normal")
+
+        root.destroy()
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def main():
     test_formulario_producto_codigo_barras()
     test_crear_categoria_en_caliente()
     test_ticket_logo_y_tamanos()
     test_ventana_albaranes()
+    test_exportar_bd_desde_inventario()
 
     print()
     if FALLOS:

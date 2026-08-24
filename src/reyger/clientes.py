@@ -71,16 +71,15 @@ class Clientes(tk.Frame):
 
     # ------------------------------------------------------------------ UI
     def widgets(self):
-        frame_titulo = tk.Frame(self, bg="#2ECC71", height=80)
+        frame_titulo = tk.Frame(self, bg="#2ECC71")
         frame_titulo.pack(fill="x")
-        frame_titulo.pack_propagate(False)
         tk.Label(
             frame_titulo,
             text="👥 CLIENTES",
             bg="#2ECC71",
             fg="white",
             font=f"sans {self.config_manager.get_tamaño_fuente('titulo')} bold",
-        ).pack(pady=10)
+        ).pack(pady=14)
 
         frame_busqueda = tk.Frame(self, bg=self.colors["bg_principal"])
         frame_busqueda.pack(fill="x", padx=20, pady=(15, 5))
@@ -124,7 +123,7 @@ class Clientes(tk.Frame):
             padx=15,
             pady=10,
         )
-        frame_form.pack(side="left", fill="y", padx=(0, 15))
+        frame_form.pack(side="left", fill="both", padx=(0, 15))
 
         self.campos = {}
         filas = [
@@ -156,6 +155,9 @@ class Clientes(tk.Frame):
                 widget = ttk.Entry(frame_form, font="sans 11", width=30)
             widget.grid(row=fila, column=1, pady=4, sticky="ew")
             self.campos[clave] = widget
+
+        # Sin esto los campos no crecen al maximizar la ventana
+        frame_form.columnconfigure(1, weight=1)
 
         frame_botones_form = tk.Frame(
             frame_form, bg=self.colors["bg_principal"]

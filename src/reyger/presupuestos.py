@@ -82,10 +82,9 @@ class Presupuestos(tk.Frame):
     def widgets(self):
         """Crea los widgets de la ventana"""
         
-        # Frame superior con título
-        frame_titulo = tk.Frame(self, bg="#0078D4", height=80)
+        # Frame superior con título (alto dinámico según la fuente elegida)
+        frame_titulo = tk.Frame(self, bg="#0078D4")
         frame_titulo.pack(fill="x")
-        frame_titulo.pack_propagate(False)
         
         titulo = tk.Label(
             frame_titulo,
@@ -94,7 +93,7 @@ class Presupuestos(tk.Frame):
             fg="white",
             font=f"sans {self.config_manager.get_tamaño_fuente('titulo')} bold"
         )
-        titulo.pack(pady=10)
+        titulo.pack(pady=14)
         
         # Frame principal dividido en dos: Arriba (entrada) y Abajo (lista)
         # PARTE SUPERIOR: Datos del presupuesto
@@ -188,15 +187,19 @@ class Presupuestos(tk.Frame):
         
         scrollbar = ttk.Scrollbar(frame_tabla, orient="vertical")
         scrollbar.pack(side="right", fill="y")
+        scrollbar_x = ttk.Scrollbar(frame_tabla, orient="horizontal")
+        scrollbar_x.pack(side="bottom", fill="x")
         
         self.tree = ttk.Treeview(
             frame_tabla,
             columns=("Producto", "Cantidad", "Precio", "Subtotal"),
             show="headings",
             height=8,
-            yscrollcommand=scrollbar.set
+            yscrollcommand=scrollbar.set,
+            xscrollcommand=scrollbar_x.set
         )
         scrollbar.config(command=self.tree.yview)
+        scrollbar_x.config(command=self.tree.xview)
         
         self.tree.heading("Producto", text="Producto")
         self.tree.heading("Cantidad", text="Cantidad")

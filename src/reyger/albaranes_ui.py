@@ -50,7 +50,7 @@ class VentanaAlbaranes(Toplevel):
             self, text="Albaranes registrados",
             font="sans 14 bold", bg="#C6D9E3",
         )
-        frame_listado.pack(fill="both", expand=True, padx=15, pady=(15, 8))
+        frame_listado.pack(fill="both", expand=True, padx=15, pady=(15, 10))
 
         columnas = ("numero", "fecha", "cliente", "estado")
         self.tree = ttk.Treeview(frame_listado, columns=columnas, show="headings", height=7)
@@ -85,7 +85,7 @@ class VentanaAlbaranes(Toplevel):
         Button(
             frame_estados, text="📂 Abrir PDFs", font="sans 12 bold",
             bg="#0078D4", fg="white", command=self.abrir_carpeta,
-        ).pack(fill="x", pady=(20, 4))
+        ).pack(fill="x", pady=(10, 4))
 
         # Formulario de creación
         frame_nuevo = LabelFrame(
@@ -145,7 +145,7 @@ class VentanaAlbaranes(Toplevel):
         scroll_lineas.pack(side="left", fill="y")
 
         frame_acciones = tk.Frame(frame_nuevo, bg="#C6D9E3")
-        frame_acciones.pack(fill="x", padx=10, pady=(0, 12))
+        frame_acciones.pack(fill="x", padx=10, pady=(0, 10))
         Button(
             frame_acciones, text="🗑 Quitar línea", font="sans 11 bold",
             bg="#95A5A6", fg="white", command=self.quitar_linea,

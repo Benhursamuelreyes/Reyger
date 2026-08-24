@@ -39,10 +39,9 @@ class Ajustes(tk.Frame):
     def widgets(self):
         """Crea los widgets de la ventana de ajustes"""
         
-        # Frame superior con título
-        frame_titulo = tk.Frame(self, bg="#0078D4", height=80)
+        # Frame superior con título (alto dinámico según la fuente elegida)
+        frame_titulo = tk.Frame(self, bg="#0078D4")
         frame_titulo.pack(fill="x")
-        frame_titulo.pack_propagate(False)
         
         titulo = tk.Label(
             frame_titulo, 
@@ -51,7 +50,7 @@ class Ajustes(tk.Frame):
             fg="white",
             font=f"sans {self.config_manager.get_tamaño_fuente('titulo')} bold"
         )
-        titulo.pack(pady=10)
+        titulo.pack(pady=14)
         
         # Frame principal con scroll vertical (el contenido excede la
         # altura de la ventana en pantallas pequeñas)
@@ -337,7 +336,7 @@ class Ajustes(tk.Frame):
             bg=self.colors["entry_bg"],
             fg=self.colors["entry_fg"],
             font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
-            width=50
+            width=40
         )
         self.entry_nombre.insert(0, self.config_manager.get("nombre_empresa"))
         self.entry_nombre.pack(anchor="w", padx=20, pady=(0, 15), ipady=5)
@@ -423,10 +422,16 @@ class Ajustes(tk.Frame):
             values=impresoras,
             state="readonly",
             font=f"sans {self.config_manager.get_tamaño_fuente()}",
-            width=45
+            width=38
         )
         actual = self.config_manager.get("impresora_termica")
-        if actual in impresoras:
+        if actual and actual not in impresoras:
+            # Guardada pero hoy no conectada: se conserva y se avisa,
+            # en vez de borrarla silenciosamente al guardar.
+            etiqueta = f"{actual} (no detectada)"
+            self.combo_impresora["values"] = impresoras + [etiqueta]
+            self.combo_impresora.set(etiqueta)
+        elif actual in impresoras:
             self.combo_impresora.set(actual)
         else:
             self.combo_impresora.current(0)
@@ -497,7 +502,7 @@ class Ajustes(tk.Frame):
 
     def imprimir_pagina_prueba(self):
         """Envía un ticket de ejemplo a la impresora seleccionada."""
-        impresora = self.combo_impresora.get()
+        impresora = self.combo_impresora.get().removesuffix(" (no detectada)")
         if impresora == "(Desactivada)":
             messagebox.showwarning(
                 "Impresora térmica",
@@ -937,8 +942,9 @@ class Ajustes(tk.Frame):
                 "mostrar_hora": self.var_hora.get(),
                 "redondear_decimales": self.var_decimales.get(),
                 "impresora_termica": (
-                    None if self.combo_impresora.get() == "(Desactivada)"
-                    else self.combo_impresora.get()
+                    None
+                    if self.combo_impresora.get() in ("", "(Desactivada)")
+                    else self.combo_impresora.get().removesuffix(" (no detectada)")
                 ),
                 "ancho_ticket": int(self.var_ancho_ticket.get()),
                 "letra_ticket": next(
