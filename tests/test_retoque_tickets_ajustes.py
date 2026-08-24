@@ -78,8 +78,8 @@ def test_escalas_ticket():
         chequear(f"«{clave}»: ninguna línea supera {ticket.columnas} columnas",
                  not excede, str(excede[:2]))
 
-    chequear("Letra desconocida cae a «grande»",
-             TicketTermico(letra="inventada").letra == "grande")
+    chequear("Letra desconocida cae a «muy_grande»",
+             TicketTermico(letra="inventada").letra == "muy_grande")
     chequear("«muy_grande» parte el ancho en dos (80 mm → 21)",
              TicketTermico(ancho=42, letra="muy_grande").columnas == 21)
 
@@ -134,8 +134,8 @@ def test_defaults_config():
         gestor = mod_config.ConfigManager()
         chequear("ancho_ticket por defecto 80",
                  gestor.get("ancho_ticket") == 80)
-        chequear("letra_ticket por defecto «grande»",
-                 gestor.get("letra_ticket") == "grande")
+        chequear("letra_ticket por defecto «muy_grande»",
+                 gestor.get("letra_ticket") == "muy_grande")
     finally:
         mod_config.get_user_data_path = original_path
         shutil.rmtree(tmpdir, ignore_errors=True)

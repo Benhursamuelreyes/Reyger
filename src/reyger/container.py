@@ -10,6 +10,7 @@ from .inventario import Inventario
 from .clientes import Clientes
 from .ajustes import Ajustes
 from .presupuestos import Presupuestos
+from .albaranes_ui import VentanaAlbaranes
 from .config import ConfigManager
 from .resources import get_bundled_path
 
@@ -91,6 +92,15 @@ class Container(tk.Frame):
     def presupuestos(self):
         self.show_frames(Presupuestos)
 
+    def albaranes(self):
+        ventana = getattr(self, "_ventana_albaranes", None)
+        if ventana is not None and bool(ventana.winfo_exists()):
+            ventana.deiconify()
+            ventana.lift()
+            ventana.focus_set()
+            return
+        self._ventana_albaranes = VentanaAlbaranes(self.winfo_toplevel())
+
     def ajustes(self):
         self.show_frames(Ajustes)
 
@@ -156,6 +166,7 @@ class Container(tk.Frame):
             ("Inventario", "#c62e26", "white", self.inventario),
             ("Clientes", "#2ECC71", "white", self.clientes),
             ("Presupuestos", "#9B59B6", "white", self.presupuestos),
+            ("Albaranes", "#E67E22", "white", self.albaranes),
             ("Ajustes", "#17A2B8", "white", self.ajustes),
         ]
         for texto, bg, fg, comando in botones:

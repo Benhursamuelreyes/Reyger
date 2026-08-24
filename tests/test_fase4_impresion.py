@@ -120,11 +120,24 @@ def test_constructor_ticket():
         cliente="Ana García",
         empresa="Bar Los Robles",
         ancho=ANCHO_80MM,
+        letra="grande",
     )
 
     chequear("El ticket son bytes", isinstance(datos, bytes))
     chequear("Comienza con init ESC/POS", datos.startswith(INICIO))
     chequear("Termina con corte parcial", datos.endswith(CORTE_PARCIAL))
+
+    # El cuerpo por defecto es «muy grande» y el encabezado va un paso
+    # por encima (reclamo de campo: el texto salía demasiado pequeño).
+    por_defecto = construir_ticket_venta(1, "hoy", [("x", 1, 1, 1)], 1)
+    chequear(
+        "Cuerpo por defecto doble ancho y alto («muy grande»)",
+        b"\x1d!\x11" in por_defecto,
+    )
+    chequear(
+        "Encabezado de empresa más grande que el cuerpo",
+        b"\x1d!\x22" in por_defecto,
+    )
 
     lineas = decodificar_lineas(datos)
     texto = "\n".join(lineas)
@@ -152,7 +165,7 @@ def test_constructor_ticket():
     nombre_largo = "Producto con un nombre extraordinariamente largo para el papel"
     datos_largos = construir_ticket_venta(
         numero_factura=1, fecha="hoy", productos=[(nombre_largo, 1.0, 1, 1.0)],
-        total=1.0, ancho=ANCHO_58MM,
+        total=1.0, ancho=ANCHO_58MM, letra="pequena",
     )
     lineas_largas = decodificar_lineas(datos_largos)
     excedidas = [
@@ -243,13 +256,13 @@ def test_integracion_ventas():
 
         def ticket_falso(numero_factura, fecha, productos, total, base=None,
                          cuota=None, metodo_pago="Efectivo", cliente=None,
-                         empresa="Mi Empresa", ancho=ANCHO_80MM, letra="grande",
-                         impresora=None):
+                         empresa="Mi Empresa", ancho=ANCHO_80MM,
+                         letra="muy_grande", impresora=None, logo=None):
             capturas.update({
                 "numero": numero_factura, "total": total, "base": base,
                 "cuota": cuota, "metodo": metodo_pago, "cliente": cliente,
                 "empresa": empresa, "ancho": ancho, "letra": letra,
-                "impresora": impresora,
+                "impresora": impresora, "logo": logo,
                 "productos": list(productos),
             })
             return True, "ok"
@@ -289,6 +302,10 @@ def test_integracion_ventas():
             chequear("Cuota correcta", abs(capturas["cuota"] - 0.40) < 0.01)
             chequear("Impresora configurada usada", capturas["impresora"] == "Termica-Test")
             chequear("Empresa del ticket correcta", capturas["empresa"] == "Bar Los Robles")
+            chequear(
+                "Logo resuelto para el ticket",
+                bool(capturas["logo"]) and capturas["logo"].endswith("logo.png"),
+            )
             chequear(
                 "Producto incluido",
                 any(p[0] == "Café" for p in capturas["productos"]),

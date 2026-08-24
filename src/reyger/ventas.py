@@ -10,7 +10,7 @@ import datetime
 import os
 import time
 
-from .resources import get_db_path, get_output_path, open_file
+from .resources import get_db_path, get_output_path, open_file, get_bundled_path
 from .config import ConfigManager
 from .hilos import en_hilo
 from .barcode_scanner import (
@@ -28,6 +28,17 @@ from .impresion_termica import (
     ANCHO_80MM,
     imprimir_ticket_venta,
 )
+
+
+def _resolver_logo(config):
+    """Ruta del logo para el ticket: el personalizado o el integrado."""
+    ruta = config.get("logo_path")
+    if ruta and os.path.exists(ruta):
+        return ruta
+    integrado = get_bundled_path(os.path.join("assets", "img", "logo.png"))
+    if os.path.exists(integrado):
+        return integrado
+    return None
 
 
 class Ventas(tk.Frame):
@@ -727,14 +738,15 @@ class Ventas(tk.Frame):
         if not impresora:
             return
         ancho = ANCHO_58MM if config.get("ancho_ticket") == 58 else ANCHO_80MM
-        letra = config.get("letra_ticket", "grande")
+        letra = config.get("letra_ticket", "muy_grande")
         empresa = config.get("nombre_empresa", "Mi Empresa")
+        logo = _resolver_logo(config)
 
         def trabajo():
             return imprimir_ticket_venta(
                 numero_factura, fecha, productos, total, base, cuota,
                 metodo_pago, cliente, empresa=empresa, ancho=ancho,
-                letra=letra, impresora=impresora,
+                letra=letra, impresora=impresora, logo=logo,
             )
 
         def al_terminar(resultado, error):

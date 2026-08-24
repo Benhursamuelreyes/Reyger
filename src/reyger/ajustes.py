@@ -14,7 +14,7 @@ from .impresion_termica import (
     enviar_bytes,
     listar_impresoras_termicas,
 )
-from .resources import get_user_data_path
+from .resources import get_user_data_path, get_bundled_path
 
 #: Etiquetas visibles del selector de letra ↔ claves de ESCALAS_LETRA
 ETIQUETAS_LETRA = {
@@ -470,7 +470,7 @@ class Ajustes(tk.Frame):
 
         self.var_letra_ticket = tk.StringVar(
             value=ETIQUETAS_LETRA.get(
-                self.config_manager.get("letra_ticket", "grande"), "Grande"
+                self.config_manager.get("letra_ticket", "muy_grande"), "Muy grande"
             )
         )
         self.combo_letra_ticket = ttk.Combobox(
@@ -509,6 +509,14 @@ class Ajustes(tk.Frame):
             clave for clave, etiqueta in ETIQUETAS_LETRA.items()
             if etiqueta == self.var_letra_ticket.get()
         )
+        logo = None
+        ruta_logo = self.config_manager.get("logo_path")
+        if ruta_logo and os.path.exists(ruta_logo):
+            logo = ruta_logo
+        else:
+            integrado = get_bundled_path(os.path.join("assets", "img", "logo.png"))
+            if os.path.exists(integrado):
+                logo = integrado
         datos = construir_ticket_venta(
             numero_factura="PRUEBA",
             fecha="01/01/2026 12:00",
@@ -520,6 +528,7 @@ class Ajustes(tk.Frame):
             empresa=self.entry_nombre.get() or "Mi Empresa",
             ancho=ancho,
             letra=letra,
+            logo=logo,
         )
         if enviar_bytes(datos, None if impresora == "" else impresora):
             messagebox.showinfo(
@@ -963,7 +972,7 @@ class Ajustes(tk.Frame):
                 "escaner_activo": False,
                 "impresora_termica": None,
                 "ancho_ticket": 80,
-                "letra_ticket": "grande"
+                "letra_ticket": "muy_grande"
             }
             
             self.config_manager.config_data = default_config
@@ -978,7 +987,7 @@ class Ajustes(tk.Frame):
             self.var_decimales.set(2)
             self.combo_impresora.current(0)
             self.var_ancho_ticket.set(80)
-            self.var_letra_ticket.set(ETIQUETAS_LETRA["grande"])
+            self.var_letra_ticket.set(ETIQUETAS_LETRA["muy_grande"])
             self.logo_label.config(image="", text="📷\nSin logo")
             self.logo_image_preview = None
             

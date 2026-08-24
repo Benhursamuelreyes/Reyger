@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.2-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.3-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -177,6 +177,33 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v3.0.0-beta.3 — 2026-08-24
+
+**Corregido — Reporte de campo de la beta.2**
+
+- **Ticket térmico legible**: el cuerpo del ticket se imprime por
+  defecto en escala «muy grande» (doble ancho y alto) y el nombre de
+  la empresa va siempre un paso por encima; configurable en
+  **Ajustes → Tamaño de letra del ticket**.
+- **Logotipo impreso en el ticket**: el logo configurado (o el
+  integrado, si no hay uno personalizado) se rasteriza a blanco y
+  negro puro (comando ESC/POS `GS v 0`) y sale centrado sobre el
+  encabezado, respetando el ancho del cabezal en papel de 80 y 58 mm.
+- **Código de barras en el formulario de productos**: nuevo campo en
+  el alta y en la edición; valida duplicados antes de guardar y se
+  persiste en la columna `codigo_barras`.
+- **Selector de categorías reparado**: ahora es de solo lectura con
+  valores garantizados (recrea «General» si la tabla quedó vacía) y
+  tiene botón «➕» que abre un diálogo modal para crear una categoría
+  nueva que queda seleccionada al instante — también dentro del
+  diálogo de edición.
+- **Módulo Albaranes visible**: nuevo botón «Albaranes» en la pantalla
+  principal. La ventana lista los albaranes guardados, propone número
+  correlativo, autocompleta la dirección desde el cliente, permite
+  añadir líneas de producto, genera el PDF y registra todo en la base
+  de datos, con cambio de estado (Abierto/Entregado/Rechazado) y
+  acceso rápido a la carpeta de PDFs.
 
 ### v3.0.0-beta.2 — 2026-08-23
 

@@ -23,7 +23,7 @@ class ConfigManager:
             "redondear_decimales": 2,
             "escaner_activo": False,
             "ancho_ticket": 80,
-            "letra_ticket": "grande",
+            "letra_ticket": "muy_grande",
         }
         if os.path.exists(self.config_file):
             try:

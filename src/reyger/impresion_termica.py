@@ -12,11 +12,15 @@ retroceso a CP437 si la impresora no lo soporta.
 """
 
 import glob
+import os
 import platform
 import subprocess
 
 ANCHO_80MM = 42
 ANCHO_58MM = 32
+
+#: Puntos imprimibles de ancho según el papel (cabezal térmico estándar).
+PUNTOS_POR_ANCHO = {ANCHO_80MM: 576, ANCHO_58MM: 384}
 
 INICIO = b"\x1b@"
 IZQUIERDA = b"\x1ba\x00"
@@ -34,6 +38,17 @@ ESCALAS_LETRA = {
     "grande": b"\x1d!\x01",      # doble altura, mismos caracteres por línea
     "muy_grande": b"\x1d!\x11",  # doble ancho y alto
 }
+
+#: Escala del nombre de la empresa: siempre un paso mayor que el cuerpo
+#: para que el encabezado destaque sobre los productos.
+ESCALA_ENCABEZADO = {
+    "pequena": b"\x1d!\x11",     # 2×2
+    "grande": b"\x1d!\x21",      # 2×3
+    "muy_grande": b"\x1d!\x22",  # 3×3
+}
+
+#: Multiplicador horizontal de la escala del encabezado.
+MULTIPLICADOR_ENCABEZADO = {"pequena": 2, "grande": 2, "muy_grande": 3}
 
 
 def _codificar(texto):
@@ -61,34 +76,101 @@ def _fila_dos_columnas(izquierda, derecha, ancho):
     return _linea(izquierda + " " * max(espacio, 0) + derecha)
 
 
+def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
+    """Convierte una imagen en mapa de bits ESC/POS (comando ``GS v 0``).
+
+    El resultado es blanco y negro puro: primero se compone la imagen
+    sobre fondo blanco (para que las transparencias no salgan negras),
+    se reescala al ancho del cabezal y se umbraliza sin grises, porque
+    los térmicos imprimen los grises como manchas.
+
+    Devuelve los bytes del comando listo para enviar o ``None`` si no
+    hay Pillow, la imagen no existe o falla el procesado.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        imagen = Image.open(ruta)
+        if imagen.mode != "RGBA":
+            imagen = imagen.convert("RGBA")
+        fondo = Image.new("RGBA", imagen.size, (255, 255, 255, 255))
+        imagen = Image.alpha_composite(fondo, imagen).convert("L")
+
+        escala = min(
+            puntos_ancho / imagen.width,
+            puntos_alto_max / imagen.height,
+        )
+        nuevo_tamano = (
+            max(1, int(imagen.width * escala)),
+            max(1, int(imagen.height * escala)),
+        )
+        imagen = imagen.resize(nuevo_tamano, Image.LANCZOS)
+
+        # Umbral fijo -> 1 bit real (negro o blanco, nada intermedio)
+        imagen = imagen.point(lambda p: 255 if p >= 128 else 0).convert("1")
+
+        fila_bytes = (imagen.width + 7) // 8
+        datos = bytearray()
+        pixeles = imagen.load()
+        for y in range(imagen.height):
+            fila = bytearray(fila_bytes)
+            for x in range(imagen.width):
+                if not pixeles[x, y]:  # 0 = negro en modo "1"
+                    fila[x // 8] |= 0x80 >> (x % 8)
+            datos += fila
+        if not datos:
+            return None
+
+        cabecera = b"\x1dv\x00" + bytes((
+            fila_bytes & 0xFF, (fila_bytes >> 8) & 0xFF,
+            imagen.height & 0xFF, (imagen.height >> 8) & 0xFF,
+        ))
+        return cabecera + bytes(datos)
+    except Exception:
+        return None
+
+
 class TicketTermico:
     """Constructor de tickets ESC/POS.
 
     *letra* elige el tamaño del cuerpo entre las claves de
     :data:`ESCALAS_LETRA` («pequena», «grande», «muy_grande»); por
-    defecto «grande» (doble altura) para que el texto sea legible sin
-    perder caracteres por línea.
+    defecto «muy_grande» (doble ancho y alto) para que el texto sea
+    legible de un vistazo. *logo* es la ruta opcional de una imagen que
+    se imprime rasterizada sobre el nombre de la empresa.
     """
 
-    def __init__(self, ancho=ANCHO_80MM, empresa="Mi Empresa", letra="grande"):
+    def __init__(self, ancho=ANCHO_80MM, empresa="Mi Empresa",
+                 letra="muy_grande", logo=None):
         self.ancho = ancho
         self.empresa = empresa
         if letra not in ESCALAS_LETRA:
-            letra = "grande"
+            letra = "muy_grande"
         self.letra = letra
         # Con doble ancho caben la mitad de caracteres por línea
         multiplicador = 2 if letra == "muy_grande" else 1
         self.columnas = max(16, self.ancho // multiplicador)
+        mult_encabezado = MULTIPLICADOR_ENCABEZADO[letra]
+        self.columnas_encabezado = max(6, self.ancho // mult_encabezado)
         self._fuente_cuerpo = ESCALAS_LETRA[letra]
+        self._escala_encabezado = ESCALA_ENCABEZADO[letra]
+        self.logo_ruta = logo if logo and os.path.exists(logo) else None
+        self.puntos_ancho = PUNTOS_POR_ANCHO.get(ancho, 576)
         self._partes = [INICIO, self._fuente_cuerpo]
 
     # ---------------------------------------------------------- bloques
     def encabezado(self):
+        if self.logo_ruta is not None:
+            raster = _rasterizar_logo(self.logo_ruta, self.puntos_ancho)
+            if raster is not None:
+                self._partes += [CENTRO, raster, b"\n"]
         self._partes += [
             CENTRO,
-            DOBLE,
+            self._escala_encabezado,
             NEGRITA_ON,
-            _linea(self.empresa.upper()[: self.columnas]),
+            _linea(self.empresa.upper()[: self.columnas_encabezado]),
             self._fuente_cuerpo,
             NEGRITA_OFF,
             _linea("RECIBO DE VENTA"),
@@ -177,15 +259,17 @@ def construir_ticket_venta(
     cliente=None,
     empresa="Mi Empresa",
     ancho=ANCHO_80MM,
-    letra="grande",
+    letra="muy_grande",
+    logo=None,
 ):
     """Genera los bytes del ticket completo de una venta.
 
     *productos* es una secuencia de tuplas
     ``(nombre, precio, cantidad, subtotal[, ...])`` tal y como las
-    produce el módulo de ventas.
+    produce el módulo de ventas. *logo* es una ruta de imagen opcional
+    que se imprime rasterizada en el encabezado.
     """
-    ticket = TicketTermico(ancho=ancho, empresa=empresa, letra=letra)
+    ticket = TicketTermico(ancho=ancho, empresa=empresa, letra=letra, logo=logo)
     ticket.encabezado().info(numero_factura, fecha, cliente).separador()
     for producto in productos:
         nombre, precio, cantidad, subtotal = producto[0], producto[1], producto[2], producto[3]
@@ -367,11 +451,11 @@ def _enviar_posix(datos, impresora):
 def imprimir_ticket_venta(numero_factura, fecha, productos, total, base=None,
                           cuota=None, metodo_pago="Efectivo", cliente=None,
                           empresa="Mi Empresa", ancho=ANCHO_80MM,
-                          letra="grande", impresora=None):
+                          letra="muy_grande", impresora=None, logo=None):
     """Construye y envía el ticket. Devuelve (ok, mensaje)."""
     datos = construir_ticket_venta(
         numero_factura, fecha, productos, total, base, cuota,
-        metodo_pago, cliente, empresa, ancho, letra,
+        metodo_pago, cliente, empresa, ancho, letra, logo,
     )
     if enviar_bytes(datos, impresora):
         return True, "Ticket impreso correctamente"

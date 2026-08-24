@@ -9,6 +9,7 @@ from .barcode_scanner import (
     EscanerCodigoBarras,
 )
 from .fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
+from . import categorias as gestor_categorias
 from .resources import get_db_path
 
 
@@ -78,17 +79,30 @@ class Inventario(tk.Frame):
 
         lblCategoria = Label(labelFrame, text="Categoría: ", font="sans 14 bold", bg="#C6D9E3")
         lblCategoria.grid(row=6, column=0, sticky="e", padx=10, pady=10)
-        self.categoria = ttk.Combobox(labelFrame, font="sans 14 bold")
-        self.categoria.grid(row=6, column=1, sticky="ew", padx=10, pady=10)
+        frame_categoria = tk.Frame(labelFrame, bg="#C6D9E3")
+        frame_categoria.grid(row=6, column=1, sticky="ew", padx=10, pady=10)
+        self.categoria = ttk.Combobox(frame_categoria, font="sans 14 bold", state="readonly")
+        self.categoria.pack(side="left", fill="x", expand=True)
+        btn_nueva_categoria = tk.Button(
+            frame_categoria, text="➕", font="sans 13 bold",
+            bg="#17A2B8", fg="white",
+            command=lambda: self.crear_categoria_dialogo(self.categoria),
+        )
+        btn_nueva_categoria.pack(side="left", padx=(6, 0))
         self.cargar_categorias()
+
+        lblCodigo = Label(labelFrame, text="Código de barras: ", font="sans 14 bold", bg="#C6D9E3")
+        lblCodigo.grid(row=7, column=0, sticky="e", padx=10, pady=10)
+        self.codigo_barras = ttk.Entry(labelFrame, font="sans 14 bold")
+        self.codigo_barras.grid(row=7, column=1, sticky="ew", padx=10, pady=10)
 
         labelFrame.columnconfigure(1, weight=1)
 
         boton_agregar = tk.Button(labelFrame, text="➕ Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
-        boton_agregar.grid(row=7, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
+        boton_agregar.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
 
         boton_editar = tk.Button(labelFrame, text="✏️ Editar", font="sans 14 bold", bg="#0000FF", fg="white", command=self.editar_producto)
-        boton_editar.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=10, ipady=4)
+        boton_editar.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=10, ipady=4)
 
         # Listado (derecha)
         frame_derecha = tk.Frame(frame2, bg="#C6D9E3")
@@ -247,14 +261,63 @@ class Inventario(tk.Frame):
             nombres = [fila[0] for fila in filas]
         except sqlite3.Error:
             nombres = ["General"]
+        if not nombres:
+            gestor_categorias.crear("General")
+            nombres = ["General"]
         if hasattr(self, "categoria"):
             self.categoria["values"] = nombres
-            if not self.categoria.get():
-                self.categoria.set("General")
+            if self.categoria.get() not in nombres:
+                self.categoria.set(nombres[0])
         if hasattr(self, "filtro_categoria"):
             self.filtro_categoria["values"] = ["Todas"] + nombres
             if not self.filtro_categoria.get():
                 self.filtro_categoria.set("Todas")
+
+    def crear_categoria_dialogo(self, combo):
+        """Diálogo modal para crear una categoría y dejarla seleccionada."""
+        dialogo = Toplevel(self)
+        dialogo.title("Crear nueva categoría")
+        dialogo.geometry("380x180")
+        dialogo.resizable(False, False)
+        dialogo.config(bg="#C6D9E3")
+        dialogo.transient(self.winfo_toplevel())
+        dialogo.grab_set()
+
+        Label(
+            dialogo, text="Nombre de la categoría:",
+            font="sans 13 bold", bg="#C6D9E3",
+        ).pack(pady=(20, 6))
+        entry_nombre = Entry(dialogo, font="sans 14 bold")
+        entry_nombre.pack(ipadx=30, ipady=3)
+        entry_nombre.focus_set()
+
+        def guardar():
+            try:
+                nueva_id = gestor_categorias.crear(entry_nombre.get())
+            except ValueError as exc:
+                messagebox.showwarning("Crear categoría", str(exc), parent=dialogo)
+                return
+            if nueva_id is None:
+                messagebox.showwarning(
+                    "Crear categoría",
+                    "Ya existe una categoría con ese nombre.",
+                    parent=dialogo,
+                )
+                return
+            self.cargar_categorias()
+            combo.set(entry_nombre.get().strip())
+            messagebox.showinfo(
+                "Crear categoría", "Categoría creada correctamente.", parent=dialogo
+            )
+            dialogo.destroy()
+
+        entry_nombre.bind("<Return>", lambda _evento: guardar())
+        Button(
+            dialogo, text="Guardar", font="sans 13 bold",
+            bg="#000CFF", fg="white", command=guardar,
+        ).pack(pady=(16, 0), ipadx=24, ipady=2)
+
+        dialogo.wait_window()
 
     def aplicar_filtro(self):
         for item in self.tre.get_children():
@@ -380,9 +443,20 @@ class Inventario(tk.Frame):
         costo = self.costo.get().strip().replace(",", ".")
         stock = self.stock.get()
         tipo_iva = normalizar_tipo_iva(self.iva.get())
+        codigo = self.codigo_barras.get().strip()
 
         if self.validacion(nombre, prov, precio, costo, stock) and tipo_iva is not None:
             try:
+                if codigo:
+                    duplicado = self.eje_consulta(
+                        "SELECT id FROM inventario WHERE codigo_barras = ?", (codigo,)
+                    ).fetchone()
+                    if duplicado:
+                        messagebox.showwarning(
+                            title="Código duplicado",
+                            message=f"El código «{codigo}» ya está asignado a otro producto.",
+                        )
+                        return
                 fila_proveedor = self.eje_consulta(
                     "SELECT id FROM proveedores WHERE nombre = ?", (prov,)
                 ).fetchone()
@@ -394,9 +468,13 @@ class Inventario(tk.Frame):
                 categoria_id = fila_categoria[0] if fila_categoria else None
                 consulta = (
                     "INSERT INTO inventario (nombre, proveedor, precio, costo,"
-                    " stock, proveedor_id, tipo_iva, categoria_id) VALUES(?,?,?,?,?,?,?,?)"
+                    " stock, proveedor_id, tipo_iva, categoria_id, codigo_barras)"
+                    " VALUES(?,?,?,?,?,?,?,?,?)"
                 )
-                parametros = (nombre, prov, precio, costo, stock, proveedor_id, tipo_iva, categoria_id)
+                parametros = (
+                    nombre, prov, precio, costo, stock,
+                    proveedor_id, tipo_iva, categoria_id, codigo or None,
+                )
                 self.eje_consulta(consulta, parametros)
                 self.actualizar_inventario()
                 self.nombre.delete(0, END)
@@ -404,6 +482,7 @@ class Inventario(tk.Frame):
                 self.precio.delete(0, END)
                 self.costo.delete(0, END)
                 self.stock.delete(0, END)
+                self.codigo_barras.delete(0, END)
                 self.iva.set(f"{IVA_POR_DEFECTO:g}%")
                 self.categoria.set("General")
             except Exception as e:
@@ -421,7 +500,9 @@ class Inventario(tk.Frame):
         item_values = self.tre.item(seleccion)["values"]
         
         db_row = self.eje_consulta(
-            "SELECT precio, costo, tipo_iva, categoria_id FROM inventario WHERE id = ?", (item_id,)
+            "SELECT precio, costo, tipo_iva, categoria_id, codigo_barras"
+            " FROM inventario WHERE id = ?",
+            (item_id,),
         ).fetchone()
         if db_row is None:
             messagebox.showwarning("Editar producto", "Producto no encontrado")
@@ -433,9 +514,9 @@ class Inventario(tk.Frame):
         
         ventana_editar = Toplevel(self)
         ventana_editar.title("Editar producto")
-        ventana_editar.geometry("480x520")
+        ventana_editar.geometry("520x620")
         ventana_editar.resizable(True, True)
-        ventana_editar.minsize(440, 480)
+        ventana_editar.minsize(480, 580)
         ventana_editar.config(bg="#C6D9E3")
         
         lbl_nombre = Label(ventana_editar, text="Nombre:", font="sans 14 bold", bg="#C6D9E3")
@@ -479,15 +560,30 @@ class Inventario(tk.Frame):
 
         lbl_categoria = Label(ventana_editar, text="Categoría:", font="sans 14 bold", bg="#C6D9E3")
         lbl_categoria.grid(row=6, column=0, padx=10, pady=10)
+        frame_cat = tk.Frame(ventana_editar, bg="#C6D9E3")
+        frame_cat.grid(row=6, column=1, padx=10, pady=10)
         combo_categoria = ttk.Combobox(
-            ventana_editar, font="sans 14 bold",
+            frame_cat, font="sans 14 bold", state="readonly",
             values=[n for _, n in self._categorias_disponibles()],
         )
         fila_cat = self.eje_consulta(
             "SELECT nombre FROM categorias WHERE id = ?", (categoria_actual,)
         ).fetchone() if categoria_actual else None
         combo_categoria.set(fila_cat[0] if fila_cat else "General")
-        combo_categoria.grid(row=6, column=1, padx=10, pady=10)
+        combo_categoria.pack(side="left", fill="x", expand=True)
+        btn_nueva_cat = tk.Button(
+            frame_cat, text="➕", font="sans 13 bold",
+            bg="#17A2B8", fg="white",
+            command=lambda: self.crear_categoria_dialogo(combo_categoria),
+        )
+        btn_nueva_cat.pack(side="left", padx=(6, 0))
+
+        lbl_codigo = Label(ventana_editar, text="Código de barras:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_codigo.grid(row=7, column=0, padx=10, pady=10)
+        entry_codigo = Entry(ventana_editar, font="sans 14 bold")
+        entry_codigo.grid(row=7, column=1, padx=10, pady=10)
+        if db_row[4]:
+            entry_codigo.insert(0, db_row[4])
 
         def guardar_cambio():
             nombre = entry_nombre.get()
@@ -497,6 +593,7 @@ class Inventario(tk.Frame):
             stock = entry_stock.get()
             tipo_iva = normalizar_tipo_iva(combo_iva.get())
             categoria_elegida = combo_categoria.get()
+            codigo_nuevo = entry_codigo.get().strip()
 
             if not (nombre and proveedor and precio and costo and stock):
                 messagebox.showwarning("Guardar cambios", "Rellene todos los campos.")
@@ -514,6 +611,18 @@ class Inventario(tk.Frame):
                 messagebox.showwarning("Guardar cambios", "Ingrese valores numéricos válidos para precio de venta, precio de costo y stock")
                 return
 
+            if codigo_nuevo:
+                duplicado = self.eje_consulta(
+                    "SELECT id FROM inventario WHERE codigo_barras = ? AND id != ?",
+                    (codigo_nuevo, item_id),
+                ).fetchone()
+                if duplicado:
+                    messagebox.showwarning(
+                        "Guardar cambios",
+                        f"El código «{codigo_nuevo}» ya está asignado a otro producto.",
+                    )
+                    return
+
             fila_cat_nueva = self.eje_consulta(
                 "SELECT id FROM categorias WHERE nombre = ?",
                 (categoria_elegida or "General",),
@@ -522,15 +631,18 @@ class Inventario(tk.Frame):
 
             consulta = (
                 "UPDATE inventario SET nombre=?, proveedor=?, precio=?, costo=?,"
-                " stock=?, tipo_iva=?, categoria_id=? WHERE id=?"
+                " stock=?, tipo_iva=?, categoria_id=?, codigo_barras=? WHERE id=?"
             )
-            parametros = (nombre, proveedor, precio, costo, stock, tipo_iva, categoria_id_nueva, item_id)
+            parametros = (
+                nombre, proveedor, precio, costo, stock,
+                tipo_iva, categoria_id_nueva, codigo_nuevo or None, item_id,
+            )
             self.eje_consulta(consulta, parametros)
             self.actualizar_inventario()
             ventana_editar.destroy()
 
         btn_guardar = Button(ventana_editar, text="Guardar cambios", font="sans 14 bold", command=guardar_cambio)
-        btn_guardar.place(x=80, y=360, width=240, height=40)
+        btn_guardar.grid(row=8, column=0, columnspan=2, padx=10, pady=(25, 10), ipady=4)
 
     def _categorias_disponibles(self):
         try:
