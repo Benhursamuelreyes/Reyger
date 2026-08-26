@@ -12,7 +12,7 @@ dependencies = [
     "openpyxl>=3.1",
     "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
-    "cryptography>=42.0",
+    "cryptography>=42.0,<49",
 ]
 
 [tool.briefcase]
@@ -33,7 +33,7 @@ requires = [
     "openpyxl>=3.1",
     "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
-    "cryptography>=42.0",
+    "cryptography>=42.0,<49",
 ]
 main_module = "reyger.app"
 console = false
