@@ -1,7 +1,7 @@
 # Reyger
 
 [![Build](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml/badge.svg)](https://github.com/Benhursamuelreyes/Reyger/actions/workflows/build.yml)
-[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.3-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
+[![Versión](https://img.shields.io/badge/versión-v3.0.0--beta.4-blue.svg)](https://github.com/Benhursamuelreyes/Reyger/releases)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-green.svg)](./LICENSE)
 
 > **ESTADO: BETA** — En desarrollo activo. Puede haber cambios y errores.
@@ -72,31 +72,31 @@ pueden descargarse de forma permanente desde:
 
 | Plataforma | Archivo |
 |------------|---------|
-| **Windows** | `Reyger-3.0.0b2.msi` |
-| **macOS** | `Reyger-3.0.0b2.dmg` |
-| **Linux** | `Reyger-3.0.0b2-x86_64.AppImage` |
+| **Windows** | `Reyger-3.0.0b4.msi` |
+| **macOS** | `Reyger-3.0.0b4.dmg` |
+| **Linux** | `Reyger-3.0.0b4-x86_64.AppImage` |
 
 ### Guía de instalación por plataforma
 
 **Windows**
-1. Descarga el archivo `Reyger-3.0.0b2.msi`.
+1. Descarga el archivo `Reyger-3.0.0b4.msi`.
 2. Ejecútalo y sigue el asistente (Next → Install → Finish).
 3. Abre **Reyger** desde el menú de inicio o el acceso directo del escritorio.
    - Si SmartScreen muestra una advertencia, pulsa *"Más información"* →
      *"Ejecutar de todas formas"* (los binarios de beta aún no están firmados).
 
 **macOS**
-1. Descarga el archivo `Reyger-3.0.0b2.dmg`.
+1. Descarga el archivo `Reyger-3.0.0b4.dmg`.
 2. Ábrelo y arrastra el icono **Reyger** a la carpeta *Aplicaciones*.
 3. Al abrirlo por primera vez, si Gatekeeper lo bloquea: clic derecho sobre
    el icono → *Abrir* → *Abrir*.
 
 **Linux**
-1. Descarga el archivo `Reyger-3.0.0b2-x86_64.AppImage`.
+1. Descarga el archivo `Reyger-3.0.0b4-x86_64.AppImage`.
 2. Hazlo ejecutable y lánzalo:
    ```bash
-   chmod +x Reyger-3.0.0b2-x86_64.AppImage
-   ./Reyger-3.0.0b2-x86_64.AppImage
+   chmod +x Reyger-3.0.0b4-x86_64.AppImage
+   ./Reyger-3.0.0b4-x86_64.AppImage
    ```
 
 ---
@@ -177,6 +177,35 @@ de versión generadas automáticamente.
 ---
 
 ## Registro de cambios
+
+### v3.0.0-beta.4 — 2026-08-26
+
+**Reorganizado — Estructura del proyecto por capas**
+
+- Reorganización completa de `src/reyger/` de layout plano a subpaquetes
+  por capas de arquitectura:
+  - `core/`: db, migrations, backup, hilos, updater, seguridad
+  - `domain/`: fiscal, facturas_verifactu, verifactu_hash, verifactu_xml
+  - `hardware/`: impresoras, impresion_termica, barcode_scanner
+  - `ui/`: manager, ajustes, ventas, inventario, clientes, presupuestos,
+    albaranes, albaranes_ui, tickets, categorias, business_profile, ui
+- Se mantienen en raíz: `__main__.py`, `app.py`, `container.py`,
+  `config.py`, `resources.py` (referenciada desde todos los subpaquetes).
+- Todos los imports internos y de tests actualizados. 108/108 tests pasan.
+
+**Corregido — Comparación de versiones del auto-updater**
+
+- `_parsear_version()` ahora maneja correctamente tags de GitHub
+  (`v3.0.0-beta.3`) y formato PEP 440 (`3.0.0b3`).
+- Los pre-releases se comparan correctamente entre sí: `b4 > b3`,
+  `rc1 > b4`, `final > b3`.
+- Cobertura de tests del updater: 6 → 22 tests (con mocks para
+  `hay_actualizacion()` y `descargar_release()`).
+
+**Corregido — Dependencia `cryptography` en macOS**
+
+- Acotada a `>=42.0,<49` para compatibilidad con builds x86_64 (macOS
+  Intel); `cryptography>=49` solo publica wheels arm64.
 
 ### v3.0.0-beta.3 — 2026-08-24
 
@@ -540,15 +569,39 @@ Reyger/
 │   └── release.yml              # Release: tag v* -> compila + publica
 ├── src/reyger/                  # Código fuente de la aplicación
 │   ├── app.py                   # Punto de entrada (Briefcase)
-│   ├── manager.py               # Ventana principal
-│   ├── ventas.py                # Módulo de ventas
-│   ├── inventario.py            # Módulo de inventario
-│   ├── facturas_verifactu.py    # Facturación VeriFACTU
-│   ├── tickets.py               # Tickets 80 mm
-│   ├── albaranes.py             # Albaranes
-│   ├── presupuestos.py          # Presupuestos
+│   ├── config.py                # Configuración de la app
+│   ├── container.py             # Ventana principal (menú)
+│   ├── resources.py             # Rutas de BD, output, bundled
+│   ├── core/                    # Infraestructura
+│   │   ├── db.py                # Capa SQLite centralizada
+│   │   ├── migrations.py        # Migraciones versionadas
+│   │   ├── backup.py            # Export/import de datos
+│   │   ├── hilos.py             # Threading daemon
+│   │   ├── updater.py           # Auto-updater GitHub
+│   │   └── seguridad.py         # Encriptación Fernet
+│   ├── domain/                  # Lógica de negocio
+│   │   ├── fiscal.py            # IVA, desglose fiscal
+│   │   ├── facturas_verifactu.py # PDFs VeriFACTU
+│   │   ├── verifactu_hash.py    # SHA-256 AEAT
+│   │   └── verifactu_xml.py     # XML AEAT
+│   ├── hardware/                # Dispositivos
+│   │   ├── impresoras.py        # Gestión impresoras
+│   │   ├── impresion_termica.py # ESC/POS tickets
+│   │   └── barcode_scanner.py   # Escáner USB HID
+│   ├── ui/                      # Interfaz gráfica
+│   │   ├── ui.py                # Constantes y helpers
+│   │   ├── manager.py           # Ventana principal
+│   │   ├── ajustes.py           # Configuración
+│   │   ├── ventas.py            # Punto de venta
+│   │   ├── inventario.py        # Inventario
+│   │   ├── clientes.py          # Clientes
+│   │   ├── presupuestos.py      # Presupuestos
+│   │   ├── albaranes.py         # PDF albaranes
+│   │   ├── tickets.py           # Tickets térmicos
+│   │   └── categorias.py        # Categorías
 │   └── assets/                  # Iconos e imágenes
 ├── scripts/                     # Utilidades (bundling tkinter, iconos)
+├── tests/                       # Suite de tests
 ├── pyproject.toml               # Configuración del proyecto y Briefcase
 ├── requirements.txt             # Dependencias
 ├── LICENSE                      # Licencia MIT
