@@ -7,16 +7,16 @@ documento corre en hilo demonio para no congelar la interfaz.
 """
 
 import os
-import sqlite3
 from datetime import datetime
 from tkinter import Toplevel, LabelFrame, Label, Entry, Button, Listbox, END
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .albaranes import AlbaranEntrega
-from .config import ConfigManager
-from .hilos import en_hilo
-from .resources import get_db_path, open_file
+from ..config import ConfigManager
+from ..core import db
+from ..core.hilos import en_hilo
+from ..resources import open_file
 
 ESTADOS_ALBARAN = ("Abierto", "Entregado", "Rechazado")
 
@@ -24,9 +24,8 @@ ESTADOS_ALBARAN = ("Abierto", "Entregado", "Rechazado")
 class VentanaAlbaranes(Toplevel):
     """Gestión de albaranes conectada a la base de datos."""
 
-    def __init__(self, padre, db_path=None, config_manager=None):
+    def __init__(self, padre, config_manager=None):
         super().__init__(padre)
-        self.db_path = db_path or get_db_path()
         self.config_manager = config_manager or ConfigManager()
         self.generador = AlbaranEntrega(self.config_manager)
         self.lineas = []
@@ -156,39 +155,30 @@ class VentanaAlbaranes(Toplevel):
         ).pack(side="right")
 
     # ------------------------------------------------------------- datos
-    def _conexion(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
-
     def siguiente_numero(self):
         """Propone el número correlativo siguiente (ALB-0001…)."""
         try:
-            conn = self._conexion()
-            fila = conn.execute(
+            fila = db.query_one(
                 "SELECT numero_albaran FROM albaranes"
                 " ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            conn.close()
-        except sqlite3.Error:
+            )
+        except Exception:
             fila = None
         ultimo = 0
-        if fila and fila[0]:
-            digitos = "".join(c for c in str(fila[0]) if c.isdigit())
+        if fila and fila["numero_albaran"]:
+            digitos = "".join(c for c in str(fila["numero_albaran"]) if c.isdigit())
             if digitos:
                 ultimo = int(digitos)
         return f"ALB-{ultimo + 1:04d}"
 
     def cargar_clientes(self):
         try:
-            conn = self._conexion()
-            filas = conn.execute(
+            filas = db.query(
                 "SELECT nombre, direccion FROM clientes ORDER BY nombre"
-            ).fetchall()
-            conn.close()
-        except sqlite3.Error:
+            )
+        except Exception:
             filas = []
-        self._clientes = {nombre: (direccion or "") for nombre, direccion in filas}
+        self._clientes = {fila["nombre"]: (fila["direccion"] or "") for fila in filas}
         self.combo_cliente["values"] = list(self._clientes)
 
     def _cliente_elegido(self, _evento=None):
@@ -200,16 +190,14 @@ class VentanaAlbaranes(Toplevel):
         for item in self.tree.get_children():
             self.tree.delete(item)
         try:
-            conn = self._conexion()
-            filas = conn.execute(
+            filas = db.query(
                 "SELECT numero_albaran, fecha, cliente_nombre, estado"
                 " FROM albaranes ORDER BY id DESC"
-            ).fetchall()
-            conn.close()
-        except sqlite3.Error:
+            )
+        except Exception:
             filas = []
-        for numero, fecha, cliente, estado in filas:
-            self.tree.insert("", END, values=(numero, fecha, cliente, estado))
+        for fila in filas:
+            self.tree.insert("", END, values=(fila["numero_albaran"], fila["fecha"], fila["cliente_nombre"], fila["estado"]))
 
     # ----------------------------------------------------------- líneas
     def agregar_linea(self):
@@ -333,7 +321,7 @@ class VentanaAlbaranes(Toplevel):
             self.cargar_albaranes()
 
     def abrir_carpeta(self):
-        from .resources import get_output_path
+        from ..resources import get_output_path
 
         carpeta = get_output_path("albaranes")
         os.makedirs(carpeta, exist_ok=True)

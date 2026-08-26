@@ -46,13 +46,13 @@ def test_imports():
     print(f"\n{BOLD}{AZUL}[TEST 1] Importación de módulos{RESET}")
     
     tests = [
-        ("reyger.facturas_verifactu.FacturaVeriFACTU", "Factura VeriFACTU"),
-        ("reyger.tickets.TicketSimplificado", "Tickets"),
-        ("reyger.albaranes.AlbaranEntrega", "Albaranes"),
-        ("reyger.presupuestos.Presupuestos", "Presupuestos"),
-        ("reyger.impresoras.GestorImpresoras", "Gestor de Impresoras"),
-        ("reyger.barcode_scanner.EscanerCodigoBarras", "Escáner de Código de Barras"),
-        ("reyger.clientes.Clientes", "Clientes"),
+        ("reyger.domain.facturas_verifactu.FacturaVeriFACTU", "Factura VeriFACTU"),
+        ("reyger.ui.tickets.TicketSimplificado", "Tickets"),
+        ("reyger.ui.albaranes.AlbaranEntrega", "Albaranes"),
+        ("reyger.ui.presupuestos.Presupuestos", "Presupuestos"),
+        ("reyger.hardware.impresoras.GestorImpresoras", "Gestor de Impresoras"),
+        ("reyger.hardware.barcode_scanner.EscanerCodigoBarras", "Escáner de Código de Barras"),
+        ("reyger.ui.clientes.Clientes", "Clientes"),
     ]
     
     resultados = []
@@ -191,7 +191,7 @@ def test_funcionalidad_basica():
     
     # Test FacturaVeriFACTU
     try:
-        from reyger.facturas_verifactu import FacturaVeriFACTU
+        from reyger.domain.facturas_verifactu import FacturaVeriFACTU
         factura = FacturaVeriFACTU()
         print_resultado("Instanciar FacturaVeriFACTU", True)
         resultados.append(True)
@@ -201,7 +201,7 @@ def test_funcionalidad_basica():
     
     # Test TicketSimplificado
     try:
-        from reyger.tickets import TicketSimplificado
+        from reyger.ui.tickets import TicketSimplificado
         ticket = TicketSimplificado()
         print_resultado("Instanciar TicketSimplificado", True)
         resultados.append(True)
@@ -211,7 +211,7 @@ def test_funcionalidad_basica():
     
     # Test AlbaranEntrega
     try:
-        from reyger.albaranes import AlbaranEntrega
+        from reyger.ui.albaranes import AlbaranEntrega
         albaran = AlbaranEntrega()
         print_resultado("Instanciar AlbaranEntrega", True)
         resultados.append(True)
@@ -221,7 +221,7 @@ def test_funcionalidad_basica():
     
     # Test Presupuestos (Frame tkinter: necesita un parent)
     try:
-        from reyger.presupuestos import Presupuestos
+        from reyger.ui.presupuestos import Presupuestos
         root = tk.Tk()
         root.withdraw()
         presupuestos = Presupuestos(root)
@@ -234,7 +234,7 @@ def test_funcionalidad_basica():
     
     # Test EscanerCodigoBarras
     try:
-        from reyger.barcode_scanner import EscanerCodigoBarras
+        from reyger.hardware.barcode_scanner import EscanerCodigoBarras
         escaner = EscanerCodigoBarras()
         print_resultado("Instanciar EscanerCodigoBarras", True)
         resultados.append(True)
@@ -244,7 +244,7 @@ def test_funcionalidad_basica():
     
     # Test GestorImpresoras
     try:
-        from reyger.impresoras import GestorImpresoras
+        from reyger.hardware.impresoras import GestorImpresoras
         gestor = GestorImpresoras()
         print_resultado("Instanciar GestorImpresoras", True)
         resultados.append(True)

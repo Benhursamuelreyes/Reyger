@@ -19,8 +19,8 @@ sys.path.insert(0, SRC_DIR)
 # Recursos y módulos del paquete (assets incluidos) para las pruebas
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
-from reyger import db as modulo_db
-from reyger.migrations import LATEST_VERSION, run_migrations
+from reyger.core import db as modulo_db
+from reyger.core.migrations import LATEST_VERSION, run_migrations
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"

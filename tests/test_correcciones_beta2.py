@@ -61,8 +61,8 @@ def test_formulario_producto_codigo_barras():
     from tkinter import messagebox
 
     tmpdir, bd = preparar_bd("reyger_fix_prod_")
-    from reyger import inventario as mod_inventario
-    from reyger import db as mod_db
+    from reyger.ui import inventario as mod_inventario
+    from reyger.core import db as mod_db
 
     mod_db.get_db_path = lambda: bd
     mod_db._conexion = None
@@ -121,9 +121,9 @@ def test_formulario_producto_codigo_barras():
 def test_crear_categoria_en_caliente():
     print(f"\n{BOLD}{AZUL}[TEST 2] Selector de categorías y creación en caliente{RESET}")
     from tkinter import messagebox
-    from reyger import inventario as mod_inventario
-    from reyger import categorias as gestor_categorias
-    from reyger import db as mod_db
+    from reyger.ui import inventario as mod_inventario
+    from reyger.ui import categorias as gestor_categorias
+    from reyger.core import db as mod_db
 
     tmpdir, bd = preparar_bd("reyger_fix_cat_")
     mod_db.get_db_path = lambda: bd
@@ -177,7 +177,7 @@ def test_crear_categoria_en_caliente():
 
 def test_ticket_logo_y_tamanos():
     print(f"\n{BOLD}{AZUL}[TEST 3] Ticket térmico: tamaños y logo rasterizado{RESET}")
-    from reyger.impresion_termica import (
+    from reyger.hardware.impresion_termica import (
         construir_ticket_venta,
         _rasterizar_logo,
     )
@@ -216,13 +216,12 @@ def test_ticket_logo_y_tamanos():
 def test_ventana_albaranes():
     print(f"\n{BOLD}{AZUL}[TEST 4] Ventana de albaranes conectada a BD{RESET}")
     from tkinter import messagebox
-    from reyger import db as mod_db
-    from reyger import albaranes as mod_albaranes
+    from reyger.core import db as mod_db
+    from reyger.ui import albaranes as mod_albaranes
 
     tmpdir, bd = preparar_bd("reyger_fix_alb_")
     mod_db.get_db_path = lambda: bd
     mod_db._conexion = None
-    mod_albaranes.get_db_path = lambda: bd
     mod_albaranes.get_output_path = lambda sub: tmpdir
 
     con = sqlite3.connect(bd)
@@ -238,9 +237,9 @@ def test_ventana_albaranes():
          patch.object(messagebox, "askyesno", return_value=True):
         root = tk.Tk()
         root.withdraw()
-        from reyger.albaranes_ui import VentanaAlbaranes
+        from reyger.ui.albaranes_ui import VentanaAlbaranes
 
-        ventana = VentanaAlbaranes(root, db_path=bd)
+        ventana = VentanaAlbaranes(root)
         root.update()
 
         chequear("Número correlativo propuesto (ALB-0001)",
@@ -304,8 +303,8 @@ def test_ventana_albaranes():
 def test_exportar_bd_desde_inventario():
     print(f"\n{BOLD}{AZUL}[TEST 5] Exportar BD desde Inventario{RESET}")
     from tkinter import messagebox
-    from reyger import inventario as mod_inventario
-    from reyger import db as mod_db
+    from reyger.ui import inventario as mod_inventario
+    from reyger.core import db as mod_db
 
     tmpdir, bd = preparar_bd("reyger_fix_expbd_")
     destino = os.path.join(tmpdir, "copia.db")

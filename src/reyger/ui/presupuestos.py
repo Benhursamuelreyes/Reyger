@@ -4,7 +4,6 @@ Permite crear, gestionar y generar presupuestos en formato PDF.
 """
 
 import os
-import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
@@ -13,8 +12,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
-from .config import ConfigManager
-from .resources import get_db_path, get_output_path, open_file
+from ..config import ConfigManager
+from . import business_profile as bp
+from ..core import db
+from ..core.hilos import en_hilo
+from ..resources import get_output_path, open_file
 
 
 class Presupuestos(tk.Frame):
@@ -25,7 +27,6 @@ class Presupuestos(tk.Frame):
     def __init__(self, parent, usuario=None):
         super().__init__(parent)
         self.config_manager = ConfigManager()
-        self.db_path = get_db_path()
         self.pack(fill="both", expand=True)
         self.colors = self.config_manager.get_colors()
         self.configure(bg=self.colors["bg_principal"])
@@ -41,11 +42,9 @@ class Presupuestos(tk.Frame):
     def crear_tabla_presupuestos(self):
         """Crea las tablas de presupuestos en la BD"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            conn = db.get_connection()
             
-            # Tabla principal de presupuestos
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS presupuestos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     numero_presupuesto TEXT UNIQUE NOT NULL,
@@ -61,8 +60,7 @@ class Presupuestos(tk.Frame):
                 )
             """)
             
-            # Tabla de productos en presupuestos
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS presupuestos_productos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     presupuesto_id INTEGER NOT NULL,
@@ -75,8 +73,7 @@ class Presupuestos(tk.Frame):
             """)
             
             conn.commit()
-            conn.close()
-        except sqlite3.Error as e:
+        except Exception as e:
             messagebox.showerror("Error", f"Error creando tablas: {e}")
     
     def widgets(self):
@@ -259,7 +256,16 @@ class Presupuestos(tk.Frame):
             font="sans 10 bold",
             command=self.generar_pdf_presupuesto
         ).pack(side="left", padx=5)
-        
+
+        tk.Button(
+            frame_acciones,
+            text="Imprimir",
+            bg="#0078D4",
+            fg="white",
+            font="sans 10 bold",
+            command=self._imprimir_presupuesto,
+        ).pack(side="left", padx=5)
+
         tk.Button(
             frame_acciones,
             text="Limpiar",
@@ -272,13 +278,10 @@ class Presupuestos(tk.Frame):
     def cargar_productos_combo(self):
         """Carga los productos del inventario en el combobox"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT nombre FROM inventario ORDER BY nombre")
-            productos = [row[0] for row in cursor.fetchall()]
+            filas = db.query("SELECT nombre FROM inventario ORDER BY nombre")
+            productos = [fila["nombre"] for fila in filas]
             self.combo_productos["values"] = productos
-            conn.close()
-        except:
+        except Exception:
             pass
     
     def actualizar_precio_producto(self):
@@ -288,18 +291,14 @@ class Presupuestos(tk.Frame):
             return
         
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT precio FROM inventario WHERE nombre = ?", (producto,))
-            row = cursor.fetchone()
-            conn.close()
+            fila = db.query_one("SELECT precio FROM inventario WHERE nombre = ?", (producto,))
             
-            if row:
+            if fila:
                 self.entry_precio.config(state="normal")
                 self.entry_precio.delete(0, "end")
-                self.entry_precio.insert(0, str(row[0]))
+                self.entry_precio.insert(0, str(fila["precio"]))
                 self.entry_precio.config(state="readonly")
-        except:
+        except Exception:
             pass
     
     def agregar_producto_presupuesto(self):
@@ -364,7 +363,6 @@ class Presupuestos(tk.Frame):
             return
         
         try:
-            # Calcular totales
             base_imponible = 0.0
             for child in self.tree.get_children():
                 subtotal = float(self.tree.item(child, "values")[3])
@@ -374,38 +372,29 @@ class Presupuestos(tk.Frame):
             total_iva = base_imponible * (tipo_iva / 100)
             total = base_imponible + total_iva
             
-            # Generar número de presupuesto
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Insertar presupuesto con número temporal; el definitivo se deriva
-            # del id autoincremental, que nunca se reutiliza tras borrados
-            numero_temp = f"PRE-TEMP-{datetime.now().timestamp()}"
-            cursor.execute("""
-                INSERT INTO presupuestos
-                (numero_presupuesto, cliente_nombre, cliente_email, base_imponible, 
-                 tipo_iva, total_iva, total, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (numero_temp, cliente, self.entry_email.get(), base_imponible,
-                  tipo_iva, total_iva, total, "Pendiente"))
-            
-            presupuesto_id = cursor.lastrowid
-            numero_presupuesto = f"PRE-{datetime.now().strftime('%Y')}-{presupuesto_id:05d}"
-            cursor.execute("UPDATE presupuestos SET numero_presupuesto = ? WHERE id = ?",
+            with db.transaccion() as conn:
+                numero_temp = f"PRE-TEMP-{datetime.now().timestamp()}"
+                cursor = conn.execute("""
+                    INSERT INTO presupuestos
+                    (numero_presupuesto, cliente_nombre, cliente_email, base_imponible, 
+                     tipo_iva, total_iva, total, estado)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (numero_temp, cliente, self.entry_email.get(), base_imponible,
+                      tipo_iva, total_iva, total, "Pendiente"))
+                
+                presupuesto_id = cursor.lastrowid
+                numero_presupuesto = f"PRE-{datetime.now().strftime('%Y')}-{presupuesto_id:05d}"
+                conn.execute("UPDATE presupuestos SET numero_presupuesto = ? WHERE id = ?",
                            (numero_presupuesto, presupuesto_id))
-            
-            # Insertar productos
-            for child in self.tree.get_children():
-                valores = self.tree.item(child, "values")
-                cursor.execute("""
-                    INSERT INTO presupuestos_productos
-                    (presupuesto_id, nombre_producto, cantidad, precio_unitario, subtotal)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (presupuesto_id, valores[0], int(valores[1]), 
-                      float(valores[2]), float(valores[3])))
-            
-            conn.commit()
-            conn.close()
+                
+                for child in self.tree.get_children():
+                    valores = self.tree.item(child, "values")
+                    conn.execute("""
+                        INSERT INTO presupuestos_productos
+                        (presupuesto_id, nombre_producto, cantidad, precio_unitario, subtotal)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (presupuesto_id, valores[0], int(valores[1]), 
+                          float(valores[2]), float(valores[3])))
             
             messagebox.showinfo("Exito", f"Presupuesto {numero_presupuesto} guardado correctamente")
             self.limpiar_presupuesto()
@@ -414,75 +403,269 @@ class Presupuestos(tk.Frame):
             messagebox.showerror("Error", f"Error guardando presupuesto: {e}")
     
     def generar_pdf_presupuesto(self):
-        """Genera un PDF del presupuesto"""
+        """Genera un PDF del presupuesto con membrete de la empresa."""
         cliente = self.entry_cliente.get().strip()
         if not cliente or not self.tree.get_children():
             messagebox.showerror("Error", "Complete el presupuesto primero")
             return
-        
+
         try:
-            # Crear directorio
             presupuestos_dir = get_output_path("presupuestos_pdf")
-            
             archivo_pdf = os.path.join(
                 presupuestos_dir,
                 f"Presupuesto_{cliente}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             )
-            
-            # Crear PDF
-            doc = SimpleDocTemplate(archivo_pdf, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm)
+
+            doc = SimpleDocTemplate(
+                archivo_pdf, pagesize=A4,
+                rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+            )
             story = []
             estilos = getSampleStyleSheet()
-            
-            # Título
-            story.append(Paragraph(f"<b>PRESUPUESTO</b>", estilos['Title']))
-            story.append(Spacer(1, 0.5*cm))
-            
+
+            estilo_titulo = ParagraphStyle(
+                "PresupuestoTitle",
+                parent=estilos["Heading1"],
+                fontSize=20,
+                textColor=colors.HexColor("#0078D4"),
+                spaceAfter=10,
+                alignment=1,
+                fontName="Helvetica-Bold",
+            )
+            estilo_empresa = ParagraphStyle(
+                "PresupuestoEmpresa",
+                parent=estilos["Normal"],
+                fontSize=9,
+                textColor=colors.HexColor("#555555"),
+                alignment=1,
+                spaceAfter=4,
+            )
+
+            # Membrete dinámico
+            nombre = bp.nombre_empresa()
+            story.append(Paragraph(f"<b>{nombre.upper()}</b>", estilo_titulo))
+
+            perfil = bp.obtener()
+            if perfil:
+                p = dict(perfil)
+                lineas = []
+                if p.get("nif"):
+                    lineas.append(f"NIF: {p['nif']}")
+                if p.get("direccion"):
+                    d = p["direccion"]
+                    if p.get("codigo_postal"):
+                        d += f", {p['codigo_postal']}"
+                    if p.get("provincia"):
+                        d += f" — {p['provincia']}"
+                    lineas.append(d)
+                if p.get("telefono"):
+                    lineas.append(f"Tel: {p['telefono']}")
+                if p.get("email"):
+                    lineas.append(f"Email: {p['email']}")
+                if lineas:
+                    story.append(Paragraph(" | ".join(lineas), estilo_empresa))
+
+            story.append(Spacer(1, 0.3 * cm))
+            story.append(Paragraph("<b>PRESUPUESTO</b>", estilos["Heading2"]))
+            story.append(Spacer(1, 0.3 * cm))
+
             # Datos del cliente
-            story.append(Paragraph(f"<b>Cliente:</b> {cliente}", estilos['Normal']))
-            story.append(Paragraph(f"<b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y')}", estilos['Normal']))
-            story.append(Spacer(1, 0.5*cm))
-            
+            email = self.entry_email.get().strip()
+            story.append(Paragraph(f"<b>Cliente:</b> {cliente}", estilos["Normal"]))
+            if email:
+                story.append(Paragraph(f"<b>Email:</b> {email}", estilos["Normal"]))
+            story.append(Paragraph(
+                f"<b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y')}",
+                estilos["Normal"],
+            ))
+            story.append(Spacer(1, 0.5 * cm))
+
             # Tabla de productos
             datos = [["Producto", "Cantidad", "P. Unitario", "Subtotal"]]
             for child in self.tree.get_children():
-                valores = self.tree.item(child, "values")
-                datos.append([valores[0], valores[1], f"{float(valores[2]):.2f} €", f"{float(valores[3]):.2f} €"])
-            
-            tabla = Table(datos, colWidths=[6*cm, 2.5*cm, 3*cm, 3*cm])
+                v = self.tree.item(child, "values")
+                datos.append([
+                    v[0], v[1],
+                    f"{float(v[2]):.2f} €",
+                    f"{float(v[3]):.2f} €",
+                ])
+
+            tabla = Table(datos, colWidths=[6 * cm, 2.5 * cm, 3 * cm, 3 * cm])
             tabla.setStyle(TableStyle([
-                ('BACKGROUND', (0,0 ), (-1,0), colors.grey),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,0), 10),
-                ('BOTTOMPADDING', (0,0), (-1,0), 12),
-                ('GRID', (0,0), (-1,-1), 1, colors.black),
-                ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-                ('FONTSIZE', (0,1), (-1,-1), 9),
-                ('ALIGN', (1,1), (-1,-1), 'CENTER'),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D4")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("ALIGN", (1, 1), (-1, -1), "CENTER"),
             ]))
             story.append(tabla)
-            story.append(Spacer(1, 0.5*cm))
-            
+            story.append(Spacer(1, 0.5 * cm))
+
             # Totales
-            base = sum(float(self.tree.item(child, "values")[3]) for child in self.tree.get_children())
+            base = sum(
+                float(self.tree.item(c, "values")[3])
+                for c in self.tree.get_children()
+            )
             iva = base * (self.var_iva.get() / 100)
             total = base + iva
-            
-            story.append(Paragraph(f"<b>Base Imponible:</b> {base:.2f} €", estilos['Normal']))
-            story.append(Paragraph(f"<b>IVA ({self.var_iva.get()}%):</b> {iva:.2f} €", estilos['Normal']))
-            story.append(Paragraph(f"<b>TOTAL:</b> {total:.2f} €", estilos['Heading2']))
-            
+
+            story.append(Paragraph(
+                f"<b>Base Imponible:</b> {base:.2f} €", estilos["Normal"]
+            ))
+            story.append(Paragraph(
+                f"<b>IVA ({self.var_iva.get()}%):</b> {iva:.2f} €",
+                estilos["Normal"],
+            ))
+            story.append(Paragraph(
+                f"<b>TOTAL:</b> {total:.2f} €", estilos["Heading2"]
+            ))
+
             doc.build(story)
-            messagebox.showinfo("Exito", f"PDF generado en:\n{archivo_pdf}")
-            
+            messagebox.showinfo("Éxito", f"PDF generado en:\n{archivo_pdf}")
+
             try:
                 open_file(os.path.abspath(archivo_pdf))
-            except:
+            except Exception:
                 pass
         except Exception as e:
             messagebox.showerror("Error", f"Error generando PDF: {e}")
+
+    def _imprimir_presupuesto(self):
+        """Imprime el presupuesto en la impresora predeterminada del sistema."""
+        cliente = self.entry_cliente.get().strip()
+        if not cliente or not self.tree.get_children():
+            messagebox.showerror("Error", "Complete el presupuesto primero")
+            return
+
+        try:
+            import tempfile
+            presupuestos_dir = get_output_path("presupuestos_pdf")
+            archivo_tmp = os.path.join(
+                presupuestos_dir,
+                f"_impresion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            )
+            doc = SimpleDocTemplate(
+                archivo_tmp, pagesize=A4,
+                rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+            )
+            story = []
+            estilos = getSampleStyleSheet()
+
+            estilo_titulo = ParagraphStyle(
+                "PresupTitle",
+                parent=estilos["Heading1"],
+                fontSize=20,
+                textColor=colors.HexColor("#0078D4"),
+                spaceAfter=10,
+                alignment=1,
+                fontName="Helvetica-Bold",
+            )
+            estilo_empresa = ParagraphStyle(
+                "PresupEmpresa",
+                parent=estilos["Normal"],
+                fontSize=9,
+                textColor=colors.HexColor("#555555"),
+                alignment=1,
+                spaceAfter=4,
+            )
+
+            nombre = bp.nombre_empresa()
+            story.append(Paragraph(f"<b>{nombre.upper()}</b>", estilo_titulo))
+
+            perfil = bp.obtener()
+            if perfil:
+                p = dict(perfil)
+                lineas = []
+                if p.get("nif"):
+                    lineas.append(f"NIF: {p['nif']}")
+                if p.get("direccion"):
+                    d = p["direccion"]
+                    if p.get("codigo_postal"):
+                        d += f", {p['codigo_postal']}"
+                    if p.get("provincia"):
+                        d += f" — {p['provincia']}"
+                    lineas.append(d)
+                if p.get("telefono"):
+                    lineas.append(f"Tel: {p['telefono']}")
+                if p.get("email"):
+                    lineas.append(f"Email: {p['email']}")
+                if lineas:
+                    story.append(Paragraph(" | ".join(lineas), estilo_empresa))
+
+            story.append(Spacer(1, 0.3 * cm))
+            story.append(Paragraph("<b>PRESUPUESTO</b>", estilos["Heading2"]))
+            story.append(Spacer(1, 0.3 * cm))
+
+            email = self.entry_email.get().strip()
+            story.append(Paragraph(f"<b>Cliente:</b> {cliente}", estilos["Normal"]))
+            if email:
+                story.append(Paragraph(f"<b>Email:</b> {email}", estilos["Normal"]))
+            story.append(Paragraph(
+                f"<b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y')}",
+                estilos["Normal"],
+            ))
+            story.append(Spacer(1, 0.5 * cm))
+
+            datos = [["Producto", "Cantidad", "P. Unitario", "Subtotal"]]
+            for child in self.tree.get_children():
+                v = self.tree.item(child, "values")
+                datos.append([
+                    v[0], v[1],
+                    f"{float(v[2]):.2f} €",
+                    f"{float(v[3]):.2f} €",
+                ])
+
+            tabla = Table(datos, colWidths=[6 * cm, 2.5 * cm, 3 * cm, 3 * cm])
+            tabla.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D4")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+            ]))
+            story.append(tabla)
+            story.append(Spacer(1, 0.5 * cm))
+
+            base = sum(
+                float(self.tree.item(c, "values")[3])
+                for c in self.tree.get_children()
+            )
+            iva = base * (self.var_iva.get() / 100)
+            total = base + iva
+
+            story.append(Paragraph(
+                f"<b>Base Imponible:</b> {base:.2f} €", estilos["Normal"]
+            ))
+            story.append(Paragraph(
+                f"<b>IVA ({self.var_iva.get()}%):</b> {iva:.2f} €",
+                estilos["Normal"],
+            ))
+            story.append(Paragraph(
+                f"<b>TOTAL:</b> {total:.2f} €", estilos["Heading2"]
+            ))
+
+            doc.build(story)
+
+            try:
+                from ..hardware.impresion_termica import enviar_a_impresora
+                ok, msg = enviar_a_impresora(archivo_tmp)
+                if not ok:
+                    messagebox.showwarning("Impresión", msg)
+            except ImportError:
+                from ..resources import open_file
+                open_file(archivo_tmp)
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al imprimir: {e}")
     
     def limpiar_presupuesto(self):
         """Limpia el presupuesto actual"""

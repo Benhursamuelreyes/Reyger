@@ -8,7 +8,7 @@ mono-hilo) y activa el cumplimiento de claves foráneas.
 import sqlite3
 from contextlib import contextmanager
 
-from .resources import get_db_path
+from ..resources import get_db_path
 
 _conexion = None
 
@@ -17,7 +17,7 @@ def get_connection():
     """Devuelve la conexión compartida, creándola si es necesario."""
     global _conexion
     if _conexion is None:
-        _conexion = sqlite3.connect(get_db_path())
+        _conexion = sqlite3.connect(get_db_path(), check_same_thread=False)
         _conexion.row_factory = sqlite3.Row
         # Rendimiento en terminales modestos: la integridad ante cortes
         # de luz la cubre el respaldo automático previo a importaciones.

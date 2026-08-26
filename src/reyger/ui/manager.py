@@ -7,9 +7,9 @@ try:
 except ImportError:
     ThemedStyle = None
 
-from .container import Container
-from .config import ConfigManager
-from .resources import get_bundled_path
+from ..container import Container
+from ..config import ConfigManager
+from ..resources import get_bundled_path
 from .ui import GEOMETRIA_PRINCIPAL, MINIMO_PRINCIPAL
 
 

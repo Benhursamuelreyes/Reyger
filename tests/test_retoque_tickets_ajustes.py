@@ -26,6 +26,7 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 FALLOS = []
+PLANTILLA = os.path.join(SCRIPT_DIR, "assets", "database.db")
 
 
 def chequear(nombre, condicion, detalle=""):
@@ -55,7 +56,7 @@ def lineas_de_texto(datos):
 
 def test_escalas_ticket():
     print(f"\n{BOLD}{AZUL}[TEST 1] Escalas de letra del ticket{RESET}")
-    from reyger.impresion_termica import (
+    from reyger.hardware.impresion_termica import (
         ESCALAS_LETRA,
         TicketTermico,
         construir_ticket_venta,
@@ -88,7 +89,8 @@ def test_preferencia_en_ventas():
     print(f"\n{BOLD}{AZUL}[TEST 2] Ventas pasa la letra configurada{RESET}")
     from unittest.mock import patch
 
-    import reyger.ventas as mod_ventas
+    import reyger.ui.ventas as mod_ventas
+    import reyger.ui.business_profile as mod_bp
 
     capturadas = []
     raiz = tk.Tk()
@@ -107,7 +109,8 @@ def test_preferencia_en_ventas():
                               "ancho_ticket": 58,
                               "letra_ticket": "pequena",
                           }.get(k, d)), \
-             patch.object(mod_ventas, "imprimir_ticket_venta", espiar):
+             patch.object(mod_ventas, "imprimir_ticket_venta", espiar), \
+             patch.object(mod_bp, "nombre_empresa", return_value="Test SA"):
             ventas._imprimir_ticket_termico(
                 "F-9", "hoy", [], 5.0, 4.13, 0.87, "Efectivo", None
             )
@@ -143,7 +146,15 @@ def test_defaults_config():
 
 def test_scroll_ajustes():
     print(f"\n{BOLD}{AZUL}[TEST 4] Scrollbar vertical en Ajustes{RESET}")
-    import reyger.ajustes as mod_ajustes
+    import reyger.ui.ajustes as mod_ajustes
+    from reyger.core import db as modulo_db
+
+    tmp_dir = tempfile.mkdtemp(prefix="reyger_ret_scroll_")
+    ruta = os.path.join(tmp_dir, "scroll_test.db")
+    shutil.copyfile(PLANTILLA, ruta)
+    original_get_db_path = modulo_db.get_db_path
+    modulo_db.get_db_path = lambda: ruta
+    modulo_db.close()
 
     raiz = tk.Tk()
     raiz.geometry("1100x600+10+10")
@@ -195,6 +206,90 @@ def test_scroll_ajustes():
     finally:
         toplevel.destroy()
         raiz.destroy()
+        modulo_db.close()
+        modulo_db.get_db_path = original_get_db_path
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def test_perfil_empresa():
+    print(f"\n{BOLD}{AZUL}[TEST 5] Sección Perfil de Empresa en Ajustes{RESET}")
+    import reyger.ui.ajustes as mod_ajustes
+    import reyger.ui.business_profile as bp
+    from reyger.core import db as modulo_db
+
+    tmp_dir = tempfile.mkdtemp(prefix="reyger_ret_bp_")
+    ruta = os.path.join(tmp_dir, "bp_test.db")
+    shutil.copyfile(PLANTILLA, ruta)
+    original_get_db_path = modulo_db.get_db_path
+    modulo_db.get_db_path = lambda: ruta
+    modulo_db.close()
+
+    raiz = tk.Tk()
+    raiz.geometry("1100x600+10+10")
+    toplevel = tk.Toplevel(raiz)
+    try:
+        panel = mod_ajustes.Ajustes(toplevel)
+
+        # Verificar que existen los campos del perfil
+        bp_entries = getattr(panel, "bp_entries", None)
+        chequear("bp_entries existe en el panel", bp_entries is not None)
+
+        campos_esperados = [
+            "nombre", "nif", "direccion", "codigo_postal",
+            "provincia", "telefono", "email", "actividad_economica",
+            "numero_series",
+        ]
+        if bp_entries:
+            for campo in campos_esperados:
+                chequear(f"Campo '{campo}' presente", campo in bp_entries)
+            chequear(
+                "Nombre por defecto 'Mi Empresa'",
+                bp_entries["nombre"].get() == "Mi Empresa",
+            )
+
+            # Modificar valores y guardar
+            bp_entries["nombre"].delete(0, "end")
+            bp_entries["nombre"].insert(0, "Test SL")
+            bp_entries["nif"].insert(0, "B99999999")
+            bp_entries["numero_series"].delete(0, "end")
+            bp_entries["numero_series"].insert(0, "C")
+
+            # Llamar guardar_cambios
+            import reyger.ui.ajustes as mod_ajustes_mod
+            import types
+            silenciar = types.SimpleNamespace(
+                showinfo=lambda *a, **k: None,
+                showerror=lambda *a, **k: None,
+            )
+            old_msgbox = mod_ajustes_mod.messagebox
+            mod_ajustes_mod.messagebox = silenciar
+            try:
+                panel.guardar_cambios()
+            finally:
+                mod_ajustes_mod.messagebox = old_msgbox
+
+            # Verificar que se guardó en la BD
+            perfil = bp.obtener()
+            chequear(
+                "Nombre guardado en BD",
+                perfil is not None and perfil["nombre"] == "Test SL",
+            )
+            chequear(
+                "NIF guardado en BD",
+                perfil is not None and perfil["nif"] == "B99999999",
+            )
+            chequear(
+                "Numero series guardado en BD",
+                perfil is not None and perfil["numero_series"] == "C",
+            )
+
+        panel.destroy()
+    finally:
+        toplevel.destroy()
+        raiz.destroy()
+        modulo_db.close()
+        modulo_db.get_db_path = original_get_db_path
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def main():
@@ -202,6 +297,7 @@ def main():
     test_preferencia_en_ventas()
     test_defaults_config()
     test_scroll_ajustes()
+    test_perfil_empresa()
 
     print()
     if FALLOS:

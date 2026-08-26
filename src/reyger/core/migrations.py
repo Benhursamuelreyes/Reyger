@@ -13,9 +13,9 @@ Para añadir un cambio de esquema:
        posible: CREATE TABLE IF NOT EXISTS, _add_column, ...).
 """
 
-from .fiscal import IVA_POR_DEFECTO
+from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 5
+LATEST_VERSION = 7
 
 MIGRACIONES = []
 
@@ -357,6 +357,60 @@ def _migracion_5(conn):
     _indexar(conn, "idx_ventas_fecha", "ventas", ["fecha"])
     _indexar(conn, "idx_ventas_factura", "ventas", ["factura"])
     _indexar(conn, "idx_clientes_nombre", "clientes", ["nombre"])
+
+
+@migracion(6)
+def _migracion_6(conn):
+    """Tabla business_profile: datos fiscales y de contacto de la empresa.
+
+    Almacena la información necesaria para facturas, tickets, albaranes
+    y el cumplimiento VeriFactu (número de series, NIF, actividad
+    económica, etc.). Se usa un patrón singleton: la tabla siempre
+    contiene una sola fila (id=1).
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS business_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            nombre TEXT NOT NULL DEFAULT 'Mi Empresa',
+            nif TEXT,
+            direccion TEXT,
+            codigo_postal TEXT,
+            provincia TEXT,
+            telefono TEXT,
+            email TEXT,
+            actividad_economica TEXT,
+            numero_series TEXT DEFAULT 'A',
+            logo_path TEXT,
+            fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            fecha_modificacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO business_profile (id, nombre) VALUES (1, 'Mi Empresa')"
+    )
+
+
+@migracion(7)
+def _migracion_7(conn):
+    """VeriFactu AEAT: cadenas de hash SHA-256, tipología y trazabilidad.
+
+    Añade columnas a ``facturas_verifactu`` para el cumplimiento de la
+    normativa VeriFactu: huella SHA-256, encadenamiento con la factura
+    anterior, tipo de comprobante y campos de envío a AEAT.
+    """
+    _add_column(conn, "facturas_verifactu", "huella TEXT")
+    _add_column(conn, "facturas_verifactu", "huella_anterior TEXT")
+    _add_column(conn, "facturas_verifactu", "numero_ord INTEGER")
+    _add_column(conn, "facturas_verifactu", "tipo_comprobante TEXT DEFAULT 'F1'")
+    _add_column(conn, "facturas_verifactu", "cadena_valores TEXT")
+    _add_column(conn, "facturas_verifactu", "fecha_generacion TEXT")
+    _add_column(conn, "facturas_verifactu", "estado_envio TEXT DEFAULT 'pendiente'")
+    _add_column(conn, "facturas_verifactu", "respuesta_aeat TEXT")
+    _add_column(conn, "facturas_verifactu", "numero_precinto TEXT")
+    _indexar(conn, "idx_verifactu_huella", "facturas_verifactu", ["huella"])
+    _indexar(conn, "idx_verifactu_estado", "facturas_verifactu", ["estado_envio"])
 
 
 def run_migrations(conn):

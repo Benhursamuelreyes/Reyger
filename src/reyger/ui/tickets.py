@@ -10,8 +10,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
-from .config import ConfigManager
-from .resources import get_db_path, get_output_path
+from ..config import ConfigManager
+from . import business_profile as bp
+from ..resources import get_db_path, get_output_path
 
 
 class TicketSimplificado:
@@ -111,7 +112,7 @@ class TicketSimplificado:
         story = []
         
         # 1. Encabezado del ticket
-        nombre_empresa = self.config_manager.get("nombre_empresa", "Mi Empresa")
+        nombre_empresa = bp.nombre_empresa()
         story.extend(self._crear_encabezado_ticket(nombre_empresa))
         
         story.append(Spacer(1, 0.2 * mm))

@@ -1,6 +1,6 @@
 [project]
 name = "reyger"
-version = "3.0.0b3"
+version = "3.0.0b4"
 description = "Reyger — Sistema de ventas y facturación"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -12,12 +12,13 @@ dependencies = [
     "openpyxl>=3.1",
     "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
+    "cryptography>=42.0",
 ]
 
 [tool.briefcase]
 project_name = "Reyger"
 bundle = "com.reyger"
-version = "3.0.0b3"
+version = "3.0.0b4"
 url = "https://github.com/Benhursamuelreyes/Reyger"
 license = "MIT"
 
@@ -32,6 +33,7 @@ requires = [
     "openpyxl>=3.1",
     "ttkthemes>=3.0; platform_system != 'Darwin'",
     "platformdirs>=4.0",
+    "cryptography>=42.0",
 ]
 main_module = "reyger.app"
 console = false

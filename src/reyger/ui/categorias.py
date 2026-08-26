@@ -5,7 +5,7 @@ Cada producto del inventario pertenece a una categoria. La categoria
 agrupar; no se puede renombrar ni eliminar.
 """
 
-from .db import execute, query, query_one
+from ..core.db import execute, query, query_one
 
 GENERAL = "General"
 

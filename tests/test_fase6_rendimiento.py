@@ -80,7 +80,7 @@ def test_indices_y_plantilla():
     )
     vieja.commit()
     vieja.close()
-    import reyger.migrations as migrations
+    import reyger.core.migrations as migrations
     conn = sqlite3.connect(ruta)
     try:
         migrations.run_migrations(conn)
@@ -95,7 +95,7 @@ def test_pragmas():
     print(f"\n{BOLD}{AZUL}[TEST 2] PRAGMA de rendimiento en db.py{RESET}")
     tmpdir = tempfile.mkdtemp(prefix="reyger_f6_pragma_")
     original = None
-    import reyger.db as modulo_db
+    import reyger.core.db as modulo_db
     original = modulo_db.get_db_path
     modulo_db.get_db_path = lambda: os.path.join(tmpdir, "prueba.db")
     modulo_db.close()
@@ -117,17 +117,16 @@ def test_pragmas():
 
 def test_mostrar_categoria():
     print(f"\n{BOLD}{AZUL}[TEST 3] inventario.mostrar con columnas explícitas{RESET}")
-    import reyger.db as modulo_db
-    from reyger.categorias import crear as crear_categoria
-    from reyger.inventario import Inventario
+    import reyger.core.db as modulo_db
+    from reyger.ui.categorias import crear as crear_categoria
+    from reyger.ui.inventario import Inventario
 
     tmpdir = tempfile.mkdtemp(prefix="reyger_f6_cat_")
     ruta = os.path.join(tmpdir, "tienda.db")
     shutil.copyfile(PLANTILLA, ruta)
-    original_db = Inventario.db_name
+    original_get_db_path = modulo_db.get_db_path
     modulo_db.get_db_path = lambda: ruta
     modulo_db.close()
-    Inventario.db_name = ruta
     try:
         id_frutas = crear_categoria("Frutas")
         with sqlite3.connect(ruta) as conn:
@@ -149,13 +148,14 @@ def test_mostrar_categoria():
         panel.destroy()
         root.destroy()
     finally:
-        Inventario.db_name = original_db
+        modulo_db.close()
+        modulo_db.get_db_path = original_get_db_path
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def test_en_hilo():
     print(f"\n{BOLD}{AZUL}[TEST 4] hilos.en_hilo{RESET}")
-    from reyger.hilos import en_hilo
+    from reyger.core.hilos import en_hilo
 
     root = tk.Tk()
     root.withdraw()
@@ -196,8 +196,8 @@ def test_exportacion_en_hilo():
     print(f"\n{BOLD}{AZUL}[TEST 5] Exportación de BD fuera del hilo UI{RESET}")
     from unittest.mock import patch
 
-    import reyger.ajustes as mod_ajustes
-    import reyger.db as modulo_db
+    import reyger.ui.ajustes as mod_ajustes
+    import reyger.core.db as modulo_db
 
     tmpdir = tempfile.mkdtemp(prefix="reyger_f6_exp_")
     ruta_bd = os.path.join(tmpdir, "tienda.db")
@@ -210,7 +210,6 @@ def test_exportacion_en_hilo():
 
     root = tk.Tk()
     root.withdraw()
-    original_db_attr = getattr(mod_ajustes.Ajustes, "db_name", None)
     try:
         panel = mod_ajustes.Ajustes(root)
         panel.var_formato_bd.set("db")
@@ -247,8 +246,6 @@ def test_exportacion_en_hilo():
         root.destroy()
         modulo_db.close()
         modulo_db.get_db_path = original_path
-        if original_db_attr is not None:
-            mod_ajustes.Ajustes.db_name = original_db_attr
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -256,7 +253,8 @@ def test_impresion_en_hilo():
     print(f"\n{BOLD}{AZUL}[TEST 6] Ticket térmico fuera del hilo UI{RESET}")
     from unittest.mock import patch
 
-    import reyger.ventas as mod_ventas
+    import reyger.ui.ventas as mod_ventas
+    import reyger.ui.business_profile as mod_bp
 
     avisos = []
     raiz = tk.Tk()
@@ -277,7 +275,8 @@ def test_impresion_en_hilo():
              patch.object(mod_ventas, "imprimir_ticket_venta",
                           impresora_lenta), \
              patch.object(mod_ventas.messagebox, "showwarning",
-                          lambda *a, **k: avisos.append(a)):
+                          lambda *a, **k: avisos.append(a)), \
+             patch.object(mod_bp, "nombre_empresa", return_value="Test SA"):
             inicio = time.time()
             ventas._imprimir_ticket_termico(
                 "F-1", "hoy", [], 10.0, 8.26, 1.74, "Efectivo", None

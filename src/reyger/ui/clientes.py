@@ -7,8 +7,8 @@ tanto desde la interfaz como desde otros módulos (facturación).
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from . import db
-from .config import ConfigManager
+from ..core import db
+from ..config import ConfigManager
 from .ui import configurar_ventana
 
 LETRAS_NIF = "TRWAGMYFPDXBNJZSQVHLCKE"

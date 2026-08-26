@@ -23,15 +23,15 @@ sys.path.insert(0, SRC_DIR)
 # Recursos y módulos del paquete (assets incluidos) para las pruebas
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
-import reyger.db as modulo_db
-import reyger.migrations as modulo_migrations
-import reyger.clientes as modulo_clientes
-import reyger.inventario as modulo_inventario
-import reyger.ventas as modulo_ventas
-from reyger.clientes import Clientes
-from reyger.fiscal import desglose_linea, desglose_total, normalizar_tipo_iva
-from reyger.inventario import Inventario
-from reyger.ventas import Ventas
+import reyger.core.db as modulo_db
+import reyger.core.migrations as modulo_migrations
+import reyger.ui.clientes as modulo_clientes
+import reyger.ui.inventario as modulo_inventario
+import reyger.ui.ventas as modulo_ventas
+from reyger.ui.clientes import Clientes
+from reyger.domain.fiscal import desglose_linea, desglose_total, normalizar_tipo_iva
+from reyger.ui.inventario import Inventario
+from reyger.ui.ventas import Ventas
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"

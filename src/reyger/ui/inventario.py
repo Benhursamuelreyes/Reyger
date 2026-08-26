@@ -1,29 +1,27 @@
 # inventario.py
 import os
-import sqlite3
 from datetime import datetime
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-from .barcode_scanner import (
+from ..hardware.barcode_scanner import (
     DialogoAsignarCodigoBarras,
     DialogoRegistroRapido,
     EscanerCodigoBarras,
 )
-from .fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
+from ..domain.fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
 from . import categorias as gestor_categorias
-from .backup import BackupError, importar_datos, exportar_sqlite
-from .hilos import en_hilo
-from .resources import get_db_path
+from ..core import db
+from ..core.backup import BackupError, importar_datos, exportar_sqlite
+from ..core.hilos import en_hilo
 
 
 class Inventario(tk.Frame):
-    db_name = get_db_path()
 
     def __init__(self, padre):
         super().__init__(padre)
         self.pack()
-        self.escaner = EscanerCodigoBarras(self.db_name)
+        self.escaner = EscanerCodigoBarras()
         self.widgets()
 
     def widgets(self):
@@ -286,7 +284,7 @@ class Inventario(tk.Frame):
         try:
             result = self.eje_consulta("SELECT nombre FROM proveedores ORDER BY nombre")
             nombres = [fila[0] for fila in result.fetchall()]
-        except sqlite3.Error:
+        except Exception:
             nombres = []
         self.proveedor["values"] = nombres
 
@@ -343,11 +341,10 @@ class Inventario(tk.Frame):
         ).grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
     
     def eje_consulta(self, consulta, parametros=()):
-        with sqlite3.connect(self.db_name) as conn:
-            cursor = conn.cursor()
-            result = cursor.execute(consulta, parametros)
-            conn.commit()
-        return result
+        conn = db.get_connection()
+        cursor = conn.execute(consulta, parametros)
+        conn.commit()
+        return cursor
     
     def validacion(self, nombre, prov, precio, costo, stock):
         if not (nombre and prov and precio and costo and stock):
@@ -366,7 +363,7 @@ class Inventario(tk.Frame):
                 "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
             ).fetchall()
             nombres = [fila[0] for fila in filas]
-        except sqlite3.Error:
+        except Exception:
             nombres = ["General"]
         if not nombres:
             gestor_categorias.crear("General")
@@ -478,7 +475,7 @@ class Inventario(tk.Frame):
         )
         if not registrar:
             return
-        dialogo = DialogoRegistroRapido(self, codigo, self.db_name)
+        dialogo = DialogoRegistroRapido(self, codigo)
         nuevo = dialogo.resultado
         if nuevo is None:
             return
@@ -496,7 +493,7 @@ class Inventario(tk.Frame):
                 "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
             ).fetchall()
             return [fila[0] for fila in filas]
-        except sqlite3.Error:
+        except Exception:
             return ["General"]
 
     def asignar_codigo_seleccionado(self):
@@ -775,5 +772,5 @@ class Inventario(tk.Frame):
                 self.eje_consulta(consulta, (item_id,))
                 self.actualizar_inventario()
                 messagebox.showinfo("Éxito", "Producto eliminado correctamente")
-            except sqlite3.Error as e:
+            except Exception as e:
                 messagebox.showerror("Error", f"No se pudo eliminar el producto: {e}")

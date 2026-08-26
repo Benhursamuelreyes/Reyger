@@ -4,17 +4,18 @@ from PIL import Image, ImageTk
 import os
 from datetime import datetime
 
-from . import backup as mod_backup
+from ..core import backup as mod_backup
+from . import business_profile as bp
 from . import categorias as mod_categorias
-from .config import ConfigManager
-from .hilos import en_hilo
-from .impresion_termica import (
+from ..config import ConfigManager
+from ..core.hilos import en_hilo
+from ..hardware.impresion_termica import (
     ANCHO_80MM,
     construir_ticket_venta,
     enviar_bytes,
     listar_impresoras_termicas,
 )
-from .resources import get_user_data_path, get_bundled_path
+from ..resources import get_user_data_path, get_bundled_path
 
 #: Etiquetas visibles del selector de letra ↔ claves de ESCALAS_LETRA
 ETIQUETAS_LETRA = {
@@ -119,7 +120,13 @@ class Ajustes(tk.Frame):
         # Separador
         tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
         
-        # Sección 5: Opciones adicionales
+        # Sección 5: VeriFactu (AEAT)
+        self.crear_seccion_verifactu(main_frame)
+
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        
+        # Sección 6: Opciones adicionales
         self.crear_seccion_opciones(main_frame)
 
         # Separador
@@ -167,6 +174,44 @@ class Ajustes(tk.Frame):
             pady=10
         )
         btn_restablecer.pack(side="left", padx=10)
+
+        btn_updates = tk.Button(
+            frame_botones,
+            text="Buscar actualizaciones",
+            bg="#17A2B8",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self._buscar_actualizaciones,
+            padx=20,
+            pady=10,
+        )
+        btn_updates.pack(side="left", padx=10)
+    
+    def _buscar_actualizaciones(self):
+        """Verifica si hay una nueva versión en GitHub."""
+        from ..core import updater
+
+        def trabajo():
+            return updater.hay_actualizacion()
+
+        def al_terminar(resultado, error):
+            if error is not None:
+                messagebox.showwarning(
+                    "Actualizaciones",
+                    f"No se pudo verificar actualizaciones:\n{error}",
+                )
+                return
+            if resultado is None:
+                from .. import __version__
+                messagebox.showinfo(
+                    "Actualizaciones",
+                    f"Ya tienes la última versión: v{__version__}",
+                )
+            else:
+                texto = updater.texto_actualizacion(resultado)
+                messagebox.showinfo("Actualizaciones disponibles", texto)
+
+        en_hilo(self, trabajo, al_terminar)
     
     def crear_seccion_tema(self, parent):
         """Crea la sección de selección de tema"""
@@ -309,7 +354,7 @@ class Ajustes(tk.Frame):
         btn_eliminar.pack(pady=5)
     
     def crear_seccion_empresa(self, parent):
-        """Crea la sección de información de la empresa"""
+        """Crea la sección de información de la empresa (perfil fiscal)."""
         frame = tk.LabelFrame(
             parent,
             text="🏢 Información de la Empresa",
@@ -320,26 +365,278 @@ class Ajustes(tk.Frame):
             pady=10
         )
         frame.pack(fill="x", pady=10)
-        
-        # Nombre de la empresa
-        label_nombre = tk.Label(
+
+        fila_bp = bp.obtener()
+        perfil = dict(fila_bp) if fila_bp else {}
+        campos_perfil = [
+            ("nombre", "Nombre de la empresa:", perfil.get("nombre", "") or "", 40),
+            ("nif", "NIF / CIF:", perfil.get("nif", "") or "", 20),
+            ("direccion", "Dirección:", perfil.get("direccion", "") or "", 40),
+            ("codigo_postal", "Código postal:", perfil.get("codigo_postal", "") or "", 8),
+            ("provincia", "Provincia:", perfil.get("provincia", "") or "", 25),
+            ("telefono", "Teléfono:", perfil.get("telefono", "") or "", 20),
+            ("email", "Email:", perfil.get("email", "") or "", 35),
+            ("actividad_economica", "Actividad económica:", perfil.get("actividad_economica", "") or "", 40),
+            ("numero_series", "Nº de series (VeriFactu):", perfil.get("numero_series", "A") or "A", 6),
+        ]
+
+        self.bp_entries = {}
+        for clave, etiqueta, valor, ancho in campos_perfil:
+            lbl = tk.Label(
+                frame,
+                text=etiqueta,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            )
+            lbl.pack(anchor="w", padx=20, pady=(6, 2))
+            entry = tk.Entry(
+                frame,
+                bg=self.colors["entry_bg"],
+                fg=self.colors["entry_fg"],
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+                width=ancho,
+            )
+            entry.insert(0, valor)
+            entry.pack(anchor="w", padx=20, pady=(0, 2), ipady=4)
+            self.bp_entries[clave] = entry
+
+        # Separador visual dentro de la sección
+        tk.Frame(frame, bg="#CCCCCC", height=1).pack(fill="x", pady=10)
+
+        lbl_info = tk.Label(
             frame,
-            text="Nombre de la empresa:",
+            text="Estos datos se usan en facturas, tickets y albaranes.",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
         )
-        label_nombre.pack(anchor="w", padx=20, pady=(10, 5))
-        
-        self.entry_nombre = tk.Entry(
-            frame,
-            bg=self.colors["entry_bg"],
-            fg=self.colors["entry_fg"],
+        lbl_info.pack(anchor="w", padx=20, pady=(0, 10))
+    
+    def crear_seccion_verifactu(self, parent):
+        """Crea la sección de configuración y exportación VeriFactu (AEAT)."""
+        frame = tk.LabelFrame(
+            parent,
+            text="VeriFactu (AEAT)",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10,
+        )
+        frame.pack(fill="x", pady=10)
+
+        self._verifactu_estado_labels = {}
+
+        for clave, etiqueta in [
+            ("pendientes", "Facturas pendientes de envío:"),
+            ("enviadas", "Facturas enviadas:"),
+            ("errores", "Facturas con error:"),
+        ]:
+            fila = tk.Frame(frame, bg=self.colors["bg_principal"])
+            fila.pack(fill="x", padx=20, pady=2)
+            tk.Label(
+                fila,
+                text=etiqueta,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            ).pack(side="left")
+            lbl = tk.Label(
+                fila,
+                text="0",
+                bg=self.colors["bg_principal"],
+                fg="#0078D4",
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            )
+            lbl.pack(side="right")
+            self._verifactu_estado_labels[clave] = lbl
+
+        tk.Frame(frame, bg="#CCCCCC", height=1).pack(fill="x", pady=10)
+
+        frame_botones = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_botones.pack(fill="x", padx=20, pady=(5, 10))
+
+        btn_xml = tk.Button(
+            frame_botones,
+            text="Exportar XML (AEAT)",
+            bg="#0078D4",
+            fg="white",
             font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
-            width=40
+            command=self._verifactu_exportar_xml,
+            padx=15,
+            pady=8,
         )
-        self.entry_nombre.insert(0, self.config_manager.get("nombre_empresa"))
-        self.entry_nombre.pack(anchor="w", padx=20, pady=(0, 15), ipady=5)
+        btn_xml.pack(side="left", padx=(0, 10))
+
+        btn_csv = tk.Button(
+            frame_botones,
+            text="Exportar CSV verificación",
+            bg="#17A2B8",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self._verifactu_exportar_csv,
+            padx=15,
+            pady=8,
+        )
+        btn_csv.pack(side="left", padx=(0, 10))
+
+        btn_verificar = tk.Button(
+            frame_botones,
+            text="Verificar cadena",
+            bg="#28A745",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self._verifactu_verificar_cadena,
+            padx=15,
+            pady=8,
+        )
+        btn_verificar.pack(side="left")
+
+        self._verifactu_label_resultado = tk.Label(
+            frame,
+            text="",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=600,
+            justify="left",
+        )
+        self._verifactu_label_resultado.pack(anchor="w", padx=20, pady=(0, 5))
+
+        self._verifactu_refrescar_estado(frame)
+
+    def _verifactu_refrescar_estado(self, frame=None):
+        """Actualiza las etiquetas de estado de VeriFactu."""
+        try:
+            from ..core import db as mod_db
+            pendientes = mod_db.query_one(
+                "SELECT COUNT(*) AS n FROM facturas_verifactu WHERE estado_envio = 'pendiente'"
+            )
+            enviadas = mod_db.query_one(
+                "SELECT COUNT(*) AS n FROM facturas_verifactu WHERE estado_envio = 'enviado'"
+            )
+            errores = mod_db.query_one(
+                "SELECT COUNT(*) AS n FROM facturas_verifactu WHERE estado_envio = 'error'"
+            )
+            self._verifactu_estado_labels["pendientes"].config(
+                text=str(pendientes["n"] if pendientes else 0)
+            )
+            self._verifactu_estado_labels["enviadas"].config(
+                text=str(enviadas["n"] if enviadas else 0)
+            )
+            self._verifactu_estado_labels["errores"].config(
+                text=str(errores["n"] if errores else 0)
+            )
+        except Exception:
+            pass
+
+    def _verifactu_exportar_xml(self):
+        """Exporta facturas pendientes a XML para envío a AEAT."""
+        from tkinter import filedialog as fd
+        from ..domain import verifactu_xml as vx
+
+        ruta = fd.asksaveasfilename(
+            title="Exportar XML VeriFactu",
+            defaultextension=".xml",
+            filetypes=[("XML AEAT", "*.xml")],
+            initialfile="envio_verifactu.xml",
+        )
+        if not ruta:
+            return
+
+        def trabajo():
+            return vx.exportar_facturas_xml(ruta, solo_pendientes=True)
+
+        def al_terminar(n, error):
+            if error is not None:
+                messagebox.showerror("Error", f"Error al exportar XML: {error}")
+                return
+            if n == 0:
+                messagebox.showinfo("VeriFactu", "No hay facturas pendientes de exportar.")
+            else:
+                messagebox.showinfo("VeriFactu", f"Exportadas {n} facturas a:\n{ruta}")
+            self._verifactu_refrescar_estado()
+
+        en_hilo(self, trabajo, al_terminar)
+
+    def _verifactu_exportar_csv(self):
+        """Exporta un CSV de verificación con hashes y cadenas."""
+        from ..core import db as mod_db
+        from ..resources import get_output_path
+        import csv
+
+        ruta = filedialog.asksaveasfilename(
+            title="Exportar CSV de verificación",
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv")],
+            initialfile="verificacion_verifactu.csv",
+        )
+        if not ruta:
+            return
+
+        try:
+            filas = mod_db.query(
+                "SELECT numero_factura, fecha, nif_emisor, total_iva, total, "
+                "huella, huella_anterior, numero_ord, tipo_comprobante, "
+                "estado_envio, fecha_generacion "
+                "FROM facturas_verifactu ORDER BY numero_ord ASC, id ASC"
+            )
+            with open(ruta, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "numero_factura", "fecha", "nif_emisor", "cuota_iva",
+                    "importe_total", "huella", "huella_anterior", "numero_ord",
+                    "tipo_comprobante", "estado_envio", "fecha_generacion",
+                ])
+                for fila in filas:
+                    writer.writerow([
+                        fila["numero_factura"], fila["fecha"], fila["nif_emisor"],
+                        fila["total_iva"], fila["total"], fila["huella"],
+                        fila["huella_anterior"], fila["numero_ord"],
+                        fila["tipo_comprobante"], fila["estado_envio"],
+                        fila["fecha_generacion"],
+                    ])
+            messagebox.showinfo("VeriFactu", f"CSV exportado a:\n{ruta}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar CSV: {e}")
+
+    def _verifactu_verificar_cadena(self):
+        """Verifica la integridad de la cadena de hash."""
+        from ..domain import verifactu_hash as vh
+
+        try:
+            resultados = vh.verificar_cadena()
+            if not resultados:
+                self._verifactu_label_resultado.config(
+                    text="No hay facturas para verificar.",
+                    fg=self.colors["fg_texto"],
+                )
+                return
+
+            total = len(resultados)
+            ok = sum(1 for r in resultados if r["ok"])
+            rotas = total - ok
+
+            if rotas == 0:
+                self._verifactu_label_resultado.config(
+                    text=f"Cadena íntegra: {total}/{total} facturas verificadas correctamente.",
+                    fg="#28A745",
+                )
+            else:
+                detalles = []
+                for r in resultados:
+                    if not r["ok"]:
+                        detalles.append(
+                            f"  #{r['numero_ord']} {r['numero_factura']}: "
+                            + "; ".join(r["errores"])
+                        )
+                texto = f"ERROR: {rotas}/{total} facturas con cadena rota:\n" + "\n".join(detalles)
+                self._verifactu_label_resultado.config(text=texto, fg="#DC3545")
+        except Exception as e:
+            self._verifactu_label_resultado.config(
+                text=f"Error al verificar: {e}", fg="#DC3545"
+            )
     
     def crear_seccion_opciones(self, parent):
         """Crea la sección de opciones adicionales"""
@@ -775,6 +1072,18 @@ class Ajustes(tk.Frame):
                 radio.config(state="disabled")
             radio.pack(side="left", padx=(0, 15))
 
+        self.var_encriptar_bd = tk.BooleanVar(value=False)
+        check_enc = tk.Checkbutton(
+            frame,
+            text="Encriptar copia de seguridad (Fernet AES)",
+            variable=self.var_encriptar_bd,
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            selectcolor=self.colors["bg_secundario"],
+        )
+        check_enc.pack(anchor="w", padx=20, pady=(0, 10))
+
         frame_acciones = tk.Frame(frame, bg=self.colors["bg_principal"])
         frame_acciones.pack(fill="x", padx=20, pady=(0, 5))
 
@@ -818,8 +1127,41 @@ class Ajustes(tk.Frame):
 
         El trabajo pesado corre fuera del hilo de la interfaz para que
         la ventana no se congele durante la escritura del fichero.
+        Si el checkbox de encriptación está marcado, genera un .db.enc.
         """
         formato = self.var_formato_bd.get()
+        encriptar = self.var_encriptar_bd.get()
+
+        if encriptar and formato == "db":
+            ruta = filedialog.asksaveasfilename(
+                title="Exportar base de datos encriptada",
+                defaultextension=".db.enc",
+                initialfile=f"reyger_{datetime.now():%Y%m%d}.db.enc",
+                filetypes=[("Backup encriptado", "*.db.enc")],
+            )
+            if not ruta:
+                return
+
+            def trabajo():
+                return mod_backup.exportar_datos(ruta, encriptado=True)
+
+            def al_terminar(final, error):
+                self._ocupar_botones_bd(False)
+                if error is not None:
+                    messagebox.showerror(
+                        "Exportar base de datos",
+                        f"No se pudo exportar: {error}",
+                    )
+                    return
+                messagebox.showinfo(
+                    "Exportar base de datos",
+                    f"Backup encriptado exportado correctamente:\n{final}",
+                )
+
+            self._ocupar_botones_bd(True)
+            en_hilo(self, trabajo, al_terminar)
+            return
+
         descripcion, extension = mod_backup.FORMATOS_EXPORTACION[formato]
         ruta = filedialog.asksaveasfilename(
             title=f"Exportar base de datos — {descripcion}",
@@ -935,10 +1277,11 @@ class Ajustes(tk.Frame):
     def guardar_cambios(self):
         """Guarda todos los cambios de configuración"""
         try:
+            # Guardar configuración de UI en config.json
             self.config_manager.config_data.update({
                 "tema": self.var_tema.get(),
                 "tamaño_fuente": int(self.scale_tamaño.get()),
-                "nombre_empresa": self.entry_nombre.get(),
+                "nombre_empresa": self.bp_entries["nombre"].get(),
                 "mostrar_hora": self.var_hora.get(),
                 "redondear_decimales": self.var_decimales.get(),
                 "impresora_termica": (
@@ -953,6 +1296,19 @@ class Ajustes(tk.Frame):
                 ),
             })
             self.config_manager.save_config()
+
+            # Guardar perfil de empresa en la base de datos
+            bp.guardar(
+                nombre=self.bp_entries["nombre"].get(),
+                nif=self.bp_entries["nif"].get(),
+                direccion=self.bp_entries["direccion"].get(),
+                codigo_postal=self.bp_entries["codigo_postal"].get(),
+                provincia=self.bp_entries["provincia"].get(),
+                telefono=self.bp_entries["telefono"].get(),
+                email=self.bp_entries["email"].get(),
+                actividad_economica=self.bp_entries["actividad_economica"].get(),
+                numero_series=self.bp_entries["numero_series"].get(),
+            )
             
             messagebox.showinfo(
                 "Éxito",

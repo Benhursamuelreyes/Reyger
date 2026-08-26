@@ -21,7 +21,7 @@ SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
 from openpyxl import load_workbook
 
-from reyger import backup
+from reyger.core import backup
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"

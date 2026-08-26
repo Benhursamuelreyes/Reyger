@@ -24,9 +24,9 @@ SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
 import tkinter as tk
 
-from reyger import ventas as mod_ventas
-from reyger import inventario as mod_inventario
-from reyger.barcode_scanner import (
+from reyger.ui import ventas as mod_ventas
+from reyger.ui import inventario as mod_inventario
+from reyger.hardware.barcode_scanner import (
     CapturaEscanero,
     EscanerCodigoBarras,
     registrar_producto_rapido,

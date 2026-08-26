@@ -43,7 +43,7 @@ except ImportError:  # pragma: no cover - depende del entorno
     EXCEL_DISPONIBLE = False
 
 from .db import close as cerrar_conexion_compartida
-from .resources import get_db_path
+from ..resources import get_db_path
 
 MAX_RESPALDOS = 5
 
@@ -192,8 +192,32 @@ def exportar_excel(destino, db_path=None):
     return destino
 
 
-def exportar_datos(destino, db_path=None):
-    """Exporta eligiendo el formato por la extensión de ``destino``."""
+def exportar_datos(destino, db_path=None, encriptado=False):
+    """Exporta eligiendo el formato por la extensión de ``destino``.
+
+    Si *encriptado* es ``True`` y el formato es SQLite, genera un
+    fichero ``.db.enc`` encriptado con Fernet.
+    """
+    if encriptado:
+        import tempfile
+        destino_str = str(destino)
+        if not destino_str.endswith(".enc"):
+            destino_str += ".enc"
+        fd, ruta_tmp = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            exportar_sqlite(ruta_tmp, db_path)
+            from .seguridad import cifrar_fichero
+            cifrar_fichero(ruta_tmp, destino_str)
+            return True, "db_enc"
+        except Exception as e:
+            raise BackupError(f"Error al encriptar: {e}")
+        finally:
+            try:
+                os.unlink(ruta_tmp)
+            except OSError:
+                pass
+
     extension = os.path.splitext(str(destino))[1].lower()
     if extension in EXTENSIONES_SQLITE:
         return exportar_sqlite(destino, db_path), "db"
@@ -428,6 +452,20 @@ def importar_datos(ruta_origen, db_path=None):
     ruta_origen = str(ruta_origen)
     if not os.path.exists(ruta_origen):
         raise BackupError(f"No existe el fichero «{ruta_origen}».")
+
+    if ruta_origen.endswith(".enc"):
+        try:
+            from .seguridad import descifrar_fichero
+            ruta_descifrada = descifrar_fichero(ruta_origen)
+            resultado = importar_datos(ruta_descifrada, db_path)
+            try:
+                os.unlink(ruta_descifrada)
+            except OSError:
+                pass
+            resultado["encriptado"] = True
+            return resultado
+        except Exception as e:
+            raise BackupError(f"Error al descifrar el backup: {e}")
 
     extension = os.path.splitext(ruta_origen)[1].lower()
     if extension in EXTENSIONES_SQLITE:

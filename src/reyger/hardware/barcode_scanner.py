@@ -4,11 +4,10 @@ Los escáneres USB funcionan como teclados HID, por lo que se capturan
 los códigos escaneados y se buscan automáticamente en el inventario.
 """
 
-import sqlite3
 import time
 import tkinter as tk
 from tkinter import messagebox, ttk
-from .resources import get_db_path
+from ..core import db
 
 
 class EscanerCodigoBarras:
@@ -17,14 +16,10 @@ class EscanerCodigoBarras:
     Busca productos por código de barras en el inventario.
     """
     
-    def __init__(self, db_path=None):
+    def __init__(self):
         """
         Inicializa el escáner.
-        
-        Args:
-            db_path: Ruta de la base de datos
         """
-        self.db_path = db_path or get_db_path()
         self.crear_columna_codigo_barras()
     
     def crear_columna_codigo_barras(self):
@@ -32,27 +27,22 @@ class EscanerCodigoBarras:
         Crea la columna codigo_barras en la tabla inventario si no existe.
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            conn = db.get_connection()
 
-            # Intenta agregar la columna. SQLite no permite ADD COLUMN
-            # ... UNIQUE sobre tablas existentes, así que la columna es
-            # simple y la unicidad va en un índice aparte.
             try:
-                cursor.execute(
+                conn.execute(
                     "ALTER TABLE inventario ADD COLUMN codigo_barras TEXT"
                 )
                 conn.commit()
-            except sqlite3.OperationalError:
+            except Exception:
                 # La columna ya existe
                 pass
 
-            cursor.execute(
+            conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_inventario_codigo_barras"
                 " ON inventario(codigo_barras)"
             )
             conn.commit()
-            conn.close()
         except Exception as e:
             print(f"Error creando columna: {e}")
     
@@ -70,20 +60,19 @@ class EscanerCodigoBarras:
             return None
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                row = conn.execute("""
-                    SELECT id, nombre, precio, stock, codigo_barras 
-                    FROM inventario 
-                    WHERE codigo_barras = ?
-                """, (codigo_barras.strip(),)).fetchone()
+            row = db.query_one("""
+                SELECT id, nombre, precio, stock, codigo_barras 
+                FROM inventario 
+                WHERE codigo_barras = ?
+            """, (codigo_barras.strip(),))
             
             if row:
                 return {
-                    'id': row[0],
-                    'nombre': row[1],
-                    'precio': row[2],
-                    'stock': row[3],
-                    'codigo_barras': row[4]
+                    'id': row["id"],
+                    'nombre': row["nombre"],
+                    'precio': row["precio"],
+                    'stock': row["stock"],
+                    'codigo_barras': row["codigo_barras"]
                 }
             return None
         except Exception as e:
@@ -105,18 +94,13 @@ class EscanerCodigoBarras:
             return False
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("""
-                    UPDATE inventario 
-                    SET codigo_barras = ? 
-                    WHERE id = ?
-                """, (codigo_barras.strip(), id_producto))
+            db.execute("""
+                UPDATE inventario 
+                SET codigo_barras = ? 
+                WHERE id = ?
+            """, (codigo_barras.strip(), id_producto))
             return True
-        except sqlite3.IntegrityError:
-            # Código de barras duplicado
-            return False
-        except Exception as e:
-            print(f"Error guardando código: {e}")
+        except Exception:
             return False
     
     def obtener_producto_por_id(self, id_producto):
@@ -130,20 +114,19 @@ class EscanerCodigoBarras:
             Diccionario con datos del producto
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                row = conn.execute("""
-                    SELECT id, nombre, precio, stock, codigo_barras 
-                    FROM inventario 
-                    WHERE id = ?
-                """, (id_producto,)).fetchone()
+            row = db.query_one("""
+                SELECT id, nombre, precio, stock, codigo_barras 
+                FROM inventario 
+                WHERE id = ?
+            """, (id_producto,))
             
             if row:
                 return {
-                    'id': row[0],
-                    'nombre': row[1],
-                    'precio': row[2],
-                    'stock': row[3],
-                    'codigo_barras': row[4]
+                    'id': row["id"],
+                    'nombre': row["nombre"],
+                    'precio': row["precio"],
+                    'stock': row["stock"],
+                    'codigo_barras': row["codigo_barras"]
                 }
             return None
         except Exception as e:
@@ -158,14 +141,13 @@ class EscanerCodigoBarras:
             Lista de tuplas (id, nombre, código_actual)
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                productos = conn.execute("""
-                    SELECT id, nombre, codigo_barras 
-                    FROM inventario 
-                    WHERE codigo_barras IS NULL OR codigo_barras = ''
-                    ORDER BY nombre
-                """).fetchall()
-            return productos
+            filas = db.query("""
+                SELECT id, nombre, codigo_barras 
+                FROM inventario 
+                WHERE codigo_barras IS NULL OR codigo_barras = ''
+                ORDER BY nombre
+            """)
+            return [(fila["id"], fila["nombre"], fila["codigo_barras"]) for fila in filas]
         except Exception as e:
             print(f"Error listando productos: {e}")
             return []
@@ -317,22 +299,17 @@ def registrar_producto_rapido(db_path, codigo_barras, nombre, precio_venta,
     except (TypeError, ValueError):
         raise ValueError("El stock debe ser un número entero")
 
-    conn = sqlite3.connect(str(db_path))
     try:
-        cursor = conn.execute(
+        id_producto = db.execute(
             "INSERT INTO inventario (nombre, proveedor, precio, costo,"
             " stock, tipo_iva, codigo_barras) VALUES (?,?,?,?,?,?,?)",
             (nombre, "", precio_venta, precio_costo, stock,
              tipo_iva if tipo_iva is not None else 21, codigo_barras),
         )
-        id_producto = cursor.lastrowid
-        conn.commit()
-    except sqlite3.IntegrityError as e:
+    except Exception as e:
         raise ValueError(
             f"El código {codigo_barras} ya está asignado a otro producto"
         ) from e
-    finally:
-        conn.close()
 
     return {
         "id": id_producto,
@@ -349,7 +326,7 @@ class DialogoRegistroRapido(tk.Toplevel):
     Al cerrarse, ``self.resultado`` contiene el producto creado o ``None``.
     """
 
-    def __init__(self, parent, codigo_barras, db_path):
+    def __init__(self, parent, codigo_barras, db_path=None):
         super().__init__(parent)
         self.title("Registrar producto nuevo")
         self.geometry("480x320")
@@ -357,7 +334,6 @@ class DialogoRegistroRapido(tk.Toplevel):
         self.minsize(440, 300)
         self.configure(bg="#C6D9E3")
         self.resultado = None
-        self.db_path = db_path
         self._codigo = codigo_barras
 
         frame = tk.Frame(self, bg="#C6D9E3", padx=15, pady=10)
@@ -409,7 +385,7 @@ class DialogoRegistroRapido(tk.Toplevel):
     def _guardar(self):
         try:
             self.resultado = registrar_producto_rapido(
-                self.db_path,
+                None,
                 self._codigo,
                 nombre=self.entradas["nombre"].get(),
                 precio_venta=self.entradas["precio"].get(),
@@ -421,7 +397,7 @@ class DialogoRegistroRapido(tk.Toplevel):
             return
         except Exception as e:
             messagebox.showerror(
-                "Registrar producto", f"No se pudo registrar: {e}", parent=self
+                "Registrar producto", f"No se pudo registrar: {e}"
             )
             return
         self.destroy()

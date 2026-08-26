@@ -5,12 +5,12 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 
-from .ventas import Ventas
-from .inventario import Inventario
-from .clientes import Clientes
-from .ajustes import Ajustes
-from .presupuestos import Presupuestos
-from .albaranes_ui import VentanaAlbaranes
+from .ui.ventas import Ventas
+from .ui.inventario import Inventario
+from .ui.clientes import Clientes
+from .ui.ajustes import Ajustes
+from .ui.presupuestos import Presupuestos
+from .ui.albaranes_ui import VentanaAlbaranes
 from .config import ConfigManager
 from .resources import get_bundled_path
 

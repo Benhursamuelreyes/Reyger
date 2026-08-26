@@ -1,1 +1,14 @@
 Changelog content
+
+## v3.0.0-beta.4 (2026-08-26)
+
+### Refactor
+- Reorganización de la estructura del proyecto en subpaquetes por capas:
+  - `core/`: db, migrations, backup, hilos, updater, seguridad
+  - `domain/`: fiscal, facturas_verifactu, verifactu_hash, verifactu_xml
+  - `hardware/`: impresoras, impresion_termica, barcode_scanner
+  - `ui/`: manager, ajustes, ventas, inventario, clientes, presupuestos,
+    albaranes, albaranes_ui, tickets, categorias, business_profile, ui
+- Mantenidos en raíz: `__main__.py`, `app.py`, `container.py`, `config.py`, `resources.py`
+- Todos los imports internos y de tests actualizados a las nuevas rutas
+- 92/92 tests pasan tras el refactoring

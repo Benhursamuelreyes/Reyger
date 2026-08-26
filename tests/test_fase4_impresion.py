@@ -23,12 +23,12 @@ sys.path.insert(0, SRC_DIR)
 # Recursos y módulos del paquete (assets incluidos) para las pruebas
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
-import reyger.db as modulo_db
+import reyger.core.db as modulo_db
 import reyger.container as modulo_container
-import reyger.clientes as modulo_clientes
-import reyger.inventario as modulo_inventario
-import reyger.ventas as modulo_ventas
-from reyger.impresion_termica import (
+import reyger.ui.clientes as modulo_clientes
+import reyger.ui.inventario as modulo_inventario
+import reyger.ui.ventas as modulo_ventas
+from reyger.hardware.impresion_termica import (
     ANCHO_58MM,
     ANCHO_80MM,
     CORTE_PARCIAL,
@@ -38,7 +38,7 @@ from reyger.impresion_termica import (
     enviar_bytes,
     listar_impresoras_termicas,
 )
-from reyger.ventas import Ventas
+from reyger.ui.ventas import Ventas
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"

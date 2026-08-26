@@ -1,4 +1,3 @@
-import sqlite3
 from tkinter import *
 from tkinter import ttk, messagebox
 import tkinter as tk
@@ -10,20 +9,22 @@ import datetime
 import os
 import time
 
-from .resources import get_db_path, get_output_path, open_file, get_bundled_path
-from .config import ConfigManager
-from .hilos import en_hilo
-from .barcode_scanner import (
+from . import business_profile as bp
+from ..core import db
+from ..resources import get_output_path, open_file, get_bundled_path
+from ..config import ConfigManager
+from ..core.hilos import en_hilo
+from ..hardware.barcode_scanner import (
     CapturaEscanero,
     DialogoRegistroRapido,
     EscanerCodigoBarras,
 )
-from .fiscal import (
+from ..domain.fiscal import (
     IVA_POR_DEFECTO,
     desglose_linea,
     desglose_total,
 )
-from .impresion_termica import (
+from ..hardware.impresion_termica import (
     ANCHO_58MM,
     ANCHO_80MM,
     imprimir_ticket_venta,
@@ -42,14 +43,13 @@ def _resolver_logo(config):
 
 
 class Ventas(tk.Frame):
-    db_name = get_db_path()
 
     def __init__(self, padre):
         super().__init__(padre)
         self.productos_info = {}
         self.productos_por_categoria = {}
         self.config_manager = ConfigManager()
-        self.escaner = EscanerCodigoBarras(self.db_name)
+        self.escaner = EscanerCodigoBarras()
         self.captura = CapturaEscanero(self.winfo_toplevel(), self._procesar_codigo)
         self._ult_codigo = None
         self._ult_momento = 0.0
@@ -62,36 +62,23 @@ class Ventas(tk.Frame):
 
     def crear_tabla_ventas(self):
         try:
-            with sqlite3.connect(self.db_name) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS ventas (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        factura INTEGER NOT NULL,
-                        nombre_articulo TEXT NOT NULL,
-                        valor_articulo REAL NOT NULL,
-                        cantidad INTEGER NOT NULL,
-                        subtotal REAL NOT NULL,
-                        metodo_pago TEXT DEFAULT 'Efectivo',
-                        cantidad_efectivo REAL DEFAULT 0,
-                        cantidad_tarjeta REAL DEFAULT 0,
-                        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                try:
-                    cursor.execute('ALTER TABLE ventas ADD COLUMN metodo_pago TEXT DEFAULT "Efectivo"')
-                except Exception:
-                    pass
-                try:
-                    cursor.execute("ALTER TABLE ventas ADD COLUMN cantidad_efectivo REAL DEFAULT 0")
-                except Exception:
-                    pass
-                try:
-                    cursor.execute("ALTER TABLE ventas ADD COLUMN cantidad_tarjeta REAL DEFAULT 0")
-                except Exception:
-                    pass
-                conn.commit()
-        except sqlite3.Error as e:
+            conn = db.get_connection()
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ventas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    factura INTEGER NOT NULL,
+                    nombre_articulo TEXT NOT NULL,
+                    valor_articulo REAL NOT NULL,
+                    cantidad INTEGER NOT NULL,
+                    subtotal REAL NOT NULL,
+                    metodo_pago TEXT DEFAULT 'Efectivo',
+                    cantidad_efectivo REAL DEFAULT 0,
+                    cantidad_tarjeta REAL DEFAULT 0,
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+        except Exception as e:
             messagebox.showerror("Error", f"No se pudo crear la tabla ventas: {e}")
 
     def widgets(self):
@@ -224,42 +211,36 @@ class Ventas(tk.Frame):
 
     def cargar_productos(self):
         try:
-            with sqlite3.connect(self.db_name) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT i.nombre, i.precio, i.tipo_iva, COALESCE(c.nombre, 'General') "
-                    "FROM inventario i LEFT JOIN categorias c ON c.id = i.categoria_id"
+            filas = db.query(
+                "SELECT i.nombre, i.precio, i.tipo_iva, COALESCE(c.nombre, 'General') "
+                "FROM inventario i LEFT JOIN categorias c ON c.id = i.categoria_id"
+            )
+            nombres = []
+            self.productos_info = {}
+            self.productos_por_categoria = {}
+            for fila in filas:
+                nombre, precio, tipo_iva, categoria = fila["nombre"], fila["precio"], fila["tipo_iva"], fila[3]
+                nombres.append(nombre)
+                self.productos_info[nombre] = (
+                    float(precio),
+                    float(tipo_iva) if tipo_iva is not None else IVA_POR_DEFECTO,
                 )
-                resultados = cursor.fetchall()
-                nombres = []
-                self.productos_info = {}
-                self.productos_por_categoria = {}
-                for nombre, precio, tipo_iva, categoria in resultados:
-                    nombres.append(nombre)
-                    self.productos_info[nombre] = (
-                        float(precio),
-                        float(tipo_iva) if tipo_iva is not None else IVA_POR_DEFECTO,
-                    )
-                    self.productos_por_categoria.setdefault(categoria, []).append(nombre)
-                self.entry_nombre["values"] = nombres
-                if hasattr(self, "botones_categoria"):
-                    self.filtrar_por_categoria("Todos")
-                if not nombres:
-                    print("Advertencia: La base de datos no contiene productos registrados")
-        except sqlite3.Error as e:
-            print(f"Error al cargar productos desde la base de datos: {e}")
+                self.productos_por_categoria.setdefault(categoria, []).append(nombre)
+            self.entry_nombre["values"] = nombres
+            if hasattr(self, "botones_categoria"):
+                self.filtrar_por_categoria("Todos")
+            if not nombres:
+                print("Advertencia: La base de datos no contiene productos registrados")
         except Exception as ex:
             print(f"Error inesperado: {ex}")
 
     def _categorias_disponibles(self):
         try:
-            with sqlite3.connect(self.db_name) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
-                )
-                return [fila[0] for fila in cursor.fetchall()]
-        except sqlite3.Error:
+            filas = db.query(
+                "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
+            )
+            return [fila["nombre"] for fila in filas]
+        except Exception:
             return ["General"]
 
     def crear_botones_categorias(self):
@@ -290,13 +271,11 @@ class Ventas(tk.Frame):
 
     def cargar_clientes_venta(self):
         try:
-            with sqlite3.connect(self.db_name) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT nombre FROM clientes ORDER BY nombre")
-                nombres = ["(Sin cliente)"] + [fila[0] for fila in cursor.fetchall()]
-                self.combo_cliente["values"] = nombres
-                self.combo_cliente.current(0)
-        except sqlite3.Error:
+            filas = db.query("SELECT nombre FROM clientes ORDER BY nombre")
+            nombres = ["(Sin cliente)"] + [fila["nombre"] for fila in filas]
+            self.combo_cliente["values"] = nombres
+            self.combo_cliente.current(0)
+        except Exception:
             self.combo_cliente["values"] = ["(Sin cliente)"]
             self.combo_cliente.current(0)
 
@@ -306,27 +285,20 @@ class Ventas(tk.Frame):
 
     def actualizar_precio(self, event):
         nombre_producto = self.entry_nombre.get()
-        conn = None
         try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
-            c.execute("SELECT precio FROM inventario WHERE nombre = ?", (nombre_producto,))
-            precio = c.fetchone()
-            if precio:
+            fila = db.query_one("SELECT precio FROM inventario WHERE nombre = ?", (nombre_producto,))
+            if fila:
                 self.entry_valor.config(state="normal")
                 self.entry_valor.delete(0, tk.END)
-                self.entry_valor.insert(0, precio[0])
+                self.entry_valor.insert(0, fila["precio"])
                 self.entry_valor.config(state="readonly")
             else:
                 self.entry_valor.config(state="normal")
                 self.entry_valor.delete(0, tk.END)
                 self.entry_valor.insert(0, "Precio no disponible")
                 self.entry_valor.config(state="readonly")
-        except sqlite3.Error as e:
+        except Exception as e:
             messagebox.showerror("Error", f"Error al obtener el precio: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     def _lineas_carrito(self):
         """Devuelve las líneas del carrito como tuplas numéricas."""
@@ -445,7 +417,7 @@ class Ventas(tk.Frame):
             )
             if not registrar:
                 return
-            dialogo = DialogoRegistroRapido(self, codigo, self.db_name)
+            dialogo = DialogoRegistroRapido(self, codigo)
             producto = dialogo.resultado
             if producto is None:
                 return
@@ -485,21 +457,14 @@ class Ventas(tk.Frame):
             self.entry_codigo_barras.focus_set()
 
     def validar_stock(self, nombre_producto, cantidad):
-        conn = None
         try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
-            c.execute("SELECT stock FROM inventario WHERE nombre = ?", (nombre_producto,))
-            stock = c.fetchone()
-            if stock and stock[0] >= cantidad:
+            fila = db.query_one("SELECT stock FROM inventario WHERE nombre = ?", (nombre_producto,))
+            if fila and fila["stock"] >= cantidad:
                 return True
             return False
-        except sqlite3.Error as e:
+        except Exception as e:
             messagebox.showerror("Error", f"Error al validar el stock: {e}")
             return False
-        finally:
-            if conn:
-                conn.close()
 
     def obtener_total(self):
         total = 0.0
@@ -657,18 +622,15 @@ class Ventas(tk.Frame):
             cliente_nombre = self.combo_cliente.get()
             cliente_id = None
             if cliente_nombre and cliente_nombre != "(Sin cliente)":
-                with sqlite3.connect(self.db_name) as conn_cli:
-                    c_cli = conn_cli.cursor()
-                    c_cli.execute("SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,))
-                    fila_cliente = c_cli.fetchone()
-                    cliente_id = fila_cliente[0] if fila_cliente else None
+                fila_cliente = db.query_one(
+                    "SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,)
+                )
+                cliente_id = fila_cliente["id"] if fila_cliente else None
 
             productos = []
             lineas_fiscales = []
 
-            with sqlite3.connect(self.db_name) as conn:
-                c = conn.cursor()
-
+            with db.transaccion() as conn:
                 for i in self.tree.get_children():
                     item = self.tree.item(i, "values")
                     producto = item[0]
@@ -684,7 +646,7 @@ class Ventas(tk.Frame):
                     ))
                     lineas_fiscales.append((precio, cantidad_vendida, tipo_iva))
 
-                    c.execute("""
+                    conn.execute("""
                         INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
                             cantidad, subtotal, metodo_pago, cantidad_efectivo,
                             cantidad_tarjeta, cliente_id, tipo_iva, cuota_iva,
@@ -697,9 +659,8 @@ class Ventas(tk.Frame):
                         tipo_iva, cuota_linea, base_linea,
                     ))
 
-                    c.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
+                    conn.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
 
-                conn.commit()
                 total, base_total, cuota_total = desglose_total(lineas_fiscales)
                 numero_factura_emitida = self.numero_factura_actual
                 messagebox.showinfo("Exito", f"La venta se ha completado\nMetodo de pago: {metodo_pago}")
@@ -719,6 +680,11 @@ class Ventas(tk.Frame):
                     productos, total, numero_factura_emitida, fecha, metodo_pago,
                     base_imponible=base_total, cuota_iva=cuota_total,
                     cliente_nombre=None if cliente_id is None else cliente_nombre,
+                )
+                self._registrar_verifactu(
+                    numero_factura_emitida, fecha, productos, total,
+                    base_total, cuota_total,
+                    nif_receptor=None, nombre_receptor=None if cliente_id is None else cliente_nombre,
                 )
                 self._imprimir_ticket_termico(
                     numero_factura_emitida, fecha, productos, total,
@@ -741,7 +707,7 @@ class Ventas(tk.Frame):
             return
         ancho = ANCHO_58MM if config.get("ancho_ticket") == 58 else ANCHO_80MM
         letra = config.get("letra_ticket", "muy_grande")
-        empresa = config.get("nombre_empresa", "Mi Empresa")
+        empresa = bp.nombre_empresa()
         logo = _resolver_logo(config)
 
         def trabajo():
@@ -762,6 +728,44 @@ class Ventas(tk.Frame):
                 messagebox.showwarning("Impresora térmica", mensaje)
 
         en_hilo(self, trabajo, al_terminar)
+
+    def _registrar_verifactu(self, numero_factura, fecha, productos, total,
+                             base_imponible, cuota_iva, nif_receptor,
+                             nombre_receptor):
+        """Registra la factura en facturas_verifactu con cadena hash AEAT."""
+        try:
+            from ..domain import facturas_verifactu as fv_mod
+            from . import business_profile as bp
+
+            generador = fv_mod.FacturaVeriFACTU()
+            nif_emisor = bp.nif() or ""
+            nif_rec = nif_receptor or ""
+            nombre_rec = nombre_receptor or "(Consumidor final)"
+
+            productos_dict = [
+                {
+                    "nombre_articulo": p[0],
+                    "valor_articulo": p[1],
+                    "cantidad": p[2],
+                    "subtotal": p[3],
+                }
+                for p in productos
+            ]
+
+            generador.guardar_datos_factura_db(
+                numero_factura=numero_factura,
+                fecha=fecha,
+                nif_emisor=nif_emisor,
+                nif_receptor=nif_rec,
+                nombre_receptor=nombre_rec,
+                base_imponible=base_imponible,
+                tipo_iva=IVA_POR_DEFECTO,
+                total_iva=cuota_iva,
+                total=total,
+                productos=productos_dict,
+            )
+        except Exception:
+            pass
 
     def generar_factura_pdf(self, productos, total, factura_numero, fecha,
                             metodo_pago="Efectivo", base_imponible=None,
@@ -807,12 +811,9 @@ class Ventas(tk.Frame):
 
     def obtener_numero_factura_actual(self):
         try:
-            with sqlite3.connect(self.db_name) as conn:
-                c = conn.cursor()
-                c.execute("SELECT IFNULL(MAX(factura), 0) FROM ventas")
-                max_factura = c.fetchone()[0]
-                return max_factura + 1
-        except sqlite3.Error as e:
+            fila = db.query_one("SELECT IFNULL(MAX(factura), 0) AS max_factura FROM ventas")
+            return fila["max_factura"] + 1
+        except Exception as e:
             messagebox.showerror("Error", f"Error al obtener el número de factura: {e}")
             return 1
 
@@ -861,11 +862,8 @@ class Ventas(tk.Frame):
 
     def cargar_facturas(self, tree):
         try:
-            with sqlite3.connect(self.db_name) as conn:
-                c = conn.cursor()
-                c.execute("SELECT * FROM ventas")
-                facturas = c.fetchall()
-                for factura in facturas:
-                    tree.insert("", "end", values=factura)
-        except sqlite3.Error as e:
+            filas = db.query("SELECT * FROM ventas")
+            for fila in filas:
+                tree.insert("", "end", values=tuple(fila))
+        except Exception as e:
             messagebox.showerror("Error", f"Error al cargar las facturas: {e}")

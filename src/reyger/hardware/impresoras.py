@@ -8,7 +8,7 @@ Requiere: pip install pywin32
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
-from .config import ConfigManager
+from ..config import ConfigManager
 
 # Intentar importar win32print
 try:

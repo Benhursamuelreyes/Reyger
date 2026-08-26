@@ -79,11 +79,11 @@ def _install_crash_handler():
 
 def main():
     _install_crash_handler()
-    from .migrations import ensure_database
+    from .core.migrations import ensure_database
 
     ensure_database()
 
-    from .manager import Manager
+    from .ui.manager import Manager
 
     app = Manager()
     app.mainloop()

@@ -3,15 +3,16 @@ Módulo para generación de albaranes (documentos de entrega sin valor fiscal).
 """
 
 import os
-import sqlite3
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
-from .config import ConfigManager
-from .resources import get_db_path, get_output_path
+from ..config import ConfigManager
+from . import business_profile as bp
+from ..core import db
+from ..resources import get_output_path
 
 
 class AlbaranEntrega:
@@ -27,7 +28,6 @@ class AlbaranEntrega:
             config_manager: Instancia de ConfigManager
         """
         self.config_manager = config_manager or ConfigManager()
-        self.db_path = get_db_path()
         self.estilos = getSampleStyleSheet()
         self._crear_estilos_personalizados()
     
@@ -97,7 +97,7 @@ class AlbaranEntrega:
         story = []
         
         # 1. Encabezado
-        nombre_empresa = self.config_manager.get("nombre_empresa", "Mi Empresa")
+        nombre_empresa = bp.nombre_empresa()
         story.extend(self._crear_encabezado_albaran(nombre_empresa))
         
         story.append(Spacer(1, 0.4*cm))
@@ -131,24 +131,49 @@ class AlbaranEntrega:
         return output_path
     
     def _crear_encabezado_albaran(self, nombre_empresa):
-        """Crea el encabezado del albarán"""
+        """Crea el encabezado del albarán con datos del negocio."""
         elementos = []
-        
+
         elementos.append(Paragraph(
             f"<b>{nombre_empresa.upper()}</b>",
             self.estilo_titulo
         ))
-        
+
+        perfil = bp.obtener()
+        if perfil:
+            p = dict(perfil)
+            lineas_contacto = []
+            if p.get("nif"):
+                lineas_contacto.append(f"NIF: {p['nif']}")
+            if p.get("direccion"):
+                dir_completa = p["direccion"]
+                if p.get("codigo_postal"):
+                    dir_completa += f", {p['codigo_postal']}"
+                if p.get("provincia"):
+                    dir_completa += f" — {p['provincia']}"
+                lineas_contacto.append(dir_completa)
+            if p.get("telefono"):
+                lineas_contacto.append(f"Tel: {p['telefono']}")
+            if p.get("email"):
+                lineas_contacto.append(f"Email: {p['email']}")
+            if lineas_contacto:
+                elementos.append(Paragraph(
+                    " | ".join(lineas_contacto),
+                    self.estilo_normal
+                ))
+
+        elementos.append(Spacer(1, 0.2 * cm))
+
         elementos.append(Paragraph(
             "<b>ALBARÁN DE ENTREGA</b>",
             self.estilo_subtitulo
         ))
-        
+
         elementos.append(Paragraph(
             "<i>Documento de gestión. No tiene carácter de factura.</i>",
             self.estilo_normal
         ))
-        
+
         return elementos
     
     def _crear_info_albaran(self, numero_albaran, fecha):
@@ -326,11 +351,9 @@ class AlbaranEntrega:
             Boolean indicando éxito
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            conn = db.get_connection()
             
-            # Crear tabla si no existe
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS albaranes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     numero_albaran TEXT UNIQUE NOT NULL,
@@ -343,8 +366,7 @@ class AlbaranEntrega:
                 )
             """)
             
-            # Insertar albarán
-            cursor.execute("""
+            cursor = conn.execute("""
                 INSERT INTO albaranes 
                 (numero_albaran, fecha, cliente_nombre, cliente_direccion, observaciones)
                 VALUES (?, ?, ?, ?, ?)
@@ -352,8 +374,7 @@ class AlbaranEntrega:
             
             albaran_id = cursor.lastrowid
             
-            # Crear tabla de productos de albaranes
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS albaranes_productos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     albaran_id INTEGER NOT NULL,
@@ -364,9 +385,8 @@ class AlbaranEntrega:
                 )
             """)
             
-            # Guardar productos
             for prod in productos:
-                cursor.execute("""
+                conn.execute("""
                     INSERT INTO albaranes_productos
                     (albaran_id, nombre_producto, cantidad, descripcion)
                     VALUES (?, ?, ?, ?)
@@ -378,13 +398,9 @@ class AlbaranEntrega:
                 ))
             
             conn.commit()
-            conn.close()
             
             return True
-        except sqlite3.IntegrityError:
-            return False
-        except Exception as e:
-            print(f"Error guardando albarán en BD: {e}")
+        except Exception:
             return False
     
     def cambiar_estado_albaran(self, numero_albaran, nuevo_estado):
@@ -399,19 +415,16 @@ class AlbaranEntrega:
             Boolean indicando éxito
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            conn = db.get_connection()
             
-            cursor.execute("""
+            conn.execute("""
                 UPDATE albaranes 
                 SET estado = ? 
                 WHERE numero_albaran = ?
             """, (nuevo_estado, numero_albaran))
             
             conn.commit()
-            conn.close()
             
             return True
-        except Exception as e:
-            print(f"Error actualizando estado del albarán: {e}")
+        except Exception:
             return False

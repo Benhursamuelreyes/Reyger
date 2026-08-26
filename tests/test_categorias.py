@@ -23,13 +23,13 @@ sys.path.insert(0, SRC_DIR)
 # Recursos y módulos del paquete (assets incluidos) para las pruebas
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
-import reyger.db as modulo_db
-import reyger.categorias as modulo_categorias
-import reyger.migrations as modulo_migrations
-import reyger.ajustes as modulo_ajustes
-import reyger.inventario as modulo_inventario
-import reyger.ventas as modulo_ventas
-from reyger.categorias import (
+import reyger.core.db as modulo_db
+import reyger.ui.categorias as modulo_categorias
+import reyger.core.migrations as modulo_migrations
+import reyger.ui.ajustes as modulo_ajustes
+import reyger.ui.inventario as modulo_inventario
+import reyger.ui.ventas as modulo_ventas
+from reyger.ui.categorias import (
     GENERAL,
     categoria_de_producto,
     crear,
@@ -41,8 +41,8 @@ from reyger.categorias import (
     productos_por_categoria,
     renombrar,
 )
-from reyger.inventario import Inventario
-from reyger.ventas import Ventas
+from reyger.ui.inventario import Inventario
+from reyger.ui.ventas import Ventas
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"
@@ -139,6 +139,7 @@ def test_migracion3():
 
 def test_crud_categorias():
     print(f"\n{BOLD}{AZUL}[TEST 2] CRUD de categorias y reglas de General{RESET}")
+    silenciar_messageboxes()
     tmp_dir, ruta = db_temporal()
     try:
         shutil.copyfile(PLANTILLA, ruta)
@@ -157,7 +158,7 @@ def test_crud_categorias():
         chequear("renombrar General lanza ValueError", _lanza_valueerror(lambda: renombrar(id_general(), "Otra")))
 
         # Producto vinculado a la categoria que se elimina
-        from reyger.inventario import Inventario
+        from reyger.ui.inventario import Inventario
 
         root = tk.Tk()
         root.withdraw()
@@ -200,6 +201,7 @@ def _lanza_valueerror(funcion):
 
 def test_mapas_y_filtro_ventas():
     print(f"\n{BOLD}{AZUL}[TEST 3] Mapas por categoria y botones de ventas{RESET}")
+    silenciar_messageboxes()
     tmp_dir, ruta = db_temporal()
     try:
         shutil.copyfile(PLANTILLA, ruta)
@@ -265,6 +267,7 @@ def test_mapas_y_filtro_ventas():
 
 def test_inventario_filtro_y_columna():
     print(f"\n{BOLD}{AZUL}[TEST 4] Filtro y columna Categoría en inventario{RESET}")
+    silenciar_messageboxes()
     tmp_dir, ruta = db_temporal()
     try:
         shutil.copyfile(PLANTILLA, ruta)

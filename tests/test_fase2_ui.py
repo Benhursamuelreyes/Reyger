@@ -23,15 +23,15 @@ sys.path.insert(0, SRC_DIR)
 # Recursos y módulos del paquete (assets incluidos) para las pruebas
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
-import reyger.db as modulo_db
-import reyger.clientes as modulo_clientes
-import reyger.inventario as modulo_inventario
-import reyger.ventas as modulo_ventas
-from reyger.clientes import Clientes, validar_documento
+import reyger.core.db as modulo_db
+import reyger.ui.clientes as modulo_clientes
+import reyger.ui.inventario as modulo_inventario
+import reyger.ui.ventas as modulo_ventas
+from reyger.ui.clientes import Clientes, validar_documento
 from reyger.container import Container
-from reyger.inventario import Inventario
-from reyger.ui import GEOMETRIA_MODULO, GEOMETRIA_PRINCIPAL, MINIMO_MODULO
-from reyger.ventas import Ventas
+from reyger.ui.inventario import Inventario
+from reyger.ui.ui import GEOMETRIA_MODULO, GEOMETRIA_PRINCIPAL, MINIMO_MODULO
+from reyger.ui.ventas import Ventas
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"
@@ -100,6 +100,7 @@ def test_validadores():
 
 def test_crud_clientes():
     print(f"\n{BOLD}{AZUL}[TEST 2] CRUD de clientes{RESET}")
+    silenciar_messageboxes()
     tmp_dir, ruta = db_temporal()
     modulo_db.close()
     modulo_db.get_db_path = lambda: ruta
@@ -167,8 +168,10 @@ def test_crud_clientes():
 def test_proveedores_inventario():
     print(f"\n{BOLD}{AZUL}[TEST 3] Selector de proveedores en Inventario{RESET}")
     tmp_dir, ruta = db_temporal()
-    anterior = Inventario.db_name
-    Inventario.db_name = ruta
+    anterior_conexion = modulo_db._conexion
+    modulo_db._conexion = None
+    original_get_db_path = modulo_db.get_db_path
+    modulo_db.get_db_path = lambda: ruta
     try:
         conn = sqlite3.connect(ruta)
         conn.execute(
@@ -209,15 +212,18 @@ def test_proveedores_inventario():
 
         root.destroy()
     finally:
-        Inventario.db_name = anterior
+        modulo_db._conexion = anterior_conexion
+        modulo_db.get_db_path = original_get_db_path
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def test_ventanas_redimensionables():
     print(f"\n{BOLD}{AZUL}[TEST 4] Ventanas y diálogos redimensionables{RESET}")
     tmp_dir, ruta = db_temporal()
-    anterior = Ventas.db_name
-    Ventas.db_name = ruta
+    anterior_conexion = modulo_db._conexion
+    modulo_db._conexion = None
+    original_get_db_path = modulo_db.get_db_path
+    modulo_db.get_db_path = lambda: ruta
     try:
         root = tk.Tk()
         root.withdraw()
@@ -266,7 +272,8 @@ def test_ventanas_redimensionables():
 
         root.destroy()
     finally:
-        Ventas.db_name = anterior
+        modulo_db._conexion = anterior_conexion
+        modulo_db.get_db_path = original_get_db_path
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     chequear(

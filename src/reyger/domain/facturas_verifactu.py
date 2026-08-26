@@ -8,7 +8,6 @@ Requisitos:
 """
 
 import os
-import sqlite3
 from datetime import datetime
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -19,8 +18,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import qrcode
 from io import BytesIO
-from .config import ConfigManager
-from .resources import get_db_path, get_output_path
+from ..config import ConfigManager
+from ..ui import business_profile as bp
+from ..core import db
+from ..resources import get_output_path
 
 
 class FacturaVeriFACTU:
@@ -37,7 +38,6 @@ class FacturaVeriFACTU:
             config_manager: Instancia de ConfigManager para acceder a la configuración
         """
         self.config_manager = config_manager or ConfigManager()
-        self.db_path = get_db_path()
         self.estilos = getSampleStyleSheet()
         self._crear_estilos_personalizados()
     
@@ -115,8 +115,9 @@ class FacturaVeriFACTU:
         story = []
         
         # 1. Encabezado con datos de la empresa emisora
-        nombre_empresa = self.config_manager.get("nombre_empresa", "Mi Empresa")
-        story.extend(self._crear_encabezado(nombre_empresa, nif_emisor))
+        nombre_empresa = bp.nombre_empresa()
+        nif_final = nif_emisor or bp.nif()
+        story.extend(self._crear_encabezado(nombre_empresa, nif_final))
         
         story.append(Spacer(1, 0.5*cm))
         
@@ -323,29 +324,27 @@ class FacturaVeriFACTU:
         return elementos
     
     def _crear_codigo_qr(self, numero_factura, fecha, nif_emisor, nif_receptor, total):
-        """Crea el código QR de verificación"""
+        """Crea el código QR de verificación con URL AEAT VeriFactu."""
+        from .verifactu_hash import generar_url_qr
+
         elementos = []
         elementos.append(Spacer(1, 0.4*cm))
-        
-        # Datos para el QR (formato VeriFACTU simplificado)
-        if isinstance(fecha, str):
-            fecha_obj = datetime.strptime(fecha, "%Y-%m-%d")
-        else:
-            fecha_obj = fecha
-        
-        fecha_str = fecha_obj.strftime("%d/%m/%Y")
-        
-        # Datos del QR: NIF|FACTURA|FECHA|TOTAL|NIF_RECEPTOR
-        datos_qr = f"{nif_emisor}|{numero_factura}|{fecha_str}|{float(total):.2f}|{nif_receptor}"
-        
-        # Generar código QR
+
+        url_qr = generar_url_qr(
+            nif=nif_emisor,
+            num_serie=numero_factura,
+            fecha=fecha,
+            importe_total=float(total),
+            produccion=False,
+        )
+
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
             box_size=5,
             border=2,
         )
-        qr.add_data(datos_qr)
+        qr.add_data(url_qr)
         qr.make(fit=True)
         
         img_qr = qr.make_image(fill_color="black", back_color="white")
@@ -398,88 +397,62 @@ class FacturaVeriFACTU:
     def guardar_datos_factura_db(self, numero_factura, fecha, nif_emisor, nif_receptor,
                                  nombre_receptor, base_imponible, tipo_iva, total_iva,
                                  total, productos, estado="Emitida"):
-        """
-        Guarda los datos de la factura en la base de datos para auditoría.
-        
-        Args:
-            numero_factura: Número de factura
-            fecha: Fecha de emisión
-            nif_emisor: NIF del emisor
-            nif_receptor: NIF del receptor
-            nombre_receptor: Nombre del receptor
-            base_imponible: Base imponible
-            tipo_iva: Tipo de IVA
-            total_iva: Total de IVA
-            total: Total
-            productos: Lista de productos
-            estado: Estado de la factura
+        """Guarda la factura en BD con la cadena de hash VeriFactu.
+
+        Calcula la huella SHA-256, la cadena de valores y el encadenamiento
+        con la factura anterior conforme a la spec AEAT.
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Crear tabla si no existe
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS facturas_verifactu (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    numero_factura TEXT UNIQUE NOT NULL,
-                    fecha TEXT NOT NULL,
-                    nif_emisor TEXT NOT NULL,
-                    nif_receptor TEXT NOT NULL,
-                    nombre_receptor TEXT NOT NULL,
-                    base_imponible REAL NOT NULL,
-                    tipo_iva INTEGER NOT NULL,
-                    total_iva REAL NOT NULL,
-                    total REAL NOT NULL,
-                    estado TEXT DEFAULT 'Emitida',
-                    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Insertar factura
-            cursor.execute("""
-                INSERT INTO facturas_verifactu 
+            from .verifactu_hash import calcular_huella_para_factura
+            from ..ui import business_profile as bp
+
+            nif = nif_emisor or bp.nif() or ""
+            num_serie = numero_factura
+            tipo_comp = "F1"
+            numero_series = bp.obtener_campo("numero_series") or "A"
+
+            huella, cadena, huella_ant, fecha_gen = calcular_huella_para_factura(
+                nif=nif, num_serie=num_serie, fecha=fecha,
+                tipo_comprobante=tipo_comp,
+                cuota_total=total_iva, importe_total=total,
+            )
+
+            conn = db.get_connection()
+
+            # Obtener el siguiente número ordinal
+            fila_max = conn.execute(
+                "SELECT IFNULL(MAX(numero_ord), 0) FROM facturas_verifactu"
+            ).fetchone()
+            numero_ord = (fila_max[0] if fila_max else 0) + 1
+
+            cursor = conn.execute("""
+                INSERT INTO facturas_verifactu
                 (numero_factura, fecha, nif_emisor, nif_receptor, nombre_receptor,
-                 base_imponible, tipo_iva, total_iva, total, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (numero_factura, fecha, nif_emisor, nif_receptor, nombre_receptor,
-                  base_imponible, tipo_iva, total_iva, total, estado))
-            
+                 base_imponible, tipo_iva, total_iva, total, estado,
+                 huella, huella_anterior, numero_ord, tipo_comprobante,
+                 cadena_valores, fecha_generacion, estado_envio)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente')
+            """, (numero_factura, fecha, nif, nif_receptor, nombre_receptor,
+                  base_imponible, tipo_iva, total_iva, total, estado,
+                  huella, huella_ant, numero_ord, tipo_comp,
+                  cadena, fecha_gen))
+
             factura_id = cursor.lastrowid
-            
-            # Guardar productos de la factura
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS facturas_verifactu_productos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    factura_id INTEGER NOT NULL,
-                    nombre_producto TEXT NOT NULL,
-                    cantidad INTEGER NOT NULL,
-                    precio_unitario REAL NOT NULL,
-                    subtotal REAL NOT NULL,
-                    FOREIGN KEY(factura_id) REFERENCES facturas_verifactu(id)
-                )
-            """)
-            
+
             for prod in productos:
-                cursor.execute("""
+                conn.execute("""
                     INSERT INTO facturas_verifactu_productos
                     (factura_id, nombre_producto, cantidad, precio_unitario, subtotal)
                     VALUES (?, ?, ?, ?, ?)
                 """, (
                     factura_id,
-                    prod.get('nombre_articulo', ''),
-                    prod.get('cantidad', 0),
-                    prod.get('valor_articulo', 0),
-                    prod.get('subtotal', 0)
+                    prod.get('nombre_articulo', '') if isinstance(prod, dict) else prod[0],
+                    prod.get('cantidad', 0) if isinstance(prod, dict) else prod[2],
+                    prod.get('valor_articulo', 0) if isinstance(prod, dict) else prod[1],
+                    prod.get('subtotal', 0) if isinstance(prod, dict) else prod[3],
                 ))
-            
+
             conn.commit()
-            conn.close()
-            
             return True
-        except sqlite3.IntegrityError:
-            # Factura duplicada
-            return False
-        except Exception as e:
-            print(f"Error guardando factura en BD: {e}")
+        except Exception:
             return False
