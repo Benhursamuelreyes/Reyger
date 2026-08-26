@@ -12,6 +12,7 @@ El repositorio es ``Benhursamuelreyes/Reyger``.
 import json
 import os
 import platform
+import re
 import sys
 import urllib.request
 import urllib.error
@@ -60,19 +61,33 @@ def obtener_version_github() -> Optional[dict]:
         return None
 
 
-def _parsear_version(version_str: str) -> tuple:
-    """Convierte ``'3.0.0b3'`` o ``'v3.0.0'`` a tupla numérica.
+_PRE_TIPO = {"a": 0, "alpha": 0, "b": 1, "beta": 1, "rc": 2}
 
-    Solo compara números; ignora prefijo ``v`` y sufijos como ``b3``.
+
+def _parsear_version(version_str: str) -> tuple:
+    """Convierte ``'3.0.0b3'``, ``'v3.0.0-beta.3'`` o ``'v3.0.0'`` a tupla comparable.
+
+    Devuelve una tupla ``(major, minor, patch, tipo_pre, num)`` donde
+    tipo_pre es: 0=alpha, 1=beta, 2=rc, 3=final.
+
+    ``3.0.0b3`` → ``(3, 0, 0, 1, 3)``
+    ``v3.0.0-beta.3`` → ``(3, 0, 0, 1, 3)``
+    ``3.0.0rc1`` → ``(3, 0, 0, 2, 1)``
+    ``3.0.0`` (final) → ``(3, 0, 0, 3, 0)``
     """
-    v = version_str.lstrip("v").split("b")[0].split("a")[0].split("rc")[0]
-    partes = []
-    for p in v.split("."):
-        try:
-            partes.append(int(p))
-        except ValueError:
-            break
-    return tuple(partes)
+    v = version_str.lstrip("v")
+    m = re.search(r"(a|alpha|b|beta|rc)[\.\-]?(\d+)", v, re.IGNORECASE)
+    if m:
+        tipo = _PRE_TIPO.get(m.group(1).lower(), 3)
+        num_pre = int(m.group(2))
+    else:
+        tipo = 3
+        num_pre = 0
+    num = re.split(r"[\-](?:alpha|beta|rc)", v, flags=re.IGNORECASE)[0]
+    num = re.split(r"(?:a(?:lpha)?|b(?:eta)?|rc)\d", num, flags=re.IGNORECASE)[0]
+    num = num.rstrip(".")
+    partes = tuple(int(p) for p in num.split(".") if p.isdigit())
+    return partes + (tipo, num_pre)
 
 
 def hay_actualizacion(actual: Optional[str] = None) -> Optional[dict]:
