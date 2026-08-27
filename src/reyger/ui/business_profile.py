@@ -19,6 +19,8 @@ CAMPOS = (
     "actividad_economica",
     "numero_series",
     "logo_path",
+    "moneda",
+    "locale",
 )
 
 DEFAULTS = {
@@ -32,6 +34,8 @@ DEFAULTS = {
     "actividad_economica": "",
     "numero_series": "A",
     "logo_path": None,
+    "moneda": "EUR",
+    "locale": "es_ES",
 }
 
 

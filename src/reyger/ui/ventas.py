@@ -1,16 +1,13 @@
 from tkinter import *
 from tkinter import ttk, messagebox
 import tkinter as tk
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.platypus import Table
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import datetime
 import os
 import time
 
 from . import business_profile as bp
 from ..core import db
+from ..core import moneda as mod_moneda
 from ..resources import get_output_path, open_file, get_bundled_path
 from ..config import ConfigManager
 from ..core.hilos import en_hilo
@@ -171,11 +168,11 @@ class Ventas(tk.Frame):
 
         frame_total = tk.Frame(frame2, bg="#C6D9E3")
         frame_total.pack(fill="x", padx=20)
-        self.label_base = tk.Label(frame_total, text="Base imponible: 0.00 €", bg="#C6D9E3", font="sans 13")
+        self.label_base = tk.Label(frame_total, text=f"Base imponible: {mod_moneda.format_currency(0)}", bg="#C6D9E3", font="sans 13")
         self.label_base.pack(anchor="e")
-        self.label_cuota = tk.Label(frame_total, text="Cuota IVA: 0.00 €", bg="#C6D9E3", font="sans 13")
+        self.label_cuota = tk.Label(frame_total, text=f"Cuota IVA: {mod_moneda.format_currency(0)}", bg="#C6D9E3", font="sans 13")
         self.label_cuota.pack(anchor="e")
-        self.label_suma_total = tk.Label(frame_total, text="Total a pagar: 0 €", bg="#C6D9E3", font="sans 25 bold")
+        self.label_suma_total = tk.Label(frame_total, text=f"Total a pagar: {mod_moneda.format_currency(0)}", bg="#C6D9E3", font="sans 25 bold")
         self.label_suma_total.pack(anchor="e")
 
         lblframe1 = LabelFrame(frame2, text="Opciones", bg="#C6D9E3", font="sans 14 bold")
@@ -318,9 +315,9 @@ class Ventas(tk.Frame):
             for _, precio, cantidad, tipo_iva, _ in self._lineas_carrito()
         ]
         total, base, cuota = desglose_total(lineas)
-        self.label_base.config(text=f"Base imponible: {base:.2f} €")
-        self.label_cuota.config(text=f"Cuota IVA: {cuota:.2f} €")
-        self.label_suma_total.config(text=f"Total a pagar: {total:.2f} €")
+        self.label_base.config(text=f"Base imponible: {mod_moneda.format_currency(base)}")
+        self.label_cuota.config(text=f"Cuota IVA: {mod_moneda.format_currency(cuota)}")
+        self.label_suma_total.config(text=f"Total a pagar: {mod_moneda.format_currency(total)}")
 
     def registrar(self):
         producto = self.entry_nombre.get().strip()
@@ -513,8 +510,9 @@ class Ventas(tk.Frame):
         _, base, cuota = desglose_total(lineas)
         label_total = tk.Label(
             ventana_pago, bg="#C6D9E3",
-            text=(f"Total a pagar: {total:.2f} €\n"
-                  f"Base imponible: {base:.2f} €   |   Cuota IVA: {cuota:.2f} €"),
+            text=(f"Total a pagar: {mod_moneda.format_currency(total)}\n"
+                  f"Base imponible: {mod_moneda.format_currency(base)}   |   "
+                  f"Cuota IVA: {mod_moneda.format_currency(cuota)}"),
             font="sans 16 bold", justify="left",
         )
         label_total.grid(row=0, column=0, sticky="w", padx=20, pady=(20, 5))
@@ -564,7 +562,7 @@ class Ventas(tk.Frame):
                         messagebox.showerror("Error", "Cantidad en efectivo insuficiente")
                         label_cambio.config(text="")
                         return
-                    label_cambio.config(text=f"Vuelto: {cambio:.2f} €")
+                    label_cambio.config(text=f"Vuelto: {mod_moneda.format_currency(cambio)}")
                 elif metodo == "Tarjeta":
                     cantidad_tarjeta = float(entry_tarjeta.get())
                     if cantidad_tarjeta < total:
@@ -581,7 +579,7 @@ class Ventas(tk.Frame):
                         label_cambio.config(text="")
                         return
                     cambio = total_pagado - total
-                    label_cambio.config(text=f"Vuelto: {cambio:.2f} € (del efectivo)")
+                    label_cambio.config(text=f"Vuelto: {mod_moneda.format_currency(cambio)} (del efectivo)")
             except ValueError:
                 messagebox.showerror("Error", "Ingrese valores numericos validos")
 
@@ -669,9 +667,9 @@ class Ventas(tk.Frame):
 
                 for i in self.tree.get_children():
                     self.tree.delete(i)
-                self.label_base.config(text="Base imponible: 0.00 €")
-                self.label_cuota.config(text="Cuota IVA: 0.00 €")
-                self.label_suma_total.config(text="Total a pagar: 0 €")
+                self.label_base.config(text=f"Base imponible: {mod_moneda.format_currency(0)}")
+                self.label_cuota.config(text=f"Cuota IVA: {mod_moneda.format_currency(0)}")
+                self.label_suma_total.config(text=f"Total a pagar: {mod_moneda.format_currency(0)}")
                 self.combo_cliente.current(0)
                 ventana_pago.destroy()
 
@@ -770,39 +768,51 @@ class Ventas(tk.Frame):
     def generar_factura_pdf(self, productos, total, factura_numero, fecha,
                             metodo_pago="Efectivo", base_imponible=None,
                             cuota_iva=None, cliente_nombre=None):
+        """Genera la factura en PDF A4 estandarizado con membrete del negocio.
+
+        Las facturas NO se envían a la impresora térmica de tickets: se
+        generan en PDF A4 (misma plantilla que albaranes y presupuestos) y
+        se abren en el visor del sistema para su impresión estándar.
+        """
+        from ..domain.pdf_documento import PdfDocumento
+
+        pdf = PdfDocumento(self.config_manager)
         pdf_dir = get_output_path("facturas")
         archivo_pdf = os.path.join(pdf_dir, f"factura_{factura_numero}.pdf")
-        c = canvas.Canvas(archivo_pdf, pagesize=letter)
-        width, height = letter
 
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(100, height - 50, f"Factura #{factura_numero}")
-        c.setFont("Helvetica", 12)
-        c.drawString(100, height - 70, f"Fecha: {fecha}")
-        c.drawString(100, height - 90, f"Metodo de pago: {metodo_pago}")
-        if cliente_nombre:
-            c.drawString(100, height - 110, f"Cliente: {cliente_nombre}")
+        productos_tabla = []
+        for p in productos:
+            nombre = p[0]
+            precio = p[1]
+            cantidad = p[2]
+            subtotal = p[3]
+            productos_tabla.append({
+                "nombre_articulo": nombre,
+                "valor_articulo": precio,
+                "cantidad": cantidad,
+                "subtotal": subtotal,
+            })
 
-        data = [
-            ["Producto", "Precio", "Cantidad", "IVA", "Subtotal"]
-        ] + [
-            [p[0], f"{p[1]:.2f}", p[2], f"{p[4]:g}%", f"{p[3]:.2f}"]
-            for p in productos
-        ]
-        table = Table(data)
-        table.wrapOn(c, width, height)
-        table.drawOn(c, 100, height - 220)
-
-        y_total = height - 270
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(100, y_total, f"Total a pagar: {total:.2f} €")
-        c.setFont("Helvetica", 12)
-        if base_imponible is not None and cuota_iva is not None:
-            c.drawString(100, y_total + 40, f"Base imponible: {base_imponible:.2f} €")
-            c.drawString(100, y_total + 22, f"Cuota IVA: {cuota_iva:.2f} €")
-        c.drawString(100, height - 370, "Gracias por su compra, vuelva pronto")
-
-        c.save()
+        pdf.generar(
+            output_path=archivo_pdf,
+            titulo_documento=bp.nombre_empresa(),
+            subtitulo_documento="FACTURA",
+            numero=str(factura_numero),
+            fecha=fecha,
+            cliente_nombre=cliente_nombre or "(Consumidor final)",
+            productos=productos_tabla,
+            base_imponible=base_imponible,
+            tipo_iva=IVA_POR_DEFECTO,
+            total_iva=cuota_iva,
+            total=total,
+            observaciones=f"Forma de pago: {metodo_pago}",
+            campos_firma=False,
+            pie_legal=(
+                "<i>Esta factura cumple con los requisitos del artículo 34 de "
+                "la Ley 37/1992, de 28 de diciembre, del Impuesto sobre el "
+                "Valor Añadido. Registro de Facturas disponible en la empresa.</i>"
+            ),
+        )
 
         try:
             open_file(archivo_pdf)

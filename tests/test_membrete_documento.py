@@ -34,12 +34,12 @@ def _entorno_bd(tmp_path):
 
 
 class TestAlbaranesMembrete:
-    """Tests de _crear_encabezado_albaran con datos de business_profile."""
+    """Tests de membrete dinámico del albarán (servicio PDF unificado)."""
 
-    def _construir_albaran(self):
-        """Crea instancia de AlbaranEntrega sin abrir ventana."""
-        from reyger.ui.albaranes import AlbaranEntrega
-        return AlbaranEntrega()
+    def _membrete(self):
+        """Devuelve los elementos del membrete del servicio PDF unificado."""
+        from reyger.domain.pdf_documento import PdfDocumento
+        return PdfDocumento()._membrete("Reyger Testing")
 
     def test_membrete_incluye_empresa(self):
         """El nombre de la empresa aparece en mayúsculas en el membrete."""
@@ -49,9 +49,7 @@ class TestAlbaranesMembrete:
         bp.guardar(nombre="Reyger Testing", nif="B11111111")
         modulo_db.close()
 
-        albaran = self._construir_albaran()
-        elementos = albaran._crear_encabezado_albaran("Reyger Testing")
-
+        elementos = self._membrete()
         textos = " ".join(str(e) for e in elementos)
         assert "REYGER TESTING" in textos
 
@@ -63,8 +61,7 @@ class TestAlbaranesMembrete:
         bp.guardar(nombre="Test SA", nif="B99999999")
         modulo_db.close()
 
-        albaran = self._construir_albaran()
-        elementos = albaran._crear_encabezado_albaran("Test SA")
+        elementos = self._membrete()
         textos = " ".join(str(e) for e in elementos)
 
         assert "B99999999" in textos
@@ -83,8 +80,7 @@ class TestAlbaranesMembrete:
         )
         modulo_db.close()
 
-        albaran = self._construir_albaran()
-        elementos = albaran._crear_encabezado_albaran("Dir Test")
+        elementos = self._membrete()
         textos = " ".join(str(e) for e in elementos)
 
         assert "Calle Falsa 123" in textos
@@ -103,8 +99,7 @@ class TestAlbaranesMembrete:
         )
         modulo_db.close()
 
-        albaran = self._construir_albaran()
-        elementos = albaran._crear_encabezado_albaran("Contacto Test")
+        elementos = self._membrete()
         textos = " ".join(str(e) for e in elementos)
 
         assert "912345678" in textos
@@ -120,8 +115,8 @@ class TestAlbaranesMembrete:
         bp.guardar(nombre="Solo Nombre")
         modulo_db.close()
 
-        albaran = self._construir_albaran()
-        elementos = albaran._crear_encabezado_albaran("Solo Nombre")
+        from reyger.domain.pdf_documento import PdfDocumento
+        elementos = PdfDocumento()._membrete(bp.nombre_empresa())
         textos = " ".join(str(e) for e in elementos)
 
         assert "SOLO NOMBRE" in textos
@@ -130,11 +125,10 @@ class TestAlbaranesMembrete:
 
     def test_membrete_sinPerfil_usa_nombre_parametro(self):
         """Si business_profile no tiene perfil, solo usa el nombre recibido."""
-        albaran = self._construir_albaran()
-        elementos = albaran._crear_encabezado_albaran("Empresa Fantasma")
+        elementos = self._membrete()
         textos = " ".join(str(e) for e in elementos)
 
-        assert "EMPRESA FANTASMA" in textos
+        assert "REYGER TESTING" in textos
 
 
 # ── Presupuestos ───────────────────────────────────────────────────
@@ -169,6 +163,7 @@ class TestPresupuestosMembrete:
             "btn_guardar": "#0078d4",
             "btn_imprimir": "#ff6b6b",
         }
+        vp.config_manager = None
 
         vp.entry_cliente = MagicMock()
         vp.entry_cliente.get.return_value = "Cliente Test"
@@ -219,7 +214,7 @@ class TestPresupuestosMembrete:
             assert "Complete" in str(args)
 
     def test_botones_en_ui(self):
-        """Verifica que los botones 'Generar PDF' e 'Imprimir' están declarados."""
+        """Verifica que los botones 'Generar PDF' y 'Abrir PDF para imprimir' están declarados."""
         import ast
 
         src_path = os.path.join(
@@ -229,7 +224,7 @@ class TestPresupuestosMembrete:
             contenido = f.read()
 
         assert 'text="Generar PDF"' in contenido
-        assert 'text="Imprimir"' in contenido
+        assert 'text="Abrir PDF para imprimir"' in contenido
         assert "_imprimir_presupuesto" in contenido
 
     def test_membrete_estructura_pdf(self, tmp_path):
@@ -257,6 +252,7 @@ class TestPresupuestosMembrete:
             "btn_guardar": "#0078d4",
             "btn_imprimir": "#ff6b6b",
         }
+        vp.config_manager = None
         vp.entry_cliente = MagicMock()
         vp.entry_cliente.get.return_value = "Cliente VIP"
         vp.entry_email = MagicMock()

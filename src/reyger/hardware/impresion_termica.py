@@ -194,33 +194,35 @@ class TicketTermico:
         return self
 
     def linea_producto(self, nombre, cantidad, precio, subtotal):
+        from ..core import moneda as mod_moneda
         nombre = str(nombre)[: self.columnas]
         self._partes.append(
-            _fila_dos_columnas(nombre, f"{float(subtotal):.2f}", self.columnas)
+            _fila_dos_columnas(nombre, mod_moneda.format_currency(subtotal), self.columnas)
         )
         self._partes.append(
-            _linea(f"  {cantidad} x {float(precio):.2f} €")
+            _linea(f"  {cantidad} x {mod_moneda.format_currency(precio)}")
         )
         return self
 
     def totales(self, total, base=None, cuota=None):
+        from ..core import moneda as mod_moneda
         self._partes.append(NEGRITA_ON)
         self._partes.append(
             _fila_dos_columnas(
-                "TOTAL", f"{float(total):.2f} €", self.columnas
+                "TOTAL", mod_moneda.format_currency(total), self.columnas
             )
         )
         self._partes.append(NEGRITA_OFF)
         if base is not None:
             self._partes.append(
                 _fila_dos_columnas(
-                    "Base imponible", f"{float(base):.2f} €", self.columnas
+                    "Base imponible", mod_moneda.format_currency(base), self.columnas
                 )
             )
         if cuota is not None:
             self._partes.append(
                 _fila_dos_columnas(
-                    "Cuota IVA", f"{float(cuota):.2f} €", self.columnas
+                    "Cuota IVA", mod_moneda.format_currency(cuota), self.columnas
                 )
             )
         return self

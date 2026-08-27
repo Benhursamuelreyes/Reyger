@@ -256,13 +256,15 @@ class TicketSimplificado:
     
     def _crear_total_ticket(self, total):
         """Crea la sección de total"""
+        from ..core import moneda as mod_moneda
+
         elementos = []
-        
+
         elementos.append(Paragraph(
-            f"<b>TOTAL: {float(total):.2f} €</b>",
+            f"<b>TOTAL: {mod_moneda.format_currency(total)}</b>",
             self.estilo_titulo
         ))
-        
+
         return elementos
     
     def _crear_metodo_pago_ticket(self, metodo_pago):

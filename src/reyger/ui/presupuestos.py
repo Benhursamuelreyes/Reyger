@@ -7,14 +7,10 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
 from ..config import ConfigManager
 from . import business_profile as bp
 from ..core import db
+from ..core import moneda as mod_moneda
 from ..core.hilos import en_hilo
 from ..resources import get_output_path, open_file
 
@@ -226,13 +222,13 @@ class Presupuestos(tk.Frame):
         )
         frame_total.pack(fill="x", pady=10)
         
-        self.label_base = tk.Label(frame_total, text="Base Imponible: 0.00 €", bg=self.colors["bg_principal"], fg=self.colors["fg_texto"], font="sans 10 bold")
+        self.label_base = tk.Label(frame_total, text=f"Base Imponible: {mod_moneda.format_currency(0)}", bg=self.colors["bg_principal"], fg=self.colors["fg_texto"], font="sans 10 bold")
         self.label_base.pack(anchor="e", padx=10)
         
-        self.label_iva_total = tk.Label(frame_total, text="IVA: 0.00 €", bg=self.colors["bg_principal"], fg=self.colors["fg_texto"], font="sans 10 bold")
+        self.label_iva_total = tk.Label(frame_total, text=f"IVA: {mod_moneda.format_currency(0)}", bg=self.colors["bg_principal"], fg=self.colors["fg_texto"], font="sans 10 bold")
         self.label_iva_total.pack(anchor="e", padx=10)
         
-        self.label_total_presupuesto = tk.Label(frame_total, text="TOTAL: 0.00 €", bg=self.colors["bg_principal"], fg="#27AE60", font="sans 14 bold")
+        self.label_total_presupuesto = tk.Label(frame_total, text=f"TOTAL: {mod_moneda.format_currency(0)}", bg=self.colors["bg_principal"], fg="#27AE60", font="sans 14 bold")
         self.label_total_presupuesto.pack(anchor="e", padx=10)
         
         # Botones de acción
@@ -259,7 +255,7 @@ class Presupuestos(tk.Frame):
 
         tk.Button(
             frame_acciones,
-            text="Imprimir",
+            text="Abrir PDF para imprimir",
             bg="#0078D4",
             fg="white",
             font="sans 10 bold",
@@ -345,9 +341,9 @@ class Presupuestos(tk.Frame):
         total_iva = base_imponible * (tipo_iva / 100)
         total = base_imponible + total_iva
         
-        self.label_base.config(text=f"Base Imponible: {base_imponible:.2f} €")
-        self.label_iva_total.config(text=f"IVA ({tipo_iva}%): {total_iva:.2f} €")
-        self.label_total_presupuesto.config(text=f"TOTAL: {total:.2f} €")
+        self.label_base.config(text=f"Base Imponible: {mod_moneda.format_currency(base_imponible)}")
+        self.label_iva_total.config(text=f"IVA ({tipo_iva}%): {mod_moneda.format_currency(total_iva)}")
+        self.label_total_presupuesto.config(text=f"TOTAL: {mod_moneda.format_currency(total)}")
         
         self.tipo_iva_actual = tipo_iva
     
@@ -403,7 +399,7 @@ class Presupuestos(tk.Frame):
             messagebox.showerror("Error", f"Error guardando presupuesto: {e}")
     
     def generar_pdf_presupuesto(self):
-        """Genera un PDF del presupuesto con membrete de la empresa."""
+        """Genera un PDF del presupuesto con membrete de la empresa (A4)."""
         cliente = self.entry_cliente.get().strip()
         if not cliente or not self.tree.get_children():
             messagebox.showerror("Error", "Complete el presupuesto primero")
@@ -416,118 +412,43 @@ class Presupuestos(tk.Frame):
                 f"Presupuesto_{cliente}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             )
 
-            doc = SimpleDocTemplate(
-                archivo_pdf, pagesize=A4,
-                rightMargin=1.5 * cm, leftMargin=1.5 * cm,
-            )
-            story = []
-            estilos = getSampleStyleSheet()
+            from ..domain.pdf_documento import PdfDocumento
+            pdf = PdfDocumento(self.config_manager)
 
-            estilo_titulo = ParagraphStyle(
-                "PresupuestoTitle",
-                parent=estilos["Heading1"],
-                fontSize=20,
-                textColor=colors.HexColor("#0078D4"),
-                spaceAfter=10,
-                alignment=1,
-                fontName="Helvetica-Bold",
-            )
-            estilo_empresa = ParagraphStyle(
-                "PresupuestoEmpresa",
-                parent=estilos["Normal"],
-                fontSize=9,
-                textColor=colors.HexColor("#555555"),
-                alignment=1,
-                spaceAfter=4,
-            )
-
-            # Membrete dinámico
-            nombre = bp.nombre_empresa()
-            story.append(Paragraph(f"<b>{nombre.upper()}</b>", estilo_titulo))
-
-            perfil = bp.obtener()
-            if perfil:
-                p = dict(perfil)
-                lineas = []
-                if p.get("nif"):
-                    lineas.append(f"NIF: {p['nif']}")
-                if p.get("direccion"):
-                    d = p["direccion"]
-                    if p.get("codigo_postal"):
-                        d += f", {p['codigo_postal']}"
-                    if p.get("provincia"):
-                        d += f" — {p['provincia']}"
-                    lineas.append(d)
-                if p.get("telefono"):
-                    lineas.append(f"Tel: {p['telefono']}")
-                if p.get("email"):
-                    lineas.append(f"Email: {p['email']}")
-                if lineas:
-                    story.append(Paragraph(" | ".join(lineas), estilo_empresa))
-
-            story.append(Spacer(1, 0.3 * cm))
-            story.append(Paragraph("<b>PRESUPUESTO</b>", estilos["Heading2"]))
-            story.append(Spacer(1, 0.3 * cm))
-
-            # Datos del cliente
-            email = self.entry_email.get().strip()
-            story.append(Paragraph(f"<b>Cliente:</b> {cliente}", estilos["Normal"]))
-            if email:
-                story.append(Paragraph(f"<b>Email:</b> {email}", estilos["Normal"]))
-            story.append(Paragraph(
-                f"<b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y')}",
-                estilos["Normal"],
-            ))
-            story.append(Spacer(1, 0.5 * cm))
-
-            # Tabla de productos
-            datos = [["Producto", "Cantidad", "P. Unitario", "Subtotal"]]
+            productos_tabla = []
             for child in self.tree.get_children():
                 v = self.tree.item(child, "values")
-                datos.append([
-                    v[0], v[1],
-                    f"{float(v[2]):.2f} €",
-                    f"{float(v[3]):.2f} €",
-                ])
+                productos_tabla.append({
+                    "nombre_articulo": v[0],
+                    "cantidad": float(v[1]),
+                    "valor_articulo": float(v[2]),
+                    "subtotal": float(v[3]),
+                })
 
-            tabla = Table(datos, colWidths=[6 * cm, 2.5 * cm, 3 * cm, 3 * cm])
-            tabla.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D4")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 1), (-1, -1), 9),
-                ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-            ]))
-            story.append(tabla)
-            story.append(Spacer(1, 0.5 * cm))
-
-            # Totales
-            base = sum(
-                float(self.tree.item(c, "values")[3])
-                for c in self.tree.get_children()
-            )
+            base = sum(float(self.tree.item(c, "values")[3])
+                       for c in self.tree.get_children())
             iva = base * (self.var_iva.get() / 100)
             total = base + iva
 
-            story.append(Paragraph(
-                f"<b>Base Imponible:</b> {base:.2f} €", estilos["Normal"]
-            ))
-            story.append(Paragraph(
-                f"<b>IVA ({self.var_iva.get()}%):</b> {iva:.2f} €",
-                estilos["Normal"],
-            ))
-            story.append(Paragraph(
-                f"<b>TOTAL:</b> {total:.2f} €", estilos["Heading2"]
-            ))
+            numero = getattr(self, "numero_presupuesto_actual", None) or ""
 
-            doc.build(story)
+            pdf.generar(
+                output_path=archivo_pdf,
+                titulo_documento=bp.nombre_empresa(),
+                subtitulo_documento="PRESUPUESTO",
+                numero=numero,
+                fecha=datetime.now(),
+                cliente_nombre=cliente,
+                cliente_email=self.entry_email.get().strip(),
+                productos=productos_tabla,
+                base_imponible=base,
+                tipo_iva=self.var_iva.get(),
+                total_iva=iva,
+                total=total,
+                campos_firma=False,
+            )
+
             messagebox.showinfo("Éxito", f"PDF generado en:\n{archivo_pdf}")
-
             try:
                 open_file(os.path.abspath(archivo_pdf))
             except Exception:
@@ -536,7 +457,12 @@ class Presupuestos(tk.Frame):
             messagebox.showerror("Error", f"Error generando PDF: {e}")
 
     def _imprimir_presupuesto(self):
-        """Imprime el presupuesto en la impresora predeterminada del sistema."""
+        """Abre el PDF del presupuesto en el visor del sistema para imprimir en A4.
+
+        Los presupuestos NO se envían a la impresora térmica de tickets: se
+        generan en PDF A4 estandarizado y se abren en el visor predeterminado
+        para permitir la impresión estándar.
+        """
         cliente = self.entry_cliente.get().strip()
         if not cliente or not self.tree.get_children():
             messagebox.showerror("Error", "Complete el presupuesto primero")
@@ -544,126 +470,47 @@ class Presupuestos(tk.Frame):
 
         try:
             import tempfile
-            presupuestos_dir = get_output_path("presupuestos_pdf")
-            archivo_tmp = os.path.join(
-                presupuestos_dir,
-                f"_impresion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            )
-            doc = SimpleDocTemplate(
-                archivo_tmp, pagesize=A4,
-                rightMargin=1.5 * cm, leftMargin=1.5 * cm,
-            )
-            story = []
-            estilos = getSampleStyleSheet()
+            with tempfile.NamedTemporaryFile(
+                suffix=".pdf", prefix="presupuesto_", delete=False
+            ) as f:
+                archivo_tmp = f.name
 
-            estilo_titulo = ParagraphStyle(
-                "PresupTitle",
-                parent=estilos["Heading1"],
-                fontSize=20,
-                textColor=colors.HexColor("#0078D4"),
-                spaceAfter=10,
-                alignment=1,
-                fontName="Helvetica-Bold",
-            )
-            estilo_empresa = ParagraphStyle(
-                "PresupEmpresa",
-                parent=estilos["Normal"],
-                fontSize=9,
-                textColor=colors.HexColor("#555555"),
-                alignment=1,
-                spaceAfter=4,
-            )
+            from ..domain.pdf_documento import PdfDocumento
+            pdf = PdfDocumento(self.config_manager)
 
-            nombre = bp.nombre_empresa()
-            story.append(Paragraph(f"<b>{nombre.upper()}</b>", estilo_titulo))
-
-            perfil = bp.obtener()
-            if perfil:
-                p = dict(perfil)
-                lineas = []
-                if p.get("nif"):
-                    lineas.append(f"NIF: {p['nif']}")
-                if p.get("direccion"):
-                    d = p["direccion"]
-                    if p.get("codigo_postal"):
-                        d += f", {p['codigo_postal']}"
-                    if p.get("provincia"):
-                        d += f" — {p['provincia']}"
-                    lineas.append(d)
-                if p.get("telefono"):
-                    lineas.append(f"Tel: {p['telefono']}")
-                if p.get("email"):
-                    lineas.append(f"Email: {p['email']}")
-                if lineas:
-                    story.append(Paragraph(" | ".join(lineas), estilo_empresa))
-
-            story.append(Spacer(1, 0.3 * cm))
-            story.append(Paragraph("<b>PRESUPUESTO</b>", estilos["Heading2"]))
-            story.append(Spacer(1, 0.3 * cm))
-
-            email = self.entry_email.get().strip()
-            story.append(Paragraph(f"<b>Cliente:</b> {cliente}", estilos["Normal"]))
-            if email:
-                story.append(Paragraph(f"<b>Email:</b> {email}", estilos["Normal"]))
-            story.append(Paragraph(
-                f"<b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y')}",
-                estilos["Normal"],
-            ))
-            story.append(Spacer(1, 0.5 * cm))
-
-            datos = [["Producto", "Cantidad", "P. Unitario", "Subtotal"]]
+            productos_tabla = []
             for child in self.tree.get_children():
                 v = self.tree.item(child, "values")
-                datos.append([
-                    v[0], v[1],
-                    f"{float(v[2]):.2f} €",
-                    f"{float(v[3]):.2f} €",
-                ])
+                productos_tabla.append({
+                    "nombre_articulo": v[0],
+                    "cantidad": float(v[1]),
+                    "valor_articulo": float(v[2]),
+                    "subtotal": float(v[3]),
+                })
 
-            tabla = Table(datos, colWidths=[6 * cm, 2.5 * cm, 3 * cm, 3 * cm])
-            tabla.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D4")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 1), (-1, -1), 9),
-                ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-            ]))
-            story.append(tabla)
-            story.append(Spacer(1, 0.5 * cm))
-
-            base = sum(
-                float(self.tree.item(c, "values")[3])
-                for c in self.tree.get_children()
-            )
+            base = sum(float(self.tree.item(c, "values")[3])
+                       for c in self.tree.get_children())
             iva = base * (self.var_iva.get() / 100)
             total = base + iva
 
-            story.append(Paragraph(
-                f"<b>Base Imponible:</b> {base:.2f} €", estilos["Normal"]
-            ))
-            story.append(Paragraph(
-                f"<b>IVA ({self.var_iva.get()}%):</b> {iva:.2f} €",
-                estilos["Normal"],
-            ))
-            story.append(Paragraph(
-                f"<b>TOTAL:</b> {total:.2f} €", estilos["Heading2"]
-            ))
+            pdf.generar(
+                output_path=archivo_tmp,
+                titulo_documento=bp.nombre_empresa(),
+                subtitulo_documento="PRESUPUESTO",
+                numero="",
+                fecha=datetime.now(),
+                cliente_nombre=cliente,
+                cliente_email=self.entry_email.get().strip(),
+                productos=productos_tabla,
+                base_imponible=base,
+                tipo_iva=self.var_iva.get(),
+                total_iva=iva,
+                total=total,
+                campos_firma=False,
+            )
 
-            doc.build(story)
-
-            try:
-                from ..hardware.impresion_termica import enviar_a_impresora
-                ok, msg = enviar_a_impresora(archivo_tmp)
-                if not ok:
-                    messagebox.showwarning("Impresión", msg)
-            except ImportError:
-                from ..resources import open_file
-                open_file(archivo_tmp)
+            # Abrir en el visor de PDF del sistema (permite imprimir en A4).
+            open_file(os.path.abspath(archivo_tmp))
         except Exception as e:
             messagebox.showerror("Error", f"Error al imprimir: {e}")
     

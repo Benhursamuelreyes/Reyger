@@ -120,6 +120,12 @@ class Ajustes(tk.Frame):
         # Separador
         tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
         
+        # Sección 4b: Moneda y configuración regional
+        self.crear_seccion_moneda(main_frame)
+        
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        
         # Sección 5: VeriFactu (AEAT)
         self.crear_seccion_verifactu(main_frame)
 
@@ -412,7 +418,139 @@ class Ajustes(tk.Frame):
             font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
         )
         lbl_info.pack(anchor="w", padx=20, pady=(0, 10))
-    
+
+    def crear_seccion_moneda(self, parent):
+        """Sección de moneda del sistema y formato regional (locale)."""
+        from ..core import moneda as mod_moneda
+
+        frame = tk.LabelFrame(
+            parent,
+            text="💰 Moneda y configuración regional",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10,
+        )
+        frame.pack(fill="x", pady=10)
+
+        # --- Moneda -------------------------------------------------------
+        tk.Label(
+            frame,
+            text="Moneda del sistema (código ISO):",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+        ).pack(anchor="w", padx=20, pady=(6, 2))
+
+        opciones_moneda = sorted(mod_moneda.MONEDAS.keys())
+        self.combo_moneda = ttk.Combobox(
+            frame,
+            values=opciones_moneda,
+            state="readonly",
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+            width=20,
+        )
+        actual_moneda = bp.obtener_campo("moneda")
+        if actual_moneda in opciones_moneda:
+            self.combo_moneda.set(actual_moneda)
+        else:
+            self.combo_moneda.set("EUR")
+        self.combo_moneda.pack(anchor="w", padx=20, pady=(0, 4))
+
+        lbl_simbolo = tk.Label(
+            frame,
+            text="",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+        )
+        lbl_simbolo.pack(anchor="w", padx=20, pady=(0, 10))
+
+        def _preview_simbolo(*_):
+            codigo = self.combo_moneda.get()
+            simbolo = mod_moneda.MONEDAS.get(codigo, {}).get("simbolo", "")
+            lbl_simbolo.config(text=f"Símbolo: {simbolo}")
+
+        self.combo_moneda.bind("<<ComboboxSelected>>", _preview_simbolo)
+        _preview_simbolo()
+
+        # --- Formato regional --------------------------------------------
+        tk.Label(
+            frame,
+            text="Formato de región / Locale:",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+        ).pack(anchor="w", padx=20, pady=(6, 2))
+
+        NOMBRE_LOCALES = {
+            "es_ES": "Español (España)",
+            "en_US": "Inglés (EE. UU.)",
+            "en_GB": "Inglés (Reino Unido)",
+            "de_DE": "Alemán (Alemania)",
+            "fr_FR": "Francés (Francia)",
+            "it_IT": "Italiano (Italia)",
+            "pt_BR": "Portugués (Brasil)",
+            "en_HN": "Inglés (Honduras)",
+            "es_MX": "Español (México)",
+            "es_CO": "Español (Colombia)",
+            "es_AR": "Español (Argentina)",
+            "es_CL": "Español (Chile)",
+            "ja_JP": "Japonés (Japón)",
+        }
+        opciones_locale = list(NOMBRE_LOCALES)
+        self.combo_locale = ttk.Combobox(
+            frame,
+            values=opciones_locale,
+            state="readonly",
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+            width=30,
+        )
+        actual_locale = bp.obtener_campo("locale")
+        if actual_locale in opciones_locale:
+            self.combo_locale.set(actual_locale)
+        else:
+            self.combo_locale.set("es_ES")
+        self.combo_locale.pack(anchor="w", padx=20, pady=(0, 4))
+
+        lbl_ejemplo = tk.Label(
+            frame,
+            text="",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+        )
+        lbl_ejemplo.pack(anchor="w", padx=20, pady=(0, 8))
+
+        def _preview_formato(*_):
+            codigo_moneda = self.combo_moneda.get()
+            codigo_locale = self.combo_locale.get()
+            try:
+                ejemplo = mod_moneda.format_currency(1234567.5)
+            except Exception:
+                ejemplo = "1.234.567,50 €"
+            nombre_locale = NOMBRE_LOCALES.get(codigo_locale, codigo_locale)
+            lbl_ejemplo.config(
+                text=f"{nombre_locale} → ejemplo: {ejemplo}"
+            )
+
+        self.combo_moneda.bind(
+            "<<ComboboxSelected>>", lambda e: (_preview_simbolo(), _preview_formato())
+        )
+        self.combo_locale.bind("<<ComboboxSelected>>", _preview_formato)
+        _preview_formato()
+
+        tk.Label(
+            frame,
+            text="Los importes se guardan siempre como números en la base de datos;\n"
+                 "el símbolo y formato solo se aplican al mostrarse.",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            justify="left",
+        ).pack(anchor="w", padx=20, pady=(0, 10))
+
     def crear_seccion_verifactu(self, parent):
         """Crea la sección de configuración y exportación VeriFactu (AEAT)."""
         frame = tk.LabelFrame(
@@ -1308,6 +1446,8 @@ class Ajustes(tk.Frame):
                 email=self.bp_entries["email"].get(),
                 actividad_economica=self.bp_entries["actividad_economica"].get(),
                 numero_series=self.bp_entries["numero_series"].get(),
+                moneda=self.combo_moneda.get(),
+                locale=self.combo_locale.get(),
             )
             
             messagebox.showinfo(

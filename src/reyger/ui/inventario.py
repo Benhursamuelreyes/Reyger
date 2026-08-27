@@ -12,6 +12,7 @@ from ..hardware.barcode_scanner import (
 from ..domain.fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
 from . import categorias as gestor_categorias
 from ..core import db
+from ..core import moneda as mod_moneda
 from ..core.backup import BackupError, importar_datos, exportar_sqlite
 from ..core.hilos import en_hilo
 
@@ -524,8 +525,8 @@ class Inventario(tk.Frame):
             result = self.eje_consulta(consulta)
         for elem in result:
             try:
-                precio_eur = "{:,.0f} €".format(float(elem[3])) if elem[3] else ""
-                costo_eur = "{:,.0f} €".format(float(elem[4])) if elem[4] else ""
+                precio_eur = mod_moneda.format_currency(float(elem[3]), decimales=0) if elem[3] else ""
+                costo_eur = mod_moneda.format_currency(float(elem[4]), decimales=0) if elem[4] else ""
             except ValueError:
                 precio_eur = elem[3]
                 costo_eur = elem[4]

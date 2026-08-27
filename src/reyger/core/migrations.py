@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 7
+LATEST_VERSION = 8
 
 MIGRACIONES = []
 
@@ -411,6 +411,18 @@ def _migracion_7(conn):
     _add_column(conn, "facturas_verifactu", "numero_precinto TEXT")
     _indexar(conn, "idx_verifactu_huella", "facturas_verifactu", ["huella"])
     _indexar(conn, "idx_verifactu_estado", "facturas_verifactu", ["estado_envio"])
+
+
+@migracion(8)
+def _migracion_8(conn):
+    """Multimoneda y configuración regional.
+
+    Añade a la tabla singleton ``business_profile`` la moneda del sistema
+    (código ISO) y el formato regional/locale. Por defecto siguen siendo
+    EUR y es_ES.
+    """
+    _add_column(conn, "business_profile", "moneda TEXT NOT NULL DEFAULT 'EUR'")
+    _add_column(conn, "business_profile", "locale TEXT NOT NULL DEFAULT 'es_ES'")
 
 
 def run_migrations(conn):
