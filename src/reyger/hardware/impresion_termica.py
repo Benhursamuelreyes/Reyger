@@ -19,10 +19,15 @@ import subprocess
 ANCHO_80MM = 42
 ANCHO_58MM = 32
 
-#: Puntos imprimibles de ancho según el papel (cabezal térmico estándar).
-PUNTOS_POR_ANCHO = {ANCHO_80MM: 576, ANCHO_58MM: 384}
+#: Puntos imprimibles de ancho para el rasterizado del logo/logotipo,
+#: limitados a 384 px en 58 mm y 512 px en 80 mm (recomendación EPSON).
+PUNTOS_POR_ANCHO = {ANCHO_80MM: 512, ANCHO_58MM: 384}
 
 INICIO = b"\x1b@"
+#: Fija la tabla de caracteres a PC850 / Latin-1 (Multilingual) para que
+#: los acentos y símbolos españoles se impriman bien en lugar de salir
+#: como caracteres extraños (p. ej. 'Ç ª ¿ ≡'). GS t 2 = PC850.
+CODEPAGE_PC850 = b"\x1dt\x02"
 IZQUIERDA = b"\x1ba\x00"
 CENTRO = b"\x1ba\x01"
 NEGRITA_ON = b"\x1bE\x01"
@@ -52,11 +57,18 @@ MULTIPLICADOR_ENCABEZADO = {"pequena": 2, "grande": 2, "muy_grande": 3}
 
 
 def _codificar(texto):
-    """Codifica texto a bytes de impresora (CP858 con retroceso)."""
-    try:
-        return str(texto).encode("cp858")
-    except LookupError:
-        return str(texto).encode("cp437", errors="replace")
+    """Codifica texto a bytes de impresora (CP858 → CP850 → CP437 → Latin-1).
+
+    CP858 y CP850 comparten los bytes de los acentos españoles; solo
+    difieren en el símbolo € (byte 0xD5). Se intenta CP858 primero para
+    conservar el € y se degrada sin romper si el juego no lo soporta.
+    """
+    for codificacion in ("cp858", "cp850", "cp437", "latin-1"):
+        try:
+            return str(texto).encode(codificacion, errors="replace")
+        except LookupError:
+            continue
+    return str(texto).encode("ascii", errors="replace")
 
 
 def _linea(texto=""):
@@ -123,7 +135,10 @@ def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
         if not datos:
             return None
 
-        cabecera = b"\x1dv\x00" + bytes((
+        # GS v 0 m xL xH yL yH d1...dk  (raster bit image, modo normal)
+        # Ojo: la '0' y la 'm' (0x30) son obligatorias; sin ellas la
+        # impresora interpreta mal el encabezado e imprime basura.
+        cabecera = b"\x1dv0\x30" + bytes((
             fila_bytes & 0xFF, (fila_bytes >> 8) & 0xFF,
             imagen.height & 0xFF, (imagen.height >> 8) & 0xFF,
         ))
@@ -143,9 +158,10 @@ class TicketTermico:
     """
 
     def __init__(self, ancho=ANCHO_80MM, empresa="Mi Empresa",
-                 letra="muy_grande", logo=None):
+                 letra="muy_grande", logo=None, negocio=None):
         self.ancho = ancho
         self.empresa = empresa
+        self.negocio = negocio or {}
         if letra not in ESCALAS_LETRA:
             letra = "muy_grande"
         self.letra = letra
@@ -157,11 +173,12 @@ class TicketTermico:
         self._fuente_cuerpo = ESCALAS_LETRA[letra]
         self._escala_encabezado = ESCALA_ENCABEZADO[letra]
         self.logo_ruta = logo if logo and os.path.exists(logo) else None
-        self.puntos_ancho = PUNTOS_POR_ANCHO.get(ancho, 576)
-        self._partes = [INICIO, self._fuente_cuerpo]
+        self.puntos_ancho = PUNTOS_POR_ANCHO.get(ancho, 512)
+        self._partes = [INICIO, CODEPAGE_PC850, self._fuente_cuerpo]
 
     # ---------------------------------------------------------- bloques
     def encabezado(self):
+        nombre = (self.negocio.get("nombre") or self.empresa).upper()
         if self.logo_ruta is not None:
             raster = _rasterizar_logo(self.logo_ruta, self.puntos_ancho)
             if raster is not None:
@@ -170,13 +187,44 @@ class TicketTermico:
             CENTRO,
             self._escala_encabezado,
             NEGRITA_ON,
-            _linea(self.empresa.upper()[: self.columnas_encabezado]),
+            _linea(nombre[: self.columnas_encabezado]),
             self._fuente_cuerpo,
             NEGRITA_OFF,
+        ]
+        # Membrete completo del negocio (NIF, dirección, teléfono, email)
+        for linea_extra in self._lineas_negocio():
+            self._partes.append(CENTRO)
+            self._partes.append(_linea(linea_extra))
+        self._partes += [
+            CENTRO,
             _linea("RECIBO DE VENTA"),
             b"\n",
         ]
         return self
+
+    def _lineas_negocio(self):
+        """Devuelve las líneas del membrete fiscal usando datos del perfil."""
+        lineas = []
+        nif = self.negocio.get("nif")
+        if nif:
+            lineas.append(f"NIF: {nif}")
+        direccion = self.negocio.get("direccion")
+        if direccion:
+            linea_dir = str(direccion)
+            cp = self.negocio.get("codigo_postal")
+            provincia = self.negocio.get("provincia")
+            if cp or provincia:
+                linea_dir = f"{linea_dir}, {cp or ''} {provincia or ''}".strip()
+            lineas.append(linea_dir.strip())
+        telefono = self.negocio.get("telefono")
+        email = self.negocio.get("email")
+        if telefono or email:
+            contacto = ", ".join(
+                p for p in (f"Tel: {telefono}" if telefono else "",
+                            email or "") if p
+            )
+            lineas.append(contacto)
+        return lineas
 
     def info(self, numero_factura, fecha, cliente=None):
         self._partes += [
@@ -263,15 +311,20 @@ def construir_ticket_venta(
     ancho=ANCHO_80MM,
     letra="muy_grande",
     logo=None,
+    negocio=None,
 ):
     """Genera los bytes del ticket completo de una venta.
 
     *productos* es una secuencia de tuplas
     ``(nombre, precio, cantidad, subtotal[, ...])`` tal y como las
     produce el módulo de ventas. *logo* es una ruta de imagen opcional
-    que se imprime rasterizada en el encabezado.
+    que se imprime rasterizada en el encabezado. *negocio* es un diccionario
+    opcional con el membrete fiscal (``nombre``, ``nif``, ``direccion``,
+    ``codigo_postal``, ``provincia``, ``telefono``, ``email``).
     """
-    ticket = TicketTermico(ancho=ancho, empresa=empresa, letra=letra, logo=logo)
+    ticket = TicketTermico(
+        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
+    )
     ticket.encabezado().info(numero_factura, fecha, cliente).separador()
     for producto in productos:
         nombre, precio, cantidad, subtotal = producto[0], producto[1], producto[2], producto[3]
@@ -453,11 +506,12 @@ def _enviar_posix(datos, impresora):
 def imprimir_ticket_venta(numero_factura, fecha, productos, total, base=None,
                           cuota=None, metodo_pago="Efectivo", cliente=None,
                           empresa="Mi Empresa", ancho=ANCHO_80MM,
-                          letra="muy_grande", impresora=None, logo=None):
+                          letra="muy_grande", impresora=None, logo=None,
+                          negocio=None):
     """Construye y envía el ticket. Devuelve (ok, mensaje)."""
     datos = construir_ticket_venta(
         numero_factura, fecha, productos, total, base, cuota,
-        metodo_pago, cliente, empresa, ancho, letra, logo,
+        metodo_pago, cliente, empresa, ancho, letra, logo, negocio,
     )
     if enviar_bytes(datos, impresora):
         return True, "Ticket impreso correctamente"

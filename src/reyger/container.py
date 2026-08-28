@@ -66,19 +66,55 @@ class Container(tk.Frame):
 
     @staticmethod
     def _set_window_icon(ventana):
-        for name in ("assets/icono.png", "assets/icono.ico"):
-            path = get_bundled_path(name)
+        for size in ("assets/icono.png-32.png", "assets/icono.png-16.png"):
+            path = get_bundled_path(size)
             if not os.path.exists(path):
                 continue
             try:
-                if name.endswith(".png"):
-                    icono = tk.PhotoImage(file=path)
-                    ventana.iconphoto(True, icono)
-                else:
-                    ventana.iconbitmap(path)
+                icono = tk.PhotoImage(file=path)
+                ventana.iconphoto(True, icono)
                 return
             except Exception:
                 continue
+        ico = get_bundled_path("assets/icono.ico")
+        if os.path.exists(ico):
+            try:
+                ventana.iconbitmap(ico)
+            except Exception:
+                pass
+
+    def _crear_marca_cabecera(self, frame_top):
+        """Marca Reyger en la cabecera: isotipo + texto, escalados a la vez."""
+        ruta_icon = get_bundled_path("assets/img/logo_icon.png")
+        ruta_text = get_bundled_path("assets/img/logo_text.png")
+        if not os.path.exists(ruta_icon) or not os.path.exists(ruta_text):
+            return
+        try:
+            icon_src = Image.open(ruta_icon).convert("RGBA")
+            text_src = Image.open(ruta_text).convert("RGBA")
+        except Exception:
+            return
+        alto = 60
+        escala_icon = alto / icon_src.height
+        escala_text = alto / text_src.height
+        icon_final = icon_src.resize(
+            (max(1, round(icon_src.width * escala_icon)), alto), Image.LANCZOS
+        )
+        text_final = text_src.resize(
+            (max(1, round(text_src.width * escala_text)), alto), Image.LANCZOS
+        )
+        self.header_icon_image = ImageTk.PhotoImage(icon_final)
+        self.header_text_image = ImageTk.PhotoImage(text_final)
+        contenedor = tk.Frame(frame_top, bg=self.colors["bg_principal"])
+        contenedor.pack(side="left", padx=12)
+        tk.Label(
+            contenedor, image=self.header_icon_image,
+            bg=self.colors["bg_principal"],
+        ).pack(side="left", padx=(0, 8))
+        tk.Label(
+            contenedor, image=self.header_text_image,
+            bg=self.colors["bg_principal"],
+        ).pack(side="left")
 
     def ventas(self):
         self.show_frames(Ventas)
@@ -105,9 +141,10 @@ class Container(tk.Frame):
         self.show_frames(Ajustes)
 
     def widgets(self):
-        # Zona superior: logo personalizado de la empresa (si existe)
+        # Zona superior (cabecera): logo de la empresa (si existe) a la
+        # derecha y la marca Reyger (isotipo + texto) a la izquierda.
         frame_top = tk.Frame(self, bg=self.colors["bg_principal"])
-        frame_top.pack(fill="x", padx=20, pady=(30, 0))
+        frame_top.pack(fill="x", padx=20, pady=(14, 0))
 
         logo_path = self.config_manager.get("logo_path")
         if logo_path and os.path.exists(logo_path):
@@ -124,11 +161,15 @@ class Container(tk.Frame):
             except Exception:
                 pass
 
-        # Zona central elástica: el logotipo se escala para rellenarla
+        self._crear_marca_cabecera(frame_top)
+
+        # Zona central elástica: el logotipo completo se escala para rellenarla
         frame_centro = tk.Frame(self, bg=self.colors["bg_principal"])
         frame_centro.pack(fill="both", expand=True, padx=20)
 
-        ruta = get_bundled_path("assets/img/logo.png")
+        ruta = get_bundled_path("assets/img/logo_full.png")
+        if not os.path.exists(ruta):
+            ruta = get_bundled_path("assets/img/logo.png")
         if os.path.exists(ruta):
             try:
                 self.logo_original = Image.open(ruta).convert("RGBA")

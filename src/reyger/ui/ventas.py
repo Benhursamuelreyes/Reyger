@@ -707,12 +707,21 @@ class Ventas(tk.Frame):
         letra = config.get("letra_ticket", "muy_grande")
         empresa = bp.nombre_empresa()
         logo = _resolver_logo(config)
+        negocio = {
+            "nombre": bp.obtener_campo("nombre"),
+            "nif": bp.obtener_campo("nif"),
+            "direccion": bp.obtener_campo("direccion"),
+            "codigo_postal": bp.obtener_campo("codigo_postal"),
+            "provincia": bp.obtener_campo("provincia"),
+            "telefono": bp.obtener_campo("telefono"),
+            "email": bp.obtener_campo("email"),
+        }
 
         def trabajo():
             return imprimir_ticket_venta(
                 numero_factura, fecha, productos, total, base, cuota,
                 metodo_pago, cliente, empresa=empresa, ancho=ancho,
-                letra=letra, impresora=impresora, logo=logo,
+                letra=letra, impresora=impresora, logo=logo, negocio=negocio,
             )
 
         def al_terminar(resultado, error):

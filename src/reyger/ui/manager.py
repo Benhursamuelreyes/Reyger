@@ -31,19 +31,23 @@ class Manager(Tk):
         self.construir_container()
 
     def _set_icon(self):
-        for name in ("assets/icono.png", "assets/icono.ico"):
-            path = get_bundled_path(name)
+        # PNG pequeño para iconphoto (evita cargar el master 1024×1024).
+        for size in ("assets/icono.png-32.png", "assets/icono.png-16.png"):
+            path = get_bundled_path(size)
             if not os.path.exists(path):
                 continue
             try:
-                if name.endswith(".png"):
-                    icono = PhotoImage(file=path)
-                    self.iconphoto(True, icono)
-                else:
-                    self.iconbitmap(path)
+                icono = PhotoImage(file=path)
+                self.iconphoto(True, icono)
                 return
             except Exception:
                 continue
+        ico = get_bundled_path("assets/icono.ico")
+        if os.path.exists(ico):
+            try:
+                self.iconbitmap(ico)
+            except Exception:
+                pass
 
     def construir_container(self):
         if self.Container is not None:

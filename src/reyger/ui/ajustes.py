@@ -969,6 +969,11 @@ class Ajustes(tk.Frame):
             ancho=ancho,
             letra=letra,
             logo=logo,
+            negocio={
+                clave: self.bp_entries[clave].get() if clave in self.bp_entries else ""
+                for clave in ("nombre", "nif", "direccion", "codigo_postal",
+                              "provincia", "telefono", "email")
+            },
         )
         if enviar_bytes(datos, None if impresora == "" else impresora):
             messagebox.showinfo(
