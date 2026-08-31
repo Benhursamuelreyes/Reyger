@@ -190,6 +190,13 @@ class PdfDocumento:
             self.estilo_titulo,
         ))
 
+        # Nombre comercial / de la tienda (p. ej. 'GIGA'), bajo la razón social.
+        nombre_comercial = bp.obtener_campo("nombre_comercial")
+        if nombre_comercial:
+            elementos.append(
+                Paragraph(str(nombre_comercial), self.estilos["Normal"])
+            )
+
         perfil = bp.obtener()
         if perfil:
             p = dict(perfil)

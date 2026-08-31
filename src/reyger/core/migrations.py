@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 8
+LATEST_VERSION = 9
 
 MIGRACIONES = []
 
@@ -423,6 +423,17 @@ def _migracion_8(conn):
     """
     _add_column(conn, "business_profile", "moneda TEXT NOT NULL DEFAULT 'EUR'")
     _add_column(conn, "business_profile", "locale TEXT NOT NULL DEFAULT 'es_ES'")
+
+
+@migracion(9)
+def _migracion_9(conn):
+    """Nombre comercial de la empresa.
+
+    Añade a la tabla singleton ``business_profile`` el nombre comercial /
+    nombre de la tienda (p. ej. 'GIGA'), que se imprime bajo la razón
+    social en tickets y facturas si está informado.
+    """
+    _add_column(conn, "business_profile", "nombre_comercial TEXT DEFAULT ''")
 
 
 def run_migrations(conn):

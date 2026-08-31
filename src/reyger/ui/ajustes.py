@@ -144,6 +144,12 @@ class Ajustes(tk.Frame):
         # Separador
         tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
 
+        # Sección 6b: Impresora de facturas (A4)
+        self.crear_seccion_impresora_facturas(main_frame)
+
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+
         # Sección 7: Categorías de productos
         self.crear_seccion_categorias(main_frame)
 
@@ -376,6 +382,7 @@ class Ajustes(tk.Frame):
         perfil = dict(fila_bp) if fila_bp else {}
         campos_perfil = [
             ("nombre", "Nombre de la empresa:", perfil.get("nombre", "") or "", 40),
+            ("nombre_comercial", "Nombre comercial / Tienda:", perfil.get("nombre_comercial", "") or "", 40),
             ("nif", "NIF / CIF:", perfil.get("nif", "") or "", 20),
             ("direccion", "Dirección:", perfil.get("direccion", "") or "", 40),
             ("codigo_postal", "Código postal:", perfil.get("codigo_postal", "") or "", 8),
@@ -935,6 +942,62 @@ class Ajustes(tk.Frame):
         )
         btn_prueba.pack(anchor="w", padx=20, pady=(0, 10))
 
+    def crear_seccion_impresora_facturas(self, parent):
+        """Sección de configuración de la impresora de facturas (A4)."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🖨️ Impresora de Facturas (A4 / driver del sistema)",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        label_impresora = tk.Label(
+            frame,
+            text="Impresora de facturas (A4):",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
+        )
+        label_impresora.pack(anchor="w", padx=20, pady=(10, 5))
+
+        impresoras = ["(Desactivada)"] + listar_impresoras_termicas()
+        self.combo_impresora_facturas = ttk.Combobox(
+            frame,
+            values=impresoras,
+            state="readonly",
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+            width=38
+        )
+        actual = self.config_manager.get("impresora_facturas")
+        if actual and actual not in impresoras:
+            etiqueta = f"{actual} (no detectada)"
+            self.combo_impresora_facturas["values"] = impresoras + [etiqueta]
+            self.combo_impresora_facturas.set(etiqueta)
+        elif actual in impresoras:
+            self.combo_impresora_facturas.set(actual)
+        else:
+            self.combo_impresora_facturas.current(0)
+        self.combo_impresora_facturas.pack(anchor="w", padx=20, pady=(0, 10))
+
+        lbl_info = tk.Label(
+            frame,
+            text=(
+                "Las facturas se generan en PDF A4. Si eliges una impresora, "
+                "se envía directamente a esa impresora; si no, se abren en el "
+                "visor del sistema para imprimirlas manualmente."
+            ),
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=560,
+            justify="left"
+        )
+        lbl_info.pack(anchor="w", padx=20, pady=(0, 10))
+
     def imprimir_pagina_prueba(self):
         """Envía un ticket de ejemplo a la impresora seleccionada."""
         impresora = self.combo_impresora.get().removesuffix(" (no detectada)")
@@ -971,8 +1034,8 @@ class Ajustes(tk.Frame):
             logo=logo,
             negocio={
                 clave: self.bp_entries[clave].get() if clave in self.bp_entries else ""
-                for clave in ("nombre", "nif", "direccion", "codigo_postal",
-                              "provincia", "telefono", "email")
+                for clave in ("nombre", "nombre_comercial", "nif", "direccion",
+                              "codigo_postal", "provincia", "telefono", "email")
             },
         )
         if enviar_bytes(datos, None if impresora == "" else impresora):
@@ -1432,6 +1495,11 @@ class Ajustes(tk.Frame):
                     if self.combo_impresora.get() in ("", "(Desactivada)")
                     else self.combo_impresora.get().removesuffix(" (no detectada)")
                 ),
+                "impresora_facturas": (
+                    None
+                    if self.combo_impresora_facturas.get() in ("", "(Desactivada)")
+                    else self.combo_impresora_facturas.get().removesuffix(" (no detectada)")
+                ),
                 "ancho_ticket": int(self.var_ancho_ticket.get()),
                 "letra_ticket": next(
                     clave for clave, etiqueta in ETIQUETAS_LETRA.items()
@@ -1443,6 +1511,7 @@ class Ajustes(tk.Frame):
             # Guardar perfil de empresa en la base de datos
             bp.guardar(
                 nombre=self.bp_entries["nombre"].get(),
+                nombre_comercial=self.bp_entries["nombre_comercial"].get(),
                 nif=self.bp_entries["nif"].get(),
                 direccion=self.bp_entries["direccion"].get(),
                 codigo_postal=self.bp_entries["codigo_postal"].get(),

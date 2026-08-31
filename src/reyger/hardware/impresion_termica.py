@@ -191,6 +191,10 @@ class TicketTermico:
             self._fuente_cuerpo,
             NEGRITA_OFF,
         ]
+        # Nombre comercial / de la tienda, justo bajo la razón social.
+        nombre_comercial = self.negocio.get("nombre_comercial")
+        if nombre_comercial:
+            self._partes += [CENTRO, _linea(str(nombre_comercial))]
         # Membrete completo del negocio (NIF, dirección, teléfono, email)
         for linea_extra in self._lineas_negocio():
             self._partes.append(CENTRO)

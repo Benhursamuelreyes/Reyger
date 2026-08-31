@@ -1,5 +1,35 @@
 Changelog content
 
+## v3.0.0-beta.7 (2026-08-31)
+
+### Características
+- **Nombre comercial / Tienda**: nuevo campo en el perfil de empresa y en
+  Ajustes («Nombre comercial / Tienda»). Si se informa, se imprime bajo la
+  Razón Social en los tickets térmicos (ESC/POS) y en los membrete de
+  facturas/presupuestos/albaranes PDF (p. ej. «GIGA»).
+- **Selectores de impresora independientes**: Ajustes ahora distingue
+  «Impresora Térmica (tickets)» e «Impresora de Facturas (A4 / driver del
+  sistema)». Cada flujo usa su dispositivo:
+  - Tickets → impresora térmica ESC/POS (`impresora_termica`).
+  - Facturas → si se elige impresora A4 (`impresora_facturas`), el PDF se
+    envía a esa impresora; si no, se abre en el visor del sistema.
+- **Reimpresión de tickets antiguos**: en el historial de facturas se añade
+  el botón «Reimprimir ticket seleccionado», que reconstruye y reimprime en
+  la térmica configurada el ticket de una venta previa.
+- Apertura/impresión de PDFs de facturas con rutas absolutas y visor del
+  sistema. Nueva utilidad `print_file()` en `resources.py`.
+
+### Cambios internos
+- Migración de base de datos `v9` (columna `nombre_comercial` en
+  `business_profile`). Plantillas `database.db` regeneradas a v9.
+- Nueva clave `impresora_facturas` en `config.json` (por defecto `None`).
+- Limpieza de cabecera redundante de la pantalla principal en `container.py`.
+
+### Correcciones
+- Nombre comercial propagado al membrete fiscal de `impresion_termica.py` y
+  `pdf_documento.py`.
+
+
 ## v3.0.0-beta.4 (2026-08-26)
 
 ### Refactor

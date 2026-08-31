@@ -74,3 +74,28 @@ def open_file(path):
     else:
         import subprocess
         subprocess.Popen(["xdg-open", path])
+
+
+def print_file(path, impresora):
+    """Envía un archivo (PDF de factura A4) a una impresora determinada.
+
+    Usa la cola del sistema operativo (driver A4 / ESC-POS del driver):
+      - Windows: ``print /D:"<impresora>" <archivo>``.
+      - Linux/macOS (CUPS): ``lp -d <impresora> <archivo>``.
+    Devuelve True si el proceso se lanza sin errores.
+    """
+    import subprocess
+
+    if sys.platform == "win32":
+        comando = f'print /D:"{impresora}" "{path}"'
+        try:
+            subprocess.Popen(comando, shell=True)
+            return True
+        except Exception:
+            return False
+    else:
+        try:
+            subprocess.Popen(["lp", "-d", impresora, path])
+            return True
+        except Exception:
+            return False

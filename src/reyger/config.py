@@ -24,6 +24,8 @@ class ConfigManager:
             "escaner_activo": False,
             "ancho_ticket": 80,
             "letra_ticket": "muy_grande",
+            "impresora_termica": None,
+            "impresora_facturas": None,
         }
         if os.path.exists(self.config_file):
             try:

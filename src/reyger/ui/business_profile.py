@@ -10,6 +10,7 @@ from ..core import db
 
 CAMPOS = (
     "nombre",
+    "nombre_comercial",
     "nif",
     "direccion",
     "codigo_postal",
@@ -25,6 +26,7 @@ CAMPOS = (
 
 DEFAULTS = {
     "nombre": "Mi Empresa",
+    "nombre_comercial": "",
     "nif": "",
     "direccion": "",
     "codigo_postal": "",

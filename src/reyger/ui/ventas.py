@@ -709,6 +709,7 @@ class Ventas(tk.Frame):
         logo = _resolver_logo(config)
         negocio = {
             "nombre": bp.obtener_campo("nombre"),
+            "nombre_comercial": bp.obtener_campo("nombre_comercial"),
             "nif": bp.obtener_campo("nif"),
             "direccion": bp.obtener_campo("direccion"),
             "codigo_postal": bp.obtener_campo("codigo_postal"),
@@ -823,10 +824,29 @@ class Ventas(tk.Frame):
             ),
         )
 
-        try:
-            open_file(archivo_pdf)
-        except Exception:
-            messagebox.showinfo("Factura generada", f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}")
+        impresora_facturas = self.config_manager.get("impresora_facturas")
+        if impresora_facturas:
+            try:
+                from ..resources import print_file
+                print_file(archivo_pdf, impresora_facturas)
+                messagebox.showinfo(
+                    "Factura generada",
+                    f"La factura #{factura_numero} se ha impreso en '{impresora_facturas}'.\n"
+                    f"Archivo PDF: {archivo_pdf}",
+                )
+            except Exception:
+                messagebox.showinfo(
+                    "Factura generada",
+                    f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}",
+                )
+        else:
+            try:
+                open_file(archivo_pdf)
+            except Exception:
+                messagebox.showinfo(
+                    "Factura generada",
+                    f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}",
+                )
 
     def obtener_numero_factura_actual(self):
         try:
@@ -878,6 +898,91 @@ class Ventas(tk.Frame):
 
         tree_facturas.pack(expand=True, fill=BOTH)
         self.cargar_facturas(tree_facturas)
+
+        frame_botones = tk.Frame(ventana_facturas, bg="#C6D9E3")
+        frame_botones.pack(fill="x", padx=10, pady=(0, 15))
+
+        btn_reimprimir = tk.Button(
+            frame_botones,
+            text="🧾 Reimprimir ticket seleccionado",
+            bg="#0078D4",
+            fg="white",
+            font="sans 12 bold",
+            padx=15,
+            pady=8,
+            command=lambda: self._reimprimir_ticket(tree_facturas),
+        )
+        btn_reimprimir.pack(side="left", padx=5)
+
+    def _reimprimir_ticket(self, tree):
+        """Reimprime en la térmica configurada el ticket de una venta previa."""
+        seleccion = tree.selection()
+        if not seleccion:
+            messagebox.showwarning(
+                "Reimprimir ticket",
+                "Seleccione una línea de la venta a reimprimir.",
+            )
+            return
+        valores = tree.item(seleccion[0], "values")
+        if not valores:
+            return
+        numero_factura = valores[1]
+        try:
+            numero_factura = int(numero_factura)
+        except (TypeError, ValueError):
+            messagebox.showerror("Error", "Número de factura no válido.")
+            return
+
+        filas = db.query(
+            "SELECT * FROM ventas WHERE factura = ? "
+            "ORDER BY id ASC",
+            (numero_factura,),
+        )
+        if not filas:
+            messagebox.showwarning(
+                "Reimprimir ticket",
+                f"No hay líneas para la factura #{numero_factura}.",
+            )
+            return
+
+        productos = []
+        total = 0.0
+        base = None
+        cuota = None
+        metodo_pago = "Efectivo"
+        fecha = None
+        cliente = "(Consumidor final)"
+        primera = dict(filas[0])
+        metodo_pago = primera.get("metodo_pago") or "Efectivo"
+        fecha = primera.get("fecha")
+        cliente_id = primera.get("cliente_id")
+        base = primera.get("base_imponible")
+        cuota = primera.get("cuota_iva")
+        for fila in filas:
+            f = dict(fila)
+            productos.append((
+                f.get("nombre_articulo") or "",
+                f.get("valor_articulo") or 0.0,
+                f.get("cantidad") or 0,
+                f.get("subtotal") or 0.0,
+            ))
+        total = sum(p[3] for p in productos)
+        if fecha is None:
+            fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if cliente_id is not None:
+            try:
+                cfila = db.query_one(
+                    "SELECT nombre FROM clientes WHERE id = ?", (cliente_id,)
+                )
+                if cfila:
+                    cliente = cfila["nombre"]
+            except Exception:
+                cliente = "(Consumidor final)"
+
+        self._imprimir_ticket_termico(
+            numero_factura, fecha, productos, total, base, cuota,
+            metodo_pago, cliente,
+        )
 
     def cargar_facturas(self, tree):
         try:

@@ -2,7 +2,6 @@ import gc
 import os
 from tkinter import *
 import tkinter as tk
-from tkinter import messagebox
 from PIL import Image, ImageTk
 
 from .ui.ventas import Ventas
@@ -83,39 +82,6 @@ class Container(tk.Frame):
             except Exception:
                 pass
 
-    def _crear_marca_cabecera(self, frame_top):
-        """Marca Reyger en la cabecera: isotipo + texto, escalados a la vez."""
-        ruta_icon = get_bundled_path("assets/img/logo_icon.png")
-        ruta_text = get_bundled_path("assets/img/logo_text.png")
-        if not os.path.exists(ruta_icon) or not os.path.exists(ruta_text):
-            return
-        try:
-            icon_src = Image.open(ruta_icon).convert("RGBA")
-            text_src = Image.open(ruta_text).convert("RGBA")
-        except Exception:
-            return
-        alto = 60
-        escala_icon = alto / icon_src.height
-        escala_text = alto / text_src.height
-        icon_final = icon_src.resize(
-            (max(1, round(icon_src.width * escala_icon)), alto), Image.LANCZOS
-        )
-        text_final = text_src.resize(
-            (max(1, round(text_src.width * escala_text)), alto), Image.LANCZOS
-        )
-        self.header_icon_image = ImageTk.PhotoImage(icon_final)
-        self.header_text_image = ImageTk.PhotoImage(text_final)
-        contenedor = tk.Frame(frame_top, bg=self.colors["bg_principal"])
-        contenedor.pack(side="left", padx=12)
-        tk.Label(
-            contenedor, image=self.header_icon_image,
-            bg=self.colors["bg_principal"],
-        ).pack(side="left", padx=(0, 8))
-        tk.Label(
-            contenedor, image=self.header_text_image,
-            bg=self.colors["bg_principal"],
-        ).pack(side="left")
-
     def ventas(self):
         self.show_frames(Ventas)
 
@@ -141,31 +107,10 @@ class Container(tk.Frame):
         self.show_frames(Ajustes)
 
     def widgets(self):
-        # Zona superior (cabecera): logo de la empresa (si existe) a la
-        # derecha y la marca Reyger (isotipo + texto) a la izquierda.
-        frame_top = tk.Frame(self, bg=self.colors["bg_principal"])
-        frame_top.pack(fill="x", padx=20, pady=(14, 0))
-
-        logo_path = self.config_manager.get("logo_path")
-        if logo_path and os.path.exists(logo_path):
-            try:
-                self.custom_logo_original = Image.open(logo_path).convert("RGBA")
-                self.custom_logo_original.thumbnail((300, 80), Image.LANCZOS)
-                self.custom_logo_image = ImageTk.PhotoImage(self.custom_logo_original)
-                logo_label_custom = tk.Label(
-                    frame_top,
-                    image=self.custom_logo_image,
-                    bg=self.colors["bg_principal"],
-                )
-                logo_label_custom.pack(side="right", padx=20)
-            except Exception:
-                pass
-
-        self._crear_marca_cabecera(frame_top)
-
-        # Zona central elástica: el logotipo completo se escala para rellenarla
+        # Zona central elástica: el logotipo completo de la marca (isotipo +
+        # texto) se muestra centrado y escala dinámicamente con la ventana.
         frame_centro = tk.Frame(self, bg=self.colors["bg_principal"])
-        frame_centro.pack(fill="both", expand=True, padx=20)
+        frame_centro.pack(fill="both", expand=True, padx=20, pady=(14, 0))
 
         ruta = get_bundled_path("assets/img/logo_full.png")
         if not os.path.exists(ruta):
