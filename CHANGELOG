@@ -3,6 +3,21 @@ Changelog content
 ## v3.0.0-beta.7 (2026-08-31)
 
 ### Características
+- **Cierre de Caja y Conteo de Caja (Arqueo)**: nuevo módulo accesible
+  desde Ventas (botón «Cierre de Caja») y desde Ajustes (sección
+  «Cierre de Caja»).
+  - Conteo de efectivo físico desglosado por denominaciones de billetes y
+    monedas (€), con subtotales y total contado en vivo.
+  - Contraste con el total esperado según las ventas del período (neto en
+    efectivo + tarjeta) y los movimientos manuales (ingresos/retiros),
+    mostrando el descuadre (a favor / en contra).
+  - Resumen por método de pago (efectivo, tarjeta, mixto) filtrado por
+    rango de fechas.
+  - Registro persistente del arqueo en la nueva tabla `cierres_caja`
+    (fecha/hora, usuario, desglose, descuadre) y de los movimientos en
+    `movimientos_caja`.
+  - Impresión automática del «Informe de Cierre de Caja» en la impresora
+    de tickets configurada.
 - **Nombre comercial / Tienda**: nuevo campo en el perfil de empresa y en
   Ajustes («Nombre comercial / Tienda»). Si se informa, se imprime bajo la
   Razón Social en los tickets térmicos (ESC/POS) y en los membrete de
@@ -20,8 +35,11 @@ Changelog content
   sistema. Nueva utilidad `print_file()` en `resources.py`.
 
 ### Cambios internos
-- Migración de base de datos `v9` (columna `nombre_comercial` en
-  `business_profile`). Plantillas `database.db` regeneradas a v9.
+- Migración de base de datos `v10` (tablas `cierres_caja` y
+  `movimientos_caja`). Plantillas `database.db` regeneradas a v10.
+- Migración `v9` (columna `nombre_comercial` en `business_profile`).
+- Nuevo módulo de lógica `core/cierre_caja.py` y nueva función
+  `imprimir_ticket_arqueo()` en `impresion_termica.py`.
 - Nueva clave `impresora_facturas` en `config.json` (por defecto `None`).
 - Limpieza de cabecera redundante de la pantalla principal en `container.py`.
 

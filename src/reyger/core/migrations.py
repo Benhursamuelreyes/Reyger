@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 9
+LATEST_VERSION = 10
 
 MIGRACIONES = []
 
@@ -434,6 +434,50 @@ def _migracion_9(conn):
     social en tickets y facturas si está informado.
     """
     _add_column(conn, "business_profile", "nombre_comercial TEXT DEFAULT ''")
+
+
+@migracion(10)
+def _migracion_10(conn):
+    """Cierre y conteo de caja (arqueo).
+
+    Crea las tablas de movimientos de caja (ingresos/retiros manuales que
+    ajustan el total esperado) y de cierres de caja (registro del arqueo:
+    resumen de ventas por método de pago, total esperado, total contado,
+    descuadre y desglose por denominaciones).
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS movimientos_caja (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL CHECK (tipo IN ('INGRESO', 'RETIRO')),
+            importe REAL NOT NULL DEFAULT 0,
+            concepto TEXT,
+            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cierres_caja (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha_apertura TEXT,
+            fecha_cierre TEXT,
+            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            usuario TEXT,
+            total_ventas REAL DEFAULT 0,
+            total_efectivo_esperado REAL DEFAULT 0,
+            total_tarjeta REAL DEFAULT 0,
+            num_facturas_mixtas INTEGER DEFAULT 0,
+            ingreso_manual REAL DEFAULT 0,
+            retiro_manual REAL DEFAULT 0,
+            total_esperado REAL DEFAULT 0,
+            total_contado REAL DEFAULT 0,
+            diferencia REAL DEFAULT 0,
+            notas TEXT,
+            desglose TEXT
+        )
+        """
+    )
 
 
 def run_migrations(conn):

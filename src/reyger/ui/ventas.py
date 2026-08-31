@@ -206,6 +206,9 @@ class Ventas(tk.Frame):
         boton_ver_factura = tk.Button(lblframe1, text="Ver Factura", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_factura)
         boton_ver_factura.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
+        boton_cierre = tk.Button(lblframe1, text="Cierre de Caja", bg="#8B6914", fg="white", font="sans 14 bold", command=self.abrir_cierre_caja)
+        boton_cierre.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
+
     def cargar_productos(self):
         try:
             filas = db.query(
@@ -991,3 +994,7 @@ class Ventas(tk.Frame):
                 tree.insert("", "end", values=tuple(fila))
         except Exception as e:
             messagebox.showerror("Error", f"Error al cargar las facturas: {e}")
+
+    def abrir_cierre_caja(self):
+        from .cierre_caja import CierreCaja
+        CierreCaja(self)

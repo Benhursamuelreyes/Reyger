@@ -150,6 +150,12 @@ class Ajustes(tk.Frame):
         # Separador
         tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
 
+        # Sección 6c: Cierre de caja (arqueo)
+        self.crear_seccion_arqueo(main_frame)
+
+        # Separador
+        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+
         # Sección 7: Categorías de productos
         self.crear_seccion_categorias(main_frame)
 
@@ -997,6 +1003,47 @@ class Ajustes(tk.Frame):
             justify="left"
         )
         lbl_info.pack(anchor="w", padx=20, pady=(0, 10))
+
+    def crear_seccion_arqueo(self, parent):
+        """Sección de acceso al cierre y conteo de caja."""
+        frame = tk.LabelFrame(
+            parent,
+            text="💵 Cierre de Caja (Arqueo)",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        tk.Label(
+            frame,
+            text="Cuenta el efectivo físico, contrasta con el total esperado "
+                 "de las ventas y emite el informe de cierre en la impresora "
+                 "de tickets.",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=560,
+            justify="left"
+        ).pack(anchor="w", padx=20, pady=(6, 10))
+
+        btn_abrir = tk.Button(
+            frame,
+            text="💵 Abrir Cierre de Caja",
+            bg="#8B6914",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self._abrir_cierre_caja,
+            padx=15,
+            pady=8
+        )
+        btn_abrir.pack(anchor="w", padx=20, pady=(0, 10))
+
+    def _abrir_cierre_caja(self):
+        from .cierre_caja import CierreCaja
+        CierreCaja(self)
 
     def imprimir_pagina_prueba(self):
         """Envía un ticket de ejemplo a la impresora seleccionada."""

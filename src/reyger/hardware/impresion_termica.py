@@ -338,6 +338,124 @@ def construir_ticket_venta(
     return ticket.construir()
 
 
+def construir_ticket_arqueo(
+    resumen,
+    total_esperado,
+    total_contado,
+    diferencia,
+    fecha_apertura="",
+    fecha_cierre="",
+    usuario="",
+    empresa="Mi Empresa",
+    ancho=ANCHO_80MM,
+    letra="muy_grande",
+    logo=None,
+    negocio=None,
+):
+    """Genera los bytes del ticket térmico de informe de cierre de caja.
+
+    *resumen* es un diccionario (ver :func:`reyger.core.cierre_caja.resumen_ventas`)
+    con los totales por método de pago del período.
+    """
+    from ..core import moneda as mod_moneda
+
+    ticket = TicketTermico(
+        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
+    )
+    ticket.encabezado()
+    ticket._partes += [CENTRO, NEGRITA_ON, _linea("INFORME DE CIERRE DE CAJA"), NEGRITA_OFF]
+    ticket._partes += [IZQUIERDA]
+    if fecha_cierre:
+        ticket._partes.append(_linea(f"Fecha: {fecha_cierre}"))
+    if usuario:
+        ticket._partes.append(_linea(f"Usuario: {usuario}"))
+    ticket.separador()
+    if fecha_apertura and fecha_cierre:
+        ticket._partes.append(_linea(f"Desde: {fecha_apertura}"))
+        ticket._partes.append(_linea(f"Hasta: {fecha_cierre}"))
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Total ventas", mod_moneda.format_currency(resumen["total_ventas"]),
+            ticket.columnas,
+        )
+    )
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Efectivo esperado",
+            mod_moneda.format_currency(resumen["efectivo_neto"]),
+            ticket.columnas,
+        )
+    )
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Tarjeta", mod_moneda.format_currency(resumen["tarjeta"]),
+            ticket.columnas,
+        )
+    )
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Ingresos manuales", mod_moneda.format_currency(resumen["ingreso_manual"]),
+            ticket.columnas,
+        )
+    )
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Retiros manuales", mod_moneda.format_currency(resumen["retiro_manual"]),
+            ticket.columnas,
+        )
+    )
+    ticket.separador()
+    ticket._partes += [NEGRITA_ON]
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Total esperado", mod_moneda.format_currency(total_esperado),
+            ticket.columnas,
+        )
+    )
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Total contado", mod_moneda.format_currency(total_contado),
+            ticket.columnas,
+        )
+    )
+    ticket._partes += [NEGRITA_OFF]
+    if diferencia:
+        etiqueta = "Diferencia (a favor)" if diferencia > 0 else "Diferencia (en contra)"
+        ticket._partes.append(
+            _fila_dos_columnas(
+                etiqueta, mod_moneda.format_currency(diferencia), ticket.columnas
+            )
+        )
+    ticket.separador().pie().cortar()
+    return ticket.construir()
+
+
+def imprimir_ticket_arqueo(
+    resumen,
+    total_esperado,
+    total_contado,
+    diferencia,
+    fecha_apertura="",
+    fecha_cierre="",
+    usuario="",
+    empresa="Mi Empresa",
+    ancho=ANCHO_80MM,
+    letra="muy_grande",
+    impresora=None,
+    logo=None,
+    negocio=None,
+):
+    """Construye y envía el informe de cierre de caja. Devuelve (ok, mensaje)."""
+    datos = construir_ticket_arqueo(
+        resumen, total_esperado, total_contado, diferencia,
+        fecha_apertura, fecha_cierre, usuario, empresa, ancho, letra,
+        logo, negocio,
+    )
+    if enviar_bytes(datos, impresora):
+        return True, "Informe de cierre de caja impreso correctamente"
+    return False, "No se pudo imprimir el informe (impresora no disponible o error de envío)"
+
+
 # ------------------------------------------------------------------ envío
 def listar_impresoras_termicas():
     """Devuelve los nombres de impresoras visibles por el sistema."""
