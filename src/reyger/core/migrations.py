@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 10
+LATEST_VERSION = 11
 
 MIGRACIONES = []
 
@@ -477,6 +477,91 @@ def _migracion_10(conn):
             desglose TEXT
         )
         """
+    )
+
+
+@migracion(11)
+def _migracion_11(conn):
+    """Devoluciones, tickets regalo y tarjetas regalo.
+
+    Crea las tablas para el sistema de devoluciones/rectificaciones
+    (``devoluciones`` + ``devolucion_productos``), para los tickets regalo
+    sin precios (``tickets_regalo``) y para las tarjetas regalo con saldo
+    (``tarjetas_regalo`` + ``tarjetas_regalo_movimientos``).
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS devoluciones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            factura_original INTEGER NOT NULL,
+            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            usuario TEXT,
+            motivo TEXT,
+            metodo_reembolso TEXT DEFAULT 'Efectivo',
+            importe_devuelto REAL DEFAULT 0,
+            ticket_regalo_id INTEGER,
+            notas TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS devolucion_productos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            devolucion_id INTEGER NOT NULL,
+            factura_original INTEGER NOT NULL,
+            nombre_articulo TEXT NOT NULL,
+            valor_articulo REAL NOT NULL,
+            cantidad INTEGER NOT NULL,
+            subtotal REAL NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tickets_regalo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            factura INTEGER NOT NULL,
+            codigo TEXT NOT NULL UNIQUE,
+            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            estado TEXT DEFAULT 'ACTIVO',
+            creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tarjetas_regalo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo TEXT NOT NULL UNIQUE,
+            saldo_inicial REAL NOT NULL DEFAULT 0,
+            saldo_actual REAL NOT NULL DEFAULT 0,
+            estado TEXT DEFAULT 'ACTIVA',
+            fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            fecha_vencimiento TEXT,
+            notas TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tarjetas_regalo_movimientos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tarjeta_id INTEGER NOT NULL,
+            tipo TEXT NOT NULL,          -- EMISION / CANJE / RECARGA
+            importe REAL NOT NULL DEFAULT 0,
+            venta_factura INTEGER,
+            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devolucion_productos_dev ON "
+        "devolucion_productos (devolucion_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tarjeta_mov_tarjeta ON "
+        "tarjetas_regalo_movimientos (tarjeta_id)"
     )
 
 

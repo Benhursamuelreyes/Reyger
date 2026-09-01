@@ -25,6 +25,7 @@ from ..hardware.impresion_termica import (
     ANCHO_58MM,
     ANCHO_80MM,
     imprimir_ticket_venta,
+    imprimir_ticket_regalo,
 )
 
 
@@ -473,7 +474,7 @@ class Ventas(tk.Frame):
             total += subtotal
         return round(total, 2)
 
-    def _actualizar_campos_pago(self, var_metodo, label_efe=None, entry_efe=None, label_tar=None, entry_tar=None):
+    def _actualizar_campos_pago(self, var_metodo, label_efe=None, entry_efe=None, label_tar=None, entry_tar=None, label_gc=None, entry_gc=None):
         if label_efe is None:
             return
         metodo = var_metodo.get()
@@ -482,16 +483,34 @@ class Ventas(tk.Frame):
             entry_efe.grid()
             label_tar.grid_remove()
             entry_tar.grid_remove()
+            if label_gc is not None:
+                label_gc.grid_remove()
+                entry_gc.grid_remove()
         elif metodo == "Tarjeta":
             label_efe.grid_remove()
             entry_efe.grid_remove()
             label_tar.grid()
             entry_tar.grid()
-        else:
+            if label_gc is not None:
+                label_gc.grid_remove()
+                entry_gc.grid_remove()
+        elif metodo == "TarjetaRegalo":
+            label_efe.grid_remove()
+            entry_efe.grid_remove()
+            label_tar.grid_remove()
+            entry_tar.grid_remove()
+            if label_gc is not None:
+                label_gc.grid()
+                entry_gc.grid()
+        else:  # Mixto
             label_efe.grid()
             entry_efe.grid()
             label_tar.grid()
             entry_tar.grid()
+            if label_gc is not None:
+                label_gc.grid_remove()
+                entry_gc.grid_remove()
+
 
     def abrir_ventana_paga(self):
         if not self.tree.get_children():
@@ -526,7 +545,7 @@ class Ventas(tk.Frame):
         var_metodo = tk.StringVar(value="Efectivo")
 
         def actualizar_campos():
-            self._actualizar_campos_pago(var_metodo, label_efectivo, entry_efectivo, label_tarjeta, entry_tarjeta)
+            self._actualizar_campos_pago(var_metodo, label_efectivo, entry_efectivo, label_tarjeta, entry_tarjeta, label_gc, entry_gc)
 
         frame_radios = tk.Frame(ventana_pago, bg="#C6D9E3")
         frame_radios.grid(row=2, column=0, sticky="w", padx=20)
@@ -538,7 +557,10 @@ class Ventas(tk.Frame):
         radio_tarjeta.pack(side="left", padx=(0, 30))
 
         radio_mixto = tk.Radiobutton(frame_radios, text="Mixto", variable=var_metodo, value="Mixto", bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos)
-        radio_mixto.pack(side="left")
+        radio_mixto.pack(side="left", padx=(0, 30))
+
+        radio_gc = tk.Radiobutton(frame_radios, text="Tarjeta Regalo", variable=var_metodo, value="TarjetaRegalo", bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos)
+        radio_gc.pack(side="left")
 
         label_efectivo = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad en efectivo:", font="sans 12 bold")
         label_efectivo.grid(row=3, column=0, sticky="w", padx=20, pady=(15, 2))
@@ -552,13 +574,35 @@ class Ventas(tk.Frame):
         label_tarjeta.grid_remove()
         entry_tarjeta.grid_remove()
 
+        label_gc = tk.Label(ventana_pago, bg="#C6D9E3", text="Código de tarjeta regalo:", font="sans 12 bold")
+        label_gc.grid(row=7, column=0, sticky="w", padx=20, pady=(15, 2))
+        entry_gc = ttk.Entry(ventana_pago, font="sans 12 bold")
+        entry_gc.grid(row=8, column=0, sticky="ew", padx=20)
+        label_gc.grid_remove()
+        entry_gc.grid_remove()
+
         label_cambio = tk.Label(ventana_pago, bg="#C6D9E3", text="", font="sans 14 bold", fg="#27AE60")
-        label_cambio.grid(row=7, column=0, sticky="w", padx=20, pady=15)
+        label_cambio.grid(row=9, column=0, sticky="w", padx=20, pady=15)
 
         def calcular_cambio():
             try:
                 metodo = var_metodo.get()
-                if metodo == "Efectivo":
+                if metodo == "TarjetaRegalo":
+                    codigo = entry_gc.get().strip()
+                    if not codigo:
+                        messagebox.showerror("Error", "Ingrese el código de la tarjeta regalo")
+                        return
+                    from ..core import tarjetas_regalo as tr
+                    saldo_gc = tr.saldo(codigo)
+                    if saldo_gc is None:
+                        messagebox.showerror("Error", "La tarjeta regalo no existe")
+                        return
+                    if saldo_gc < total:
+                        messagebox.showerror("Error", f"Saldo insuficiente (disponible: {mod_moneda.format_currency(saldo_gc)})")
+                        label_cambio.config(text="")
+                        return
+                    label_cambio.config(text=f"Pago con tarjeta regalo (saldo {mod_moneda.format_currency(saldo_gc)})")
+                elif metodo == "Efectivo":
                     cantidad_pagada = float(entry_efectivo.get())
                     cambio = cantidad_pagada - total
                     if cambio < 0:
@@ -587,21 +631,26 @@ class Ventas(tk.Frame):
                 messagebox.showerror("Error", "Ingrese valores numericos validos")
 
         boton_calcular = tk.Button(ventana_pago, text="Calcular", bg="#0078D4", fg="white", font="sans 12 bold", command=calcular_cambio)
-        boton_calcular.grid(row=8, column=0, sticky="ew", padx=20, pady=10, ipady=4)
+        boton_calcular.grid(row=10, column=0, sticky="ew", padx=20, pady=10, ipady=4)
 
-        boton_pagar = tk.Button(ventana_pago, text="Confirmar pago", bg="#27AE60", fg="white", font="sans 14 bold", command=lambda: self.pagar(ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total))
-        boton_pagar.grid(row=9, column=0, sticky="ew", padx=20, pady=10, ipady=6)
+        boton_pagar = tk.Button(ventana_pago, text="Confirmar pago", bg="#27AE60", fg="white", font="sans 14 bold", command=lambda: self.pagar(ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total, entry_gc))
+        boton_pagar.grid(row=11, column=0, sticky="ew", padx=20, pady=10, ipady=6)
 
         boton_cancelar = tk.Button(ventana_pago, text="Cancelar", bg="#C0392B", fg="white", font="sans 12 bold", command=ventana_pago.destroy)
-        boton_cancelar.grid(row=10, column=0, sticky="ew", padx=20, pady=(10, 20), ipady=4)
+        boton_cancelar.grid(row=12, column=0, sticky="ew", padx=20, pady=(10, 20), ipady=4)
 
         ventana_pago.columnconfigure(0, weight=1)
 
-    def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total):
+    def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total, entry_gc=None):
         try:
             metodo_pago = var_metodo.get()
             cantidad_efectivo = 0.0
             cantidad_tarjeta = 0.0
+
+            from ..core import tarjetas_regalo as tr
+
+            codigo_gc = (entry_gc.get().strip() if entry_gc is not None else "")
+            monto_gc = 0.0
 
             if metodo_pago == "Efectivo":
                 cantidad_efectivo = float(entry_efectivo.get())
@@ -612,6 +661,22 @@ class Ventas(tk.Frame):
                 cantidad_tarjeta = float(entry_tarjeta.get())
                 if cantidad_tarjeta < total:
                     messagebox.showerror("Error", "Cantidad en tarjeta insuficiente")
+                    return
+            elif metodo_pago == "TarjetaRegalo":
+                if not codigo_gc:
+                    messagebox.showerror("Error", "Ingrese el código de la tarjeta regalo")
+                    return
+                ok_gc, monto_gc, restante_gc, mensaje_gc = tr.aplicar_pago(
+                    codigo_gc, total, self.numero_factura_actual
+                )
+                if not ok_gc:
+                    messagebox.showerror("Error", f"Tarjeta regalo: {mensaje_gc}")
+                    return
+                if restante_gc > 0:
+                    messagebox.showerror(
+                        "Error",
+                        f"Saldo insuficiente. Resto a pagar: {mod_moneda.format_currency(restante_gc)}",
+                    )
                     return
             elif metodo_pago == "Mixto":
                 cantidad_efectivo = float(entry_efectivo.get())
@@ -916,6 +981,112 @@ class Ventas(tk.Frame):
             command=lambda: self._reimprimir_ticket(tree_facturas),
         )
         btn_reimprimir.pack(side="left", padx=5)
+
+        btn_ticket_regalo = tk.Button(
+            frame_botones,
+            text="🎁 Imprimir Ticket Regalo",
+            bg="#8E44AD",
+            fg="white",
+            font="sans 12 bold",
+            padx=15,
+            pady=8,
+            command=lambda: self._imprimir_ticket_regalo(tree_facturas),
+        )
+        btn_ticket_regalo.pack(side="left", padx=5)
+
+    def _imprimir_ticket_regalo(self, tree):
+        """Imprime un Ticket Regalo (sin precios, con código y QR) de una venta."""
+        seleccion = tree.selection()
+        if not seleccion:
+            messagebox.showwarning(
+                "Ticket Regalo",
+                "Seleccione una línea de la venta para el ticket regalo.",
+            )
+            return
+        valores = tree.item(seleccion[0], "values")
+        if not valores:
+            return
+        try:
+            numero_factura = int(valores[1])
+        except (TypeError, ValueError):
+            messagebox.showerror("Error", "Número de factura no válido.")
+            return
+
+        filas = db.query(
+            "SELECT * FROM ventas WHERE factura = ? ORDER BY id ASC",
+            (numero_factura,),
+        )
+        if not filas:
+            messagebox.showwarning(
+                "Ticket Regalo",
+                f"No hay líneas para la factura #{numero_factura}.",
+            )
+            return
+
+        productos = []
+        fecha = None
+        for fila in filas:
+            f = dict(fila)
+            productos.append((
+                f.get("nombre_articulo") or "",
+                f.get("valor_articulo") or 0.0,
+                f.get("cantidad") or 0,
+                f.get("subtotal") or 0.0,
+            ))
+        fecha = dict(filas[0]).get("fecha")
+
+        import secrets
+        codigo = f"TR-{numero_factura}-{secrets.token_hex(3).upper()}"
+        try:
+            db.execute(
+                "INSERT INTO tickets_regalo (factura, codigo) VALUES (?, ?)",
+                (numero_factura, codigo),
+            )
+        except Exception:
+            codigo = f"TR-{numero_factura}"
+
+        config = ConfigManager()
+        impresora = config.get("impresora_termica")
+        if not impresora:
+            messagebox.showinfo(
+                "Ticket Regalo",
+                f"Código del ticket regalo: {codigo}\n(No hay impresora térmica "
+                "configurada para imprimirlo.)",
+            )
+            return
+        ancho = ANCHO_58MM if config.get("ancho_ticket") == 58 else ANCHO_80MM
+        letra = config.get("letra_ticket", "muy_grande")
+        empresa = bp.nombre_empresa()
+        logo = _resolver_logo(config)
+        negocio = {
+            "nombre": bp.obtener_campo("nombre"),
+            "nombre_comercial": bp.obtener_campo("nombre_comercial"),
+            "nif": bp.obtener_campo("nif"),
+            "direccion": bp.obtener_campo("direccion"),
+            "codigo_postal": bp.obtener_campo("codigo_postal"),
+            "provincia": bp.obtener_campo("provincia"),
+            "telefono": bp.obtener_campo("telefono"),
+            "email": bp.obtener_campo("email"),
+        }
+
+        def trabajo():
+            return imprimir_ticket_regalo(
+                numero_factura, fecha, productos, codigo,
+                empresa=empresa, ancho=ancho, letra=letra,
+                impresora=impresora, logo=logo, negocio=negocio,
+            )
+
+        def al_terminar(resultado, error):
+            if error is not None:
+                messagebox.showwarning(
+                    "Impresora térmica", f"No se pudo imprimir: {error}"
+                )
+                return
+            ok, mensaje = resultado
+            if not ok:
+                messagebox.showwarning("Impresora térmica", mensaje)
+
+        en_hilo(self, trabajo, al_terminar)
 
     def _reimprimir_ticket(self, tree):
         """Reimprime en la térmica configurada el ticket de una venta previa."""

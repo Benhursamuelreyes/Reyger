@@ -88,23 +88,19 @@ def _fila_dos_columnas(izquierda, derecha, ancho):
     return _linea(izquierda + " " * max(espacio, 0) + derecha)
 
 
-def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
-    """Convierte una imagen en mapa de bits ESC/POS (comando ``GS v 0``).
+def _imagen_a_bitmap(imagen, puntos_ancho, puntos_alto_max=192):
+    """Convierte una imagen PIL (path o imagen) en mapa de bits ESC/POS.
 
-    El resultado es blanco y negro puro: primero se compone la imagen
-    sobre fondo blanco (para que las transparencias no salgan negras),
-    se reescala al ancho del cabezal y se umbraliza sin grises, porque
-    los térmicos imprimen los grises como manchas.
-
-    Devuelve los bytes del comando listo para enviar o ``None`` si no
-    hay Pillow, la imagen no existe o falla el procesado.
+    Reutiliza la lógica de :func:`_rasterizar_logo` partiendo de una imagen
+    ya cargada. Devuelve los bytes del comando ``GS v 0`` o ``None``.
     """
     try:
         from PIL import Image
     except ImportError:
         return None
     try:
-        imagen = Image.open(ruta)
+        if not hasattr(imagen, "width"):
+            imagen = Image.open(imagen)
         if imagen.mode != "RGBA":
             imagen = imagen.convert("RGBA")
         fondo = Image.new("RGBA", imagen.size, (255, 255, 255, 255))
@@ -145,6 +141,16 @@ def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
         return cabecera + bytes(datos)
     except Exception:
         return None
+
+
+def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
+    """Convierte un archivo de imagen en mapa de bits ESC/POS (``GS v 0``)."""
+    return _imagen_a_bitmap(ruta, puntos_ancho, puntos_alto_max)
+
+
+def _rasterizar_imagen_pil(imagen, puntos_ancho, puntos_alto_max=320):
+    """Rasteriza una imagen PIL en memoria (p. ej. barcode o QR)."""
+    return _imagen_a_bitmap(imagen, puntos_ancho, puntos_alto_max)
 
 
 class TicketTermico:
@@ -454,6 +460,146 @@ def imprimir_ticket_arqueo(
     if enviar_bytes(datos, impresora):
         return True, "Informe de cierre de caja impreso correctamente"
     return False, "No se pudo imprimir el informe (impresora no disponible o error de envío)"
+
+
+def _insertar_codigos(partes, codigo, puntos_ancho):
+    """Añade el código de barras Code128 y el QR al final del ticket."""
+    from .codigos import generar_barcode_pil, generar_qr_pil
+
+    barcode = _rasterizar_imagen_pil(
+        generar_barcode_pil(str(codigo)), puntos_ancho, 160
+    )
+    if barcode:
+        partes.append(barcode)
+        partes.append(b"\n")
+    qr = _rasterizar_imagen_pil(generar_qr_pil(str(codigo)), puntos_ancho, 300)
+    if qr:
+        partes.append(qr)
+        partes.append(b"\n")
+    return partes
+
+
+def construir_ticket_regalo(
+    numero_factura,
+    fecha,
+    productos,
+    codigo,
+    empresa="Mi Empresa",
+    ancho=ANCHO_80MM,
+    letra="muy_grande",
+    logo=None,
+    negocio=None,
+):
+    """Genera los bytes del ticket regalo (oculta precios y totales).
+
+    *productos* es una secuencia de tuplas ``(nombre, precio, cantidad,
+    subtotal)`` — solo se usa el nombre y la cantidad; los importes se
+    omiten. Al final se imprime el código de barras y el QR con el
+    identificador único del ticket.
+    """
+    ticket = TicketTermico(
+        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
+    )
+    ticket.encabezado()
+    ticket._partes += [CENTRO, NEGRITA_ON, _linea("TICKET REGALO"), NEGRITA_OFF]
+    ticket._partes += [IZQUIERDA, _linea(f"Ticket: {numero_factura}")]
+    if fecha:
+        ticket._partes.append(_linea(f"Fecha: {fecha}"))
+    ticket.separador()
+    for producto in productos:
+        nombre, _precio, cantidad, _subtotal = (
+            producto[0], producto[1], producto[2], producto[3],
+        )
+        ticket._partes.append(_linea(str(nombre)))
+        ticket._partes.append(_linea(f"  Cantidad: {cantidad}"))
+    ticket.separador()
+    ticket._partes += [CENTRO, _linea("Sin precios de referencia")]
+    ticket.pie()
+    _insertar_codigos(ticket._partes, codigo, ticket.puntos_ancho)
+    ticket._partes += [IZQUIERDA, _linea(f"Ticket: {codigo}")]
+    ticket.cortar()
+    return ticket.construir()
+
+
+def imprimir_ticket_regalo(
+    numero_factura,
+    fecha,
+    productos,
+    codigo,
+    empresa="Mi Empresa",
+    ancho=ANCHO_80MM,
+    letra="muy_grande",
+    impresora=None,
+    logo=None,
+    negocio=None,
+):
+    """Construye y envía el ticket regalo. Devuelve (ok, mensaje)."""
+    datos = construir_ticket_regalo(
+        numero_factura, fecha, productos, codigo,
+        empresa=empresa, ancho=ancho, letra=letra, logo=logo, negocio=negocio,
+    )
+    if enviar_bytes(datos, impresora):
+        return True, "Ticket regalo impreso correctamente"
+    return False, "No se pudo imprimir el ticket regalo (impresora no disponible)"
+
+
+def construir_ticket_devolucion(
+    resumen,
+    empresa="Mi Empresa",
+    ancho=ANCHO_80MM,
+    letra="muy_grande",
+    logo=None,
+    negocio=None,
+):
+    """Genera los bytes del ticket de rectificación/devolución."""
+    from ..core import moneda as mod_moneda
+
+    ticket = TicketTermico(
+        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
+    )
+    ticket.encabezado()
+    ticket._partes += [CENTRO, NEGRITA_ON, _linea("RECTIFICACIÓN / DEVOLUCIÓN"), NEGRITA_OFF]
+    ticket._partes += [IZQUIERDA]
+    if resumen.get("fecha"):
+        ticket._partes.append(_linea(f"Fecha: {resumen['fecha']}"))
+    ticket._partes.append(_linea(f"Factura original: {resumen['factura_original']}"))
+    if resumen.get("usuario"):
+        ticket._partes.append(_linea(f"Usuario: {resumen['usuario']}"))
+    ticket.separador()
+    for nombre, cantidad in resumen["lineas"]:
+        ticket._partes.append(_linea(f"{nombre}  x{cantidad}"))
+    ticket.separador()
+    ticket._partes += [NEGRITA_ON]
+    ticket._partes.append(
+        _fila_dos_columnas(
+            "Devuelto", mod_moneda.format_currency(resumen["importe_devuelto"]),
+            ticket.columnas,
+        )
+    )
+    ticket._partes += [NEGRITA_OFF]
+    ticket._partes.append(_linea(f"Reembolso: {resumen['metodo_reembolso']}"))
+    if resumen.get("codigo_vale"):
+        ticket._partes.append(_linea(f"Vale emitido: {resumen['codigo_vale']}"))
+    ticket.separador().pie().cortar()
+    return ticket.construir()
+
+
+def imprimir_ticket_devolucion(
+    resumen,
+    empresa="Mi Empresa",
+    ancho=ANCHO_80MM,
+    letra="muy_grande",
+    impresora=None,
+    logo=None,
+    negocio=None,
+):
+    """Construye y envía el ticket de devolución. Devuelve (ok, mensaje)."""
+    datos = construir_ticket_devolucion(
+        resumen, empresa=empresa, ancho=ancho, letra=letra, logo=logo, negocio=negocio,
+    )
+    if enviar_bytes(datos, impresora):
+        return True, "Ticket de devolución impreso correctamente"
+    return False, "No se pudo imprimir el ticket de devolución"
 
 
 # ------------------------------------------------------------------ envío

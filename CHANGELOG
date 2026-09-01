@@ -1,5 +1,48 @@
 Changelog content
 
+## v3.0.0-beta.8 (2026-09-01)
+
+### Características
+- **Sistema de Devoluciones / Rectificaciones**: nuevo módulo accesible
+  desde Ajustes (sección «Devoluciones / Rectificaciones»).
+  - Selección de una factura emitida y visualización de sus productos con
+    la cantidad disponible (lo vendido menos lo ya devuelto).
+  - Devolución total o parcial con validación de cantidades (rechaza
+    sobre-devoluciones y productos ajenos a la factura).
+  - Reintegro automático del stock devuelto en el inventario.
+  - Reembolso en Efectivo, Tarjeta o **Vale / Tarjeta Regalo** (emite una
+    tarjeta regalo por el importe devuelto).
+  - Registro persistente en las tablas `devoluciones` y
+    `devolucion_productos`, e impresión del «Ticket de Rectificación /
+    Devolución» en la impresora térmica configurada.
+- **Ticket Regalo sin precios (Code128 + QR)**: botón «Imprimir Ticket
+  Regalo» en el historial de facturas.
+  - Genera un ticket promocional con el nombre y cantidad de cada artículo,
+    **ocultando precios, subtotales y totales**.
+  - Incluye un código único registrado en la tabla `tickets_regalo`,
+    impreso como código de barras **Code128** (implementación manual con
+    Pillow, sin dependencias extra) y como **código QR**.
+- **Tarjetas Regalo / Vales**: nuevo módulo accesible desde Ajustes
+  (sección «Tarjetas Regalo / Vales») para crear tarjetas con saldo,
+  listarlas, consultar su saldo y recargarlas (tablas `tarjetas_regalo` y
+  `tarjetas_regalo_movimientos`).
+- **Pago con Tarjeta Regalo**: nuevo método de pago «Tarjeta Regalo» en la
+  ventana de cobro de Ventas. Se ingresa el código, se valida el saldo y se
+  aplica como medio de pago (descuenta el saldo y registra el canje).
+
+### Cambios internos
+- Migración de base de datos `v11` (tablas `devoluciones`,
+  `devolucion_productos`, `tickets_regalo`, `tarjetas_regalo` y
+  `tarjetas_regalo_movimientos`). Plantillas `database.db` regeneradas a v11.
+- Nuevos módulos de lógica `core/devoluciones.py` y
+  `core/tarjetas_regalo.py`.
+- Nuevo módulo de códigos `hardware/codigos.py` (`generar_barcode_pil` y
+  `generar_qr_pil`).
+- Nuevos builders en `impresion_termica.py`: `construir_ticket_regalo`,
+  `imprimir_ticket_regalo`, `construir_ticket_devolucion` e
+  `imprimir_ticket_devolucion`, con rasterizado de imágenes PIL en memoria.
+
+
 ## v3.0.0-beta.7 (2026-08-31)
 
 ### Características

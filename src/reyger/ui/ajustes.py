@@ -153,6 +153,12 @@ class Ajustes(tk.Frame):
         # Sección 6c: Cierre de caja (arqueo)
         self.crear_seccion_arqueo(main_frame)
 
+        # Sección 6d: Devoluciones
+        self.crear_seccion_devoluciones(main_frame)
+
+        # Sección 6e: Tarjetas regalo / vales
+        self.crear_seccion_tarjetas(main_frame)
+
         # Separador
         tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
 
@@ -1044,6 +1050,86 @@ class Ajustes(tk.Frame):
     def _abrir_cierre_caja(self):
         from .cierre_caja import CierreCaja
         CierreCaja(self)
+
+    def crear_seccion_devoluciones(self, parent):
+        """Sección de acceso al sistema de devoluciones."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🔄 Devoluciones / Rectificaciones",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        tk.Label(
+            frame,
+            text="Devuelve productos de una factura, reintegra el stock y "
+                 "registra la rectificación (reembolso en efectivo, tarjeta "
+                 "o vale).",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=560,
+            justify="left"
+        ).pack(anchor="w", padx=20, pady=(6, 10))
+
+        tk.Button(
+            frame,
+            text="🔄 Abrir Devoluciones",
+            bg="#27AE60",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self._abrir_devoluciones,
+            padx=15,
+            pady=8
+        ).pack(anchor="w", padx=20, pady=(0, 10))
+
+    def _abrir_devoluciones(self):
+        from .devoluciones import Devoluciones
+        Devoluciones(self)
+
+    def crear_seccion_tarjetas(self, parent):
+        """Sección de acceso a tarjetas regalo / vales."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🎁 Tarjetas Regalo / Vales",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10
+        )
+        frame.pack(fill="x", pady=10)
+
+        tk.Label(
+            frame,
+            text="Crea tarjetas regalo con saldo, consulta el saldo, recárgalas "
+                 "y úsalas como método de pago en las ventas.",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=560,
+            justify="left"
+        ).pack(anchor="w", padx=20, pady=(6, 10))
+
+        tk.Button(
+            frame,
+            text="🎁 Abrir Tarjetas Regalo",
+            bg="#8E44AD",
+            fg="white",
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            command=self._abrir_tarjetas_regalo,
+            padx=15,
+            pady=8
+        ).pack(anchor="w", padx=20, pady=(0, 10))
+
+    def _abrir_tarjetas_regalo(self):
+        from .tarjetas_regalo import TarjetasRegalo
+        TarjetasRegalo(self)
+
 
     def imprimir_pagina_prueba(self):
         """Envía un ticket de ejemplo a la impresora seleccionada."""
