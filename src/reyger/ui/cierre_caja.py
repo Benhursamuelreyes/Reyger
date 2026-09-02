@@ -61,27 +61,58 @@ class CierreCaja(tk.Toplevel):
         self.var_desde.set(f"{hoy} 00:00")
         self.var_hasta.set(ahora.strftime("%d/%m/%Y %H:%M"))
 
+    def _crear_scrollable(self, padre):
+        """Envuelve el contenido en un contenedor con scrollbar vertical.
+
+        Devuelve el ``Frame`` interior en el que se empaqueta el contenido.
+        El scroll se recalcula en cada ``<Configure>`` para responder al
+        cambio de tamaño de la ventana.
+        """
+        bg = self.colors["bg_principal"]
+        lienzo = tk.Canvas(padre, bg=bg, highlightthickness=0, bd=0)
+        barra = ttk.Scrollbar(padre, orient="vertical", command=lienzo.yview)
+        interior = tk.Frame(lienzo, bg=bg)
+        interior.bind(
+            "<Configure>",
+            lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")),
+        )
+        ventana = lienzo.create_window((0, 0), window=interior, anchor="nw")
+
+        def _ajustar_ancho(_evento=None):
+            lienzo.itemconfigure(ventana, width=lienzo.winfo_width())
+
+        lienzo.bind("<Configure>", _ajustar_ancho)
+        interior.bind("<Configure>", lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")))
+        lienzo.pack(side="left", fill="both", expand=True)
+        barra.pack(side="right", fill="y")
+        return interior
+
     def _construir(self):
         bg = self.colors["bg_principal"]
         fg = self.colors["fg_texto"]
         fuente = f"sans {self.config_manager.get_tamaño_fuente()}"
 
         contenedor = tk.Frame(self, bg=bg)
-        contenedor.pack(fill="both", expand=True, padx=15, pady=10)
+        contenedor.pack(fill="both", expand=True, padx=15, pady=(10, 0))
 
         titulo = tk.Label(
             contenedor, text="CIERRE DE CAJA · ARQUEO",
             bg=bg, fg=fg, font=f"sans {self.config_manager.get_tamaño_fuente('titulo')} bold",
         )
-        titulo.pack(pady=(0, 8))
+        titulo.pack(pady=(0, 6))
+
+        # ── Área central con scroll vertical dinámico ───────────────────
+        area_scroll = tk.Frame(contenedor, bg=bg)
+        area_scroll.pack(fill="both", expand=True)
+        cuerpo = self._crear_scrollable(area_scroll)
 
         # ── Datos del arqueo ────────────────────────────────────────────
         frame_datos = tk.LabelFrame(
-            contenedor, text="Datos del arqueo", bg=bg, fg=fg,
+            cuerpo, text="Datos del arqueo", bg=bg, fg=fg,
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
             padx=10, pady=8,
         )
-        frame_datos.pack(fill="x", pady=6)
+        frame_datos.pack(fill="x", pady=6, padx=6)
 
         self._fila_entry(frame_datos, "Usuario:", self.var_usuario, 0, 22)
         self._fila_entry(frame_datos, "Desde (DD/MM/AAAA HH:MM):", self.var_desde, 1, 18)
@@ -102,11 +133,11 @@ class CierreCaja(tk.Toplevel):
 
         # ── Resumen de ventas ───────────────────────────────────────────
         frame_resumen = tk.LabelFrame(
-            contenedor, text="Resumen de ventas del período", bg=bg, fg=fg,
+            cuerpo, text="Resumen de ventas del período", bg=bg, fg=fg,
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
             padx=10, pady=8,
         )
-        frame_resumen.pack(fill="x", pady=6)
+        frame_resumen.pack(fill="x", pady=6, padx=6)
         self.labels_resumen = {}
         for fila, (clave, etiqueta) in enumerate([
             ("total_ventas", "Total de ventas"),
@@ -123,68 +154,37 @@ class CierreCaja(tk.Toplevel):
             val.pack(side="right")
             self.labels_resumen[clave] = val
 
-        # ── Conteo por denominaciones ────────────────────────────────────
+        # ── Conteo por denominaciones (tabla vertical) ──────────────────
         frame_conteo = tk.LabelFrame(
-            contenedor, text="Conteo de efectivo físico", bg=bg, fg=fg,
+            cuerpo, text="Conteo de efectivo físico", bg=bg, fg=fg,
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
             padx=10, pady=8,
         )
-        frame_conteo.pack(fill="both", expand=True, pady=6)
+        frame_conteo.pack(fill="x", pady=6, padx=6)
 
-        cabecera = tk.Frame(frame_conteo, bg=bg)
-        cabecera.pack(fill="x")
-        tk.Label(cabecera, text="Denominación", bg=bg, fg=fg, font=fuente + " bold",
-                 width=18, anchor="w").pack(side="left", padx=6)
-        tk.Label(cabecera, text="Cantidad", bg=bg, fg=fg, font=fuente + " bold",
-                 width=14, anchor="w").pack(side="left")
-        tk.Label(cabecera, text="Subtotal", bg=bg, fg=fg, font=fuente + " bold",
-                 width=16, anchor="e").pack(side="right", padx=6)
+        # Cabecera de la tabla (Denominación | Cantidad | Subtotal), fila 0
+        # del mismo grid que las denominaciones para alinear las columnas.
+        tk.Label(frame_conteo, text="Denominación", bg=bg, fg=fg, font=fuente + " bold",
+                 width=20, anchor="w").grid(row=0, column=0, sticky="w", padx=6, pady=2)
+        tk.Label(frame_conteo, text="Cantidad", bg=bg, fg=fg, font=fuente + " bold",
+                 width=14, anchor="w").grid(row=0, column=1, sticky="w", padx=6, pady=2)
+        tk.Label(frame_conteo, text="Subtotal", bg=bg, fg=fg, font=fuente + " bold",
+                 width=18, anchor="e").grid(row=0, column=2, sticky="e", padx=6, pady=2)
+        frame_conteo.grid_columnconfigure(0, weight=0)
+        frame_conteo.grid_columnconfigure(1, weight=1, minsize=80)
+        frame_conteo.grid_columnconfigure(2, weight=0)
 
-        lienzo = tk.Canvas(frame_conteo, bg=bg, highlightthickness=0)
-        barra = ttk.Scrollbar(frame_conteo, orient="vertical", command=lienzo.yview)
-        interior = tk.Frame(lienzo, bg=bg)
-        interior.bind(
-            "<Configure>",
-            lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")),
-        )
-        lienzo.create_window((0, 0), window=interior, anchor="nw")
-        lienzo.configure(yscrollcommand=barra.set)
-        lienzo.pack(side="left", fill="both", expand=True)
-        barra.pack(side="right", fill="y")
-
+        # Cada denominación en su propia fila vertical (nunca una fila ancha)
         for denom in cierre_caja.denominaciones():
-            self._fila_denominacion(interior, denom)
+            self._fila_denominacion(frame_conteo, denom)
 
-        # ── Resultado del arqueo ────────────────────────────────────────
-        frame_resultado = tk.LabelFrame(
-            contenedor, text="Resultado del arqueo", bg=bg, fg=fg,
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            padx=10, pady=8,
-        )
-        frame_resultado.pack(fill="x", pady=6)
-        row_c = tk.Frame(frame_resultado, bg=bg)
-        row_c.pack(fill="x", pady=1)
-        tk.Label(row_c, text="Total contado:", bg=bg, fg=fg, font=fuente, anchor="w").pack(side="left")
-        self.label_total_contado = tk.Label(
-            row_c, text="-", bg=bg, fg=fg, font=fuente + " bold", anchor="e",
-        )
-        self.label_total_contado.pack(side="right")
-
-        row_d = tk.Frame(frame_resultado, bg=bg)
-        row_d.pack(fill="x", pady=1)
-        tk.Label(row_d, text="Diferencia (descuadre):", bg=bg, fg=fg, font=fuente, anchor="w").pack(side="left")
-        self.label_diferencia = tk.Label(
-            row_d, text="-", bg=bg, fg=fg, font=fuente + " bold", anchor="e",
-        )
-        self.label_diferencia.pack(side="right")
-
-        # ── Notas y acciones ────────────────────────────────────────────
+        # ── Notas y movimientos ─────────────────────────────────────────
         frame_notas = tk.LabelFrame(
-            contenedor, text="Notas y movimientos", bg=bg, fg=fg,
+            cuerpo, text="Notas y movimientos", bg=bg, fg=fg,
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
             padx=10, pady=8,
         )
-        frame_notas.pack(fill="x", pady=6)
+        frame_notas.pack(fill="x", pady=6, padx=6)
         tk.Label(frame_notas, text="Notas:", bg=bg, fg=fg, font=fuente).pack(anchor="w")
         entrada_notas = tk.Entry(frame_notas, textvariable=self.var_notas,
                                  font=fuente, bg=self.colors["entry_bg"], fg=self.colors["entry_fg"])
@@ -195,16 +195,45 @@ class CierreCaja(tk.Toplevel):
                  font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
                  justify="left", wraplength=700).pack(anchor="w", pady=(4, 0))
 
-        frame_acciones = tk.Frame(contenedor, bg=bg)
-        frame_acciones.pack(fill="x", pady=8)
+        # ── Barra fija inferior: totales, descuadre y acciones ──────────
+        frame_bottom = tk.Frame(contenedor, bg=bg)
+        frame_bottom.pack(fill="x", pady=(6, 0))
+
+        resumen_bottom = tk.LabelFrame(
+            frame_bottom, text="Resultado del arqueo", bg=bg, fg=fg,
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=10, pady=6,
+        )
+        resumen_bottom.pack(fill="x")
+
+        col_izq = tk.Frame(resumen_bottom, bg=bg)
+        col_izq.pack(side="left", fill="y")
+        tk.Label(col_izq, text="Total contado:", bg=bg, fg=fg, font=fuente,
+                 anchor="w").pack(anchor="w")
+        tk.Label(col_izq, text="Diferencia (descuadre):", bg=bg, fg=fg, font=fuente,
+                 anchor="w").pack(anchor="w")
+
+        col_der = tk.Frame(resumen_bottom, bg=bg)
+        col_der.pack(side="right", fill="y")
+        self.label_total_contado = tk.Label(
+            col_der, text="-", bg=bg, fg=fg, font=fuente + " bold", anchor="e",
+        )
+        self.label_total_contado.pack(anchor="e")
+        self.label_diferencia = tk.Label(
+            col_der, text="-", bg=bg, fg=fg, font=fuente + " bold", anchor="e",
+        )
+        self.label_diferencia.pack(anchor="e")
+
+        frame_acciones = tk.Frame(frame_bottom, bg=bg)
+        frame_acciones.pack(fill="x", pady=(8, 10))
         btn_guardar = tk.Button(
-            frame_acciones, text="💾 Guardar e imprimir informe", bg="#27AE60",
-            fg="white", font=fuente + " bold", padx=12, pady=8,
+            frame_acciones, text="✔ Finalizar y Guardar Cierre de Caja", bg="#27AE60",
+            fg="white", font=fuente + " bold", padx=12, pady=10,
             command=self._guardar_y_imprimir,
         )
         btn_guardar.pack(side="left", padx=4)
         btn_imprimir = tk.Button(
-            frame_acciones, text="🖨️ Imprimir informe (sin guardar)", bg="#0078D4",
+            frame_acciones, text="🖨️ Imprimir informe", bg="#0078D4",
             fg="white", font=fuente + " bold", padx=12, pady=8,
             command=self._solo_imprimir,
         )
@@ -232,17 +261,19 @@ class CierreCaja(tk.Toplevel):
         fg = self.colors["fg_texto"]
         fuente = f"sans {self.config_manager.get_tamaño_fuente()}"
         etiqueta = f"{mod_moneda.format_currency(denom, 0 if denom == int(denom) else 2)}"
+        fila = len(self.entries_conteo) + 1  # la fila 0 es la cabecera
         tk.Label(padre, text=etiqueta, bg=bg, fg=fg, font=fuente,
-                 width=18, anchor="w").pack(side="left", padx=6, pady=1)
+                 width=20, anchor="w").grid(
+            row=fila, column=0, sticky="w", padx=6, pady=1)
         var = tk.StringVar()
         var.trace_add("write", self._recalcular_contado)
         tk.Entry(padre, textvariable=var, width=12, font=fuente,
-                 bg=self.colors["entry_bg"], fg=self.colors["entry_fg"]).pack(
-            side="left", padx=6, pady=1, ipady=2
+                 bg=self.colors["entry_bg"], fg=self.colors["entry_fg"]).grid(
+            row=fila, column=1, sticky="w", padx=6, pady=1, ipady=2,
         )
         sub = tk.Label(padre, text="", bg=bg, fg=fg, font=fuente,
-                       width=16, anchor="e")
-        sub.pack(side="right", padx=6)
+                       width=18, anchor="e")
+        sub.grid(row=fila, column=2, sticky="e", padx=6)
         self.entries_conteo[denom] = (var, sub)
 
     def _fijar_hoy(self):

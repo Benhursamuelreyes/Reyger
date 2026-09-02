@@ -1,5 +1,27 @@
 Changelog content
 
+## v3.0.0-beta.9 (2026-09-02)
+
+### Correcciones
+- **Cierre de Caja · Arqueo: maquetación y usabilidad del conteo físico**:
+  - Todo el formulario queda ahora dentro de un **contenedor con scrollbar
+    vertical dinámico** (`Canvas` con actualización de `scrollregion` en
+    `<Configure>`), de modo que el contenido nunca se corta en pantallas de
+    poca altura.
+  - La grilla de denominaciones (500 €, 200 €, 100 €, 50 €, 20 €, 10 €, 5 €,
+    2 €, 1 €, 0,50 €, …) se reorganiza como **tabla vertical alineada**
+    (Denominación | Cantidad | Subtotal) en lugar de filas desbordadas,
+    visible en cualquier resolución.
+  - El panel de **Totales, Descuadre y acciones** ("Finalizar y Guardar
+    Cierre de Caja") se fija en una **barra inferior siempre visible**, con
+    scroll asegurado, para que el botón de confirmación quede siempre a la
+    vista y accesible.
+
+### Cambios internos
+- Versión reflejada en `README.md` (badge de versión e instaladores de
+  descarga) y en el `__version__` de la aplicación.
+
+
 ## v3.0.0-beta.8 (2026-09-01)
 
 ### Características
