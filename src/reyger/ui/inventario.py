@@ -56,34 +56,47 @@ class Inventario(tk.Frame):
         btn_nuevo_proveedor.pack(side="left", padx=(6, 0))
         self.cargar_proveedores()
 
-        lblPrecio = Label(labelFrame, text="Precio de venta: ", font="sans 14 bold", bg="#C6D9E3")
-        lblPrecio.grid(row=2, column=0, sticky="e", padx=10, pady=10)
-        self.precio = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.precio.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
+        self.precio_sv = tk.StringVar()
+        self.costo_sv = tk.StringVar()
+        self.margen_sv = tk.StringVar()
+        self._calculando = False
 
-        lblCosto = Label(labelFrame, text="Precio de costo: ", font="sans 14 bold", bg="#C6D9E3")
-        lblCosto.grid(row=3, column=0, sticky="e", padx=10, pady=10)
-        self.costo = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.costo.grid(row=3, column=1, sticky="ew", padx=10, pady=10)
+        lblCosto = Label(labelFrame, text="Precio de costo (€): ", font="sans 14 bold", bg="#C6D9E3")
+        lblCosto.grid(row=2, column=0, sticky="e", padx=10, pady=10)
+        self.costo = ttk.Entry(labelFrame, font="sans 14 bold", textvariable=self.costo_sv)
+        self.costo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
+        self.costo_sv.trace_add("write", self._desde_costo_margen)
+
+        lblMargen = Label(labelFrame, text="Margen / ganancia (%): ", font="sans 14 bold", bg="#C6D9E3")
+        lblMargen.grid(row=3, column=0, sticky="e", padx=10, pady=10)
+        self.margen = ttk.Entry(labelFrame, font="sans 14 bold", textvariable=self.margen_sv)
+        self.margen.grid(row=3, column=1, sticky="ew", padx=10, pady=10)
+        self.margen_sv.trace_add("write", self._desde_costo_margen)
+
+        lblPrecio = Label(labelFrame, text="Precio de venta (€): ", font="sans 14 bold", bg="#C6D9E3")
+        lblPrecio.grid(row=4, column=0, sticky="e", padx=10, pady=10)
+        self.precio = ttk.Entry(labelFrame, font="sans 14 bold", textvariable=self.precio_sv)
+        self.precio.grid(row=4, column=1, sticky="ew", padx=10, pady=10)
+        self.precio_sv.trace_add("write", self._desde_venta)
 
         lblStock = Label(labelFrame, text="Stock: ", font="sans 14 bold", bg="#C6D9E3")
-        lblStock.grid(row=4, column=0, sticky="e", padx=10, pady=10)
+        lblStock.grid(row=5, column=0, sticky="e", padx=10, pady=10)
         self.stock = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.stock.grid(row=4, column=1, sticky="ew", padx=10, pady=10)
+        self.stock.grid(row=5, column=1, sticky="ew", padx=10, pady=10)
 
         lblIva = Label(labelFrame, text="IVA: ", font="sans 14 bold", bg="#C6D9E3")
-        lblIva.grid(row=5, column=0, sticky="e", padx=10, pady=10)
+        lblIva.grid(row=6, column=0, sticky="e", padx=10, pady=10)
         self.iva = ttk.Combobox(
             labelFrame, font="sans 14 bold",
             values=[f"{tipo:g}%" for tipo in TIPOS_IVA],
         )
         self.iva.set(f"{IVA_POR_DEFECTO:g}%")
-        self.iva.grid(row=5, column=1, sticky="ew", padx=10, pady=10)
+        self.iva.grid(row=6, column=1, sticky="ew", padx=10, pady=10)
 
         lblCategoria = Label(labelFrame, text="Categoría: ", font="sans 14 bold", bg="#C6D9E3")
-        lblCategoria.grid(row=6, column=0, sticky="e", padx=10, pady=10)
+        lblCategoria.grid(row=7, column=0, sticky="e", padx=10, pady=10)
         frame_categoria = tk.Frame(labelFrame, bg="#C6D9E3")
-        frame_categoria.grid(row=6, column=1, sticky="ew", padx=10, pady=10)
+        frame_categoria.grid(row=7, column=1, sticky="ew", padx=10, pady=10)
         self.categoria = ttk.Combobox(frame_categoria, font="sans 14 bold", state="readonly")
         self.categoria.pack(side="left", fill="x", expand=True)
         btn_nueva_categoria = tk.Button(
@@ -95,17 +108,17 @@ class Inventario(tk.Frame):
         self.cargar_categorias()
 
         lblCodigo = Label(labelFrame, text="Código de barras: ", font="sans 14 bold", bg="#C6D9E3")
-        lblCodigo.grid(row=7, column=0, sticky="e", padx=10, pady=10)
+        lblCodigo.grid(row=8, column=0, sticky="e", padx=10, pady=10)
         self.codigo_barras = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.codigo_barras.grid(row=7, column=1, sticky="ew", padx=10, pady=10)
+        self.codigo_barras.grid(row=8, column=1, sticky="ew", padx=10, pady=10)
 
         labelFrame.columnconfigure(1, weight=1)
 
         boton_agregar = tk.Button(labelFrame, text="➕ Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
-        boton_agregar.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
+        boton_agregar.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
 
         boton_editar = tk.Button(labelFrame, text="✏️ Editar", font="sans 14 bold", bg="#0000FF", fg="white", command=self.editar_producto)
-        boton_editar.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=10, ipady=4)
+        boton_editar.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=10, ipady=4)
 
         # Listado (derecha)
         frame_derecha = tk.Frame(frame2, bg="#C6D9E3")
@@ -357,6 +370,68 @@ class Inventario(tk.Frame):
         except ValueError:
             return False
         return True
+
+    @staticmethod
+    def _calcular_precio_venta(costo, margen):
+        """Precio de venta a partir del coste y el margen (%):
+        ``costo * (1 + margen / 100)``."""
+        return costo * (1 + margen / 100)
+
+    @staticmethod
+    def _calcular_margen(costo, precio_venta):
+        """Margen (%) a partir del coste y el precio de venta:
+        ``((venta - costo) / costo) * 100``."""
+        if not costo:
+            return 0.0
+        return ((precio_venta - costo) / costo) * 100
+
+    @staticmethod
+    def _parse_float(texto):
+        try:
+            return float(str(texto).strip().replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+
+    def _desde_costo_margen(self, *_):
+        """Al cambiar coste o margen, recalcula el precio de venta."""
+        if self._calculando:
+            return
+        costo = self._parse_float(self.costo_sv.get())
+        margen = self._parse_float(self.margen_sv.get())
+        if costo is None or costo < 0 or margen is None:
+            return
+        venta = self._calcular_precio_venta(costo, margen)
+        self._calculando = True
+        try:
+            self.precio_sv.set(f"{venta:.2f}")
+        finally:
+            self._calculando = False
+
+    def _desde_venta(self, *_):
+        """Al cambiar el precio de venta, recalcula el margen obtenido."""
+        if self._calculando:
+            return
+        costo = self._parse_float(self.costo_sv.get())
+        venta = self._parse_float(self.precio_sv.get())
+        if costo is None or venta is None or costo <= 0:
+            return
+        margen = self._calcular_margen(costo, venta)
+        self._calculando = True
+        try:
+            self.margen_sv.set(f"{margen:.2f}")
+        finally:
+            self._calculando = False
+
+    def _margen_actual(self):
+        """Devuelve el margen a guardar: el indicado o el calculado."""
+        margen = self._parse_float(self.margen_sv.get())
+        if margen is not None:
+            return round(margen, 2)
+        costo = self._parse_float(self.costo_sv.get())
+        venta = self._parse_float(self.precio_sv.get())
+        if costo and venta:
+            return round(self._calcular_margen(costo, venta), 2)
+        return 0.0
     
     def cargar_categorias(self):
         try:
@@ -573,19 +648,21 @@ class Inventario(tk.Frame):
                 categoria_id = fila_categoria[0] if fila_categoria else None
                 consulta = (
                     "INSERT INTO inventario (nombre, proveedor, precio, costo,"
-                    " stock, proveedor_id, tipo_iva, categoria_id, codigo_barras)"
-                    " VALUES(?,?,?,?,?,?,?,?,?)"
+                    " stock, proveedor_id, tipo_iva, categoria_id, codigo_barras,"
+                    " margen_porcentaje) VALUES(?,?,?,?,?,?,?,?,?,?)"
                 )
                 parametros = (
                     nombre, prov, precio, costo, stock,
                     proveedor_id, tipo_iva, categoria_id, codigo or None,
+                    self._margen_actual(),
                 )
                 self.eje_consulta(consulta, parametros)
                 self.actualizar_inventario()
                 self.nombre.delete(0, END)
                 self.proveedor.delete(0, END)
-                self.precio.delete(0, END)
-                self.costo.delete(0, END)
+                self.precio_sv.set("")
+                self.costo_sv.set("")
+                self.margen_sv.set("")
                 self.stock.delete(0, END)
                 self.codigo_barras.delete(0, END)
                 self.iva.set(f"{IVA_POR_DEFECTO:g}%")
@@ -605,8 +682,8 @@ class Inventario(tk.Frame):
         item_values = self.tre.item(seleccion)["values"]
         
         db_row = self.eje_consulta(
-            "SELECT precio, costo, tipo_iva, categoria_id, codigo_barras"
-            " FROM inventario WHERE id = ?",
+            "SELECT precio, costo, tipo_iva, categoria_id, codigo_barras,"
+            " margen_porcentaje FROM inventario WHERE id = ?",
             (item_id,),
         ).fetchone()
         if db_row is None:
@@ -616,6 +693,13 @@ class Inventario(tk.Frame):
         costo_original = db_row[1]
         iva_original = f"{db_row[2]:g}%" if db_row[2] is not None else f"{IVA_POR_DEFECTO:g}%"
         categoria_actual = db_row[3]
+        if db_row[5] is not None:
+            margen_original = round(float(db_row[5]), 2)
+        elif costo_original:
+            margen_original = round(self._calcular_margen(
+                float(costo_original), float(precio_original)), 2)
+        else:
+            margen_original = 0.0
         
         ventana_editar = Toplevel(self)
         ventana_editar.title("Editar producto")
@@ -636,37 +720,77 @@ class Inventario(tk.Frame):
         entry_proveedor.grid(row=1, column=1, padx=10, pady=10)
         entry_proveedor.insert(0, item_values[2])
         
+        precio_sv = tk.StringVar()
+        costo_sv = tk.StringVar()
+        margen_sv = tk.StringVar()
+        _calculando_edit = {"on": False}
+
+        def _desde_costo_margen_edit(*_):
+            if _calculando_edit["on"]:
+                return
+            costo = self._parse_float(costo_sv.get())
+            margen = self._parse_float(margen_sv.get())
+            if costo is None or costo < 0 or margen is None:
+                return
+            _calculando_edit["on"] = True
+            try:
+                precio_sv.set(f"{self._calcular_precio_venta(costo, margen):.2f}")
+            finally:
+                _calculando_edit["on"] = False
+
+        def _desde_venta_edit(*_):
+            if _calculando_edit["on"]:
+                return
+            costo = self._parse_float(costo_sv.get())
+            venta = self._parse_float(precio_sv.get())
+            if costo is None or venta is None or costo <= 0:
+                return
+            _calculando_edit["on"] = True
+            try:
+                margen_sv.set(f"{self._calcular_margen(costo, venta):.2f}")
+            finally:
+                _calculando_edit["on"] = False
+
         lbl_precio = Label(ventana_editar, text="Precio de venta:", font="sans 14 bold", bg="#C6D9E3")
         lbl_precio.grid(row=2, column=0, padx=10, pady=10)
-        entry_precio = Entry(ventana_editar, font="sans 14 bold")
+        entry_precio = Entry(ventana_editar, font="sans 14 bold", textvariable=precio_sv)
         entry_precio.grid(row=2, column=1, padx=10, pady=10)
-        entry_precio.insert(0, precio_original)
-        
+        precio_sv.set(f"{precio_original}" if precio_original is not None else "")
+        precio_sv.trace_add("write", _desde_venta_edit)
+
+        lbl_margen = Label(ventana_editar, text="Margen / ganancia (%):", font="sans 14 bold", bg="#C6D9E3")
+        lbl_margen.grid(row=3, column=0, padx=10, pady=10)
+        entry_margen = Entry(ventana_editar, font="sans 14 bold", textvariable=margen_sv)
+        entry_margen.grid(row=3, column=1, padx=10, pady=10)
+        margen_sv.set(f"{margen_original}")
+        margen_sv.trace_add("write", _desde_costo_margen_edit)
+
         lbl_costo = Label(ventana_editar, text="Precio de costo:", font="sans 14 bold", bg="#C6D9E3")
-        lbl_costo.grid(row=3, column=0, padx=10, pady=10)
-        entry_costo = Entry(ventana_editar, font="sans 14 bold")
-        entry_costo.grid(row=3, column=1, padx=10, pady=10)
-        entry_costo.insert(0, costo_original)
+        lbl_costo.grid(row=4, column=0, padx=10, pady=10)
+        entry_costo = Entry(ventana_editar, font="sans 14 bold", textvariable=costo_sv)
+        entry_costo.grid(row=4, column=1, padx=10, pady=10)
+        costo_sv.set(f"{costo_original}" if costo_original is not None else "")
+        costo_sv.trace_add("write", _desde_costo_margen_edit)
         
         lbl_stock = Label(ventana_editar, text="Stock:", font="sans 14 bold", bg="#C6D9E3")
-        lbl_stock.grid(row=4, column=0, padx=10, pady=10)
+        lbl_stock.grid(row=5, column=0, padx=10, pady=10)
         entry_stock = Entry(ventana_editar, font="sans 14 bold")
-        entry_stock.grid(row=4, column=1, padx=10, pady=10)
+        entry_stock.grid(row=5, column=1, padx=10, pady=10)
         entry_stock.insert(0, item_values[5])
 
         lbl_iva = Label(ventana_editar, text="IVA:", font="sans 14 bold", bg="#C6D9E3")
-        lbl_iva.grid(row=5, column=0, padx=10, pady=10)
+        lbl_iva.grid(row=6, column=0, padx=10, pady=10)
         combo_iva = ttk.Combobox(
             ventana_editar, font="sans 14 bold",
             values=[f"{tipo:g}%" for tipo in TIPOS_IVA],
         )
         combo_iva.set(iva_original)
-        combo_iva.grid(row=5, column=1, padx=10, pady=10)
+        combo_iva.grid(row=6, column=1, padx=10, pady=10)
 
         lbl_categoria = Label(ventana_editar, text="Categoría:", font="sans 14 bold", bg="#C6D9E3")
-        lbl_categoria.grid(row=6, column=0, padx=10, pady=10)
+        lbl_categoria.grid(row=7, column=0, padx=10, pady=10)
         frame_cat = tk.Frame(ventana_editar, bg="#C6D9E3")
-        frame_cat.grid(row=6, column=1, padx=10, pady=10)
+        frame_cat.grid(row=7, column=1, padx=10, pady=10)
         combo_categoria = ttk.Combobox(
             frame_cat, font="sans 14 bold", state="readonly",
             values=[n for _, n in self._categorias_disponibles()],
@@ -684,9 +808,9 @@ class Inventario(tk.Frame):
         btn_nueva_cat.pack(side="left", padx=(6, 0))
 
         lbl_codigo = Label(ventana_editar, text="Código de barras:", font="sans 14 bold", bg="#C6D9E3")
-        lbl_codigo.grid(row=7, column=0, padx=10, pady=10)
+        lbl_codigo.grid(row=8, column=0, padx=10, pady=10)
         entry_codigo = Entry(ventana_editar, font="sans 14 bold")
-        entry_codigo.grid(row=7, column=1, padx=10, pady=10)
+        entry_codigo.grid(row=8, column=1, padx=10, pady=10)
         if db_row[4]:
             entry_codigo.insert(0, db_row[4])
 
@@ -734,20 +858,26 @@ class Inventario(tk.Frame):
             ).fetchone()
             categoria_id_nueva = fila_cat_nueva[0] if fila_cat_nueva else None
 
+            sum_margen = self._parse_float(margen_sv.get())
+            if sum_margen is None and costo:
+                sum_margen = self._calcular_margen(costo, precio)
+
             consulta = (
                 "UPDATE inventario SET nombre=?, proveedor=?, precio=?, costo=?,"
-                " stock=?, tipo_iva=?, categoria_id=?, codigo_barras=? WHERE id=?"
+                " stock=?, tipo_iva=?, categoria_id=?, codigo_barras=?,"
+                " margen_porcentaje=? WHERE id=?"
             )
             parametros = (
                 nombre, proveedor, precio, costo, stock,
-                tipo_iva, categoria_id_nueva, codigo_nuevo or None, item_id,
+                tipo_iva, categoria_id_nueva, codigo_nuevo or None,
+                round(sum_margen, 2) if sum_margen is not None else 0.0, item_id,
             )
             self.eje_consulta(consulta, parametros)
             self.actualizar_inventario()
             ventana_editar.destroy()
 
         btn_guardar = Button(ventana_editar, text="Guardar cambios", font="sans 14 bold", command=guardar_cambio)
-        btn_guardar.grid(row=8, column=0, columnspan=2, padx=10, pady=(25, 10), ipady=4)
+        btn_guardar.grid(row=9, column=0, columnspan=2, padx=10, pady=(25, 10), ipady=4)
 
     def _categorias_disponibles(self):
         try:

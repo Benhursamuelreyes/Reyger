@@ -1,5 +1,28 @@
 Changelog content
 
+## v3.0.0-beta.10 (2026-09-03)
+
+### Características
+- **Inventario · Margen / ganancia**: nuevo campo **«Margen / ganancia
+  (%)»** en el formulario de **alta** y de **edición** de productos.
+  - Al indicar el **precio de coste** y el **margen (%)**, el **precio de
+    venta** se calcula automáticamente con la fórmula
+    `coste × (1 + margen/100)`.
+  - Al editar el **precio de venta**, el margen resultante se recalcula en
+    tiempo real con `((venta − coste) / coste) × 100`.
+  - El porcentaje se guarda en la columna `margen_porcentaje` de la tabla
+    `inventario` (migración 12) y se conserva al volver a editar el producto.
+  - Los campos se actualizan de forma bidireccional sin bucles, aceptando
+    tanto el punto como la coma decimal.
+
+### Cambios internos
+- Migración 12: columna `margen_porcentaje REAL` en `inventario`.
+- Tests headless de las fórmulas y de la persistencia del margen
+  (`tests/test_inventario_margen.py`).
+- Versión reflejada en `README.md` (badge e instaladores) y en el
+  `__version__` de la aplicación (bump a `3.0.0b10`).
+
+
 ## v3.0.0-beta.9 (2026-09-02)
 
 ### Correcciones

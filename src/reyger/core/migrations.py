@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 11
+LATEST_VERSION = 12
 
 MIGRACIONES = []
 
@@ -563,6 +563,16 @@ def _migracion_11(conn):
         "CREATE INDEX IF NOT EXISTS idx_tarjeta_mov_tarjeta ON "
         "tarjetas_regalo_movimientos (tarjeta_id)"
     )
+
+
+@migracion(12)
+def _migracion_12(conn):
+    """Margen de ganancia en productos.
+
+    Añade la columna ``margen_porcentaje`` a ``inventario`` para guardar el
+    porcentaje de margen/ganancia configurado al crear o editar un producto.
+    """
+    _add_column(conn, "inventario", "margen_porcentaje REAL")
 
 
 def run_migrations(conn):
