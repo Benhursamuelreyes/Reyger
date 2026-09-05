@@ -1,6 +1,11 @@
 Changelog content
 
-## Unreleased
+## v1.0.0 (2026-09-05)
+
+Versión estable: se abandona el esquema beta y el versionado se reinicia en
+semantic versioning. MAJOR: elimina funcionalidad existente (cierre de caja,
+devoluciones y tarjetas regalo) y añade ticketing fiscal y módulos de
+impresión multiplataforma.
 
 ### Ticketing y correlatividad fiscal (Módulo 1)
 - Ventas emite Ticket (factura simplificada) por defecto o Factura completa,

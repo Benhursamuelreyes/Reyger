@@ -444,25 +444,26 @@ class Ajustes(tk.Frame):
         # --- Moneda -------------------------------------------------------
         tk.Label(
             frame,
-            text="Moneda del sistema (código ISO):",
+            text="Moneda del sistema:",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
             font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
         ).pack(anchor="w", padx=20, pady=(6, 2))
 
-        opciones_moneda = sorted(mod_moneda.MONEDAS.keys())
+        self._moneda_nombre = {
+            c: mod_moneda.nombre_moneda(c) for c in mod_moneda.monedas_ordenadas()
+        }
+        self._nombre_moneda = {n: c for c, n in self._moneda_nombre.items()}
         self.combo_moneda = ttk.Combobox(
             frame,
-            values=opciones_moneda,
+            values=list(self._moneda_nombre.values()),
             state="readonly",
             font=f"sans {self.config_manager.get_tamaño_fuente()}",
-            width=20,
+            width=30,
         )
         actual_moneda = bp.obtener_campo("moneda")
-        if actual_moneda in opciones_moneda:
-            self.combo_moneda.set(actual_moneda)
-        else:
-            self.combo_moneda.set("EUR")
+        nombre_actual = self._moneda_nombre.get(actual_moneda)
+        self.combo_moneda.set(nombre_actual or self._moneda_nombre["EUR"])
         self.combo_moneda.pack(anchor="w", padx=20, pady=(0, 4))
 
         lbl_simbolo = tk.Label(
@@ -475,50 +476,42 @@ class Ajustes(tk.Frame):
         lbl_simbolo.pack(anchor="w", padx=20, pady=(0, 10))
 
         def _preview_simbolo(*_):
-            codigo = self.combo_moneda.get()
-            simbolo = mod_moneda.MONEDAS.get(codigo, {}).get("simbolo", "")
-            lbl_simbolo.config(text=f"Símbolo: {simbolo}")
+            codigo = self._nombre_moneda.get(self.combo_moneda.get(), "EUR")
+            simbolo = mod_moneda.MONEDAS[codigo]["simbolo"]
+            lbl_simbolo.config(
+                text=f"Símbolo: {simbolo} ({self._moneda_nombre[codigo]})"
+            )
 
         self.combo_moneda.bind("<<ComboboxSelected>>", _preview_simbolo)
         _preview_simbolo()
 
-        # --- Formato regional --------------------------------------------
+        # --- Región (país) ------------------------------------------------
         tk.Label(
             frame,
-            text="Formato de región / Locale:",
+            text="Región / país:",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
             font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
         ).pack(anchor="w", padx=20, pady=(6, 2))
 
-        NOMBRE_LOCALES = {
-            "es_ES": "Español (España)",
-            "en_US": "Inglés (EE. UU.)",
-            "en_GB": "Inglés (Reino Unido)",
-            "de_DE": "Alemán (Alemania)",
-            "fr_FR": "Francés (Francia)",
-            "it_IT": "Italiano (Italia)",
-            "pt_BR": "Portugués (Brasil)",
-            "en_HN": "Inglés (Honduras)",
-            "es_MX": "Español (México)",
-            "es_CO": "Español (Colombia)",
-            "es_AR": "Español (Argentina)",
-            "es_CL": "Español (Chile)",
-            "ja_JP": "Japonés (Japón)",
-        }
-        opciones_locale = list(NOMBRE_LOCALES)
+        self._region_display = {}
+        self._display_region = {}
+        for locale in mod_moneda.paises_ordenados():
+            pais, moneda = mod_moneda.pais_por_locale(locale)
+            self._region_display[locale] = f"{pais} — {self._moneda_nombre[moneda]}"
+            self._display_region[self._region_display[locale]] = locale
         self.combo_locale = ttk.Combobox(
             frame,
-            values=opciones_locale,
+            values=list(self._display_region),
             state="readonly",
             font=f"sans {self.config_manager.get_tamaño_fuente()}",
             width=30,
         )
         actual_locale = bp.obtener_campo("locale")
-        if actual_locale in opciones_locale:
-            self.combo_locale.set(actual_locale)
-        else:
-            self.combo_locale.set("es_ES")
+        self.combo_locale.set(
+            self._region_display.get(actual_locale)
+            or self._region_display["es_ES"]
+        )
         self.combo_locale.pack(anchor="w", padx=20, pady=(0, 4))
 
         lbl_ejemplo = tk.Label(
@@ -531,15 +524,23 @@ class Ajustes(tk.Frame):
         lbl_ejemplo.pack(anchor="w", padx=20, pady=(0, 8))
 
         def _preview_formato(*_):
-            codigo_moneda = self.combo_moneda.get()
-            codigo_locale = self.combo_locale.get()
+            codigo_moneda = self._nombre_moneda.get(
+                self.combo_moneda.get(), "EUR"
+            )
+            codigo_locale = self._display_region.get(self.combo_locale.get(), "es_ES")
+            symbolo = mod_moneda.MONEDAS[codigo_moneda]["simbolo"]
+            posicion = mod_moneda.MONEDAS[codigo_moneda]["posicion"]
             try:
-                ejemplo = mod_moneda.format_currency(1234567.5)
+                ejemplo = mod_moneda.format_currency(
+                    1234567.5,
+                    simbolo=symbolo,
+                    posicion=posicion,
+                    separacion=mod_moneda.LOCALES[codigo_locale],
+                )
             except Exception:
                 ejemplo = "1.234.567,50 €"
-            nombre_locale = NOMBRE_LOCALES.get(codigo_locale, codigo_locale)
             lbl_ejemplo.config(
-                text=f"{nombre_locale} → ejemplo: {ejemplo}"
+                text=f"{self.combo_locale.get()} → ejemplo: {ejemplo}"
             )
 
         self.combo_moneda.bind(
@@ -739,7 +740,6 @@ class Ajustes(tk.Frame):
     def _verifactu_exportar_csv(self):
         """Exporta un CSV de verificación con hashes y cadenas."""
         from ..core import db as mod_db
-        from ..resources import get_output_path
         import csv
 
         ruta = filedialog.asksaveasfilename(
@@ -1076,7 +1076,6 @@ class Ajustes(tk.Frame):
         
         if filepath:
             # Copiar imagen a la carpeta del proyecto
-            from shutil import copy
             try:
                 logo_filename = os.path.join(str(get_user_data_path()), "logo.png")
                 

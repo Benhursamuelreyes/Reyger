@@ -8,7 +8,6 @@ como números puros en la BD (el símbolo se aplica solo al mostrarlos).
 import os
 import shutil
 import sys
-import tempfile
 
 import pytest
 
@@ -83,7 +82,7 @@ def test_moneda_hnl():
     from reyger.ui import business_profile as bp
     import reyger.core.db as modulo_db
 
-    bp.guardar(moneda="HNL", locale="en_HN")
+    bp.guardar(moneda="HNL", locale="es_HN")
     modulo_db.close()
 
     m = _importar_moneda()
@@ -126,7 +125,6 @@ def test_decimales_jpy():
 def test_bd_almacena_numeros_puros():
     """Los importes se guardan como números (REAL), no formateados."""
     from reyger.ui import business_profile as bp
-    from reyger.core import moneda as m
 
     # La preferencia de moneda sí va a la BD como texto de configuración
     bp.guardar(nombre="Tienda Test", moneda="USD")
@@ -159,3 +157,59 @@ def test_bd_almacena_numeros_puros():
     assert isinstance(venta["subtotal"], float)
     assert venta["valor_articulo"] == 10.5
     assert venta["subtotal"] == 21.0
+
+
+def test_regiones_consistentes():
+    """Los catálogos (PAISES/LOCALES/MONEDAS) son coherentes entre sí."""
+    m = _importar_moneda()
+
+    assert len(m.LOCALES) == len(m.PAISES)
+    for locale in m.LOCALES:
+        assert locale in m.PAISES, f"LOCALES sin país: {locale}"
+    for locale in m.PAISES:
+        assert locale in m.LOCALES, f"PAISES sin separadores: {locale}"
+        assert m.PAISES[locale]["moneda"] in m.MONEDAS
+    for codigo, info in m.MONEDAS.items():
+        for campo in ("simbolo", "posicion", "nombre"):
+            assert campo in info, f"MONEDA {codigo} sin {campo}"
+    assert len(m.PAISES) >= 50
+    continentes = m.continentes()
+    for cinco in ("Asia", "África", "América", "Europa", "Oceanía"):
+        assert cinco in continentes, f"Falta continente {cinco}"
+
+
+def test_zona_euro_solo_pais():
+    """Coalición monetaria: solo se añade el país; la moneda es compartida."""
+    m = _importar_moneda()
+    eurozona = ("es_ES", "de_DE", "fr_FR", "it_IT", "pt_PT",
+                "nl_NL", "el_GR", "en_IE", "de_AT", "fi_FI", "nl_BE")
+    for locale in eurozona:
+        assert m.moneda_para_locale(locale) == "EUR"
+
+
+def test_nombres_legibles_pais_y_moneda():
+    """La UI muestra [nombre del país] y [nombre de la moneda], no códigos."""
+    m = _importar_moneda()
+    assert m.nombre_moneda("EUR") == "Euro"
+    assert m.nombre_moneda("JPY") == "Yen japonés"
+    assert m.nombre_moneda("USD") == "Dólar estadounidense"
+    assert m.pais_por_locale("es_ES") == ("España", "EUR")
+    assert m.pais_por_locale("ja_JP") == ("Japón", "JPY")
+    orden_nombres = [m.MONEDAS[c]["nombre"] for c in m.monedas_ordenadas()]
+    assert orden_nombres == sorted(orden_nombres)
+    orden_paises = [m.PAISES[l]["pais"] for l in m.paises_ordenados()]
+    assert orden_paises == sorted(orden_paises)
+
+
+def test_formateo_con_separadores_sobrescritos():
+    """Sobrescribir separadores permite previsualizar otra región sin
+    cambiar la configuración persistida."""
+    m = _importar_moneda()
+    assert m.format_currency(
+        1234567.5, simbolo="$", posicion=True,
+        separacion=(",", "."),
+    ) == "$1,234,567.50"
+    assert m.format_currency(
+        1234567.5, simbolo="€", posicion=False,
+        separacion=(".", ","),
+    ) == "1.234.567,50 €"
