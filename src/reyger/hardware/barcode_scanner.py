@@ -4,6 +4,7 @@ Los escáneres USB funcionan como teclados HID, por lo que se capturan
 los códigos escaneados y se buscan automáticamente en el inventario.
 """
 
+import sqlite3
 import time
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -300,12 +301,26 @@ def registrar_producto_rapido(db_path, codigo_barras, nombre, precio_venta,
         raise ValueError("El stock debe ser un número entero")
 
     try:
-        id_producto = db.execute(
-            "INSERT INTO inventario (nombre, proveedor, precio, costo,"
-            " stock, tipo_iva, codigo_barras) VALUES (?,?,?,?,?,?,?)",
-            (nombre, "", precio_venta, precio_costo, stock,
-             tipo_iva if tipo_iva is not None else 21, codigo_barras),
-        )
+        if db_path in (None, ""):
+            id_producto = db.execute(
+                "INSERT INTO inventario (nombre, proveedor, precio, costo,"
+                " stock, tipo_iva, codigo_barras) VALUES (?,?,?,?,?,?,?)",
+                (nombre, "", precio_venta, precio_costo, stock,
+                 tipo_iva if tipo_iva is not None else 21, codigo_barras),
+            )
+        else:
+            conn = sqlite3.connect(db_path)
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO inventario (nombre, proveedor, precio, costo,"
+                    " stock, tipo_iva, codigo_barras) VALUES (?,?,?,?,?,?,?)",
+                    (nombre, "", precio_venta, precio_costo, stock,
+                     tipo_iva if tipo_iva is not None else 21, codigo_barras),
+                )
+                conn.commit()
+                id_producto = cursor.lastrowid
+            finally:
+                conn.close()
     except Exception as e:
         raise ValueError(
             f"El código {codigo_barras} ya está asignado a otro producto"
@@ -335,6 +350,7 @@ class DialogoRegistroRapido(tk.Toplevel):
         self.configure(bg="#C6D9E3")
         self.resultado = None
         self._codigo = codigo_barras
+        self._db_path = db_path
 
         frame = tk.Frame(self, bg="#C6D9E3", padx=15, pady=10)
         frame.pack(fill="both", expand=True)
@@ -385,7 +401,7 @@ class DialogoRegistroRapido(tk.Toplevel):
     def _guardar(self):
         try:
             self.resultado = registrar_producto_rapido(
-                None,
+                self._db_path,
                 self._codigo,
                 nombre=self.entradas["nombre"].get(),
                 precio_venta=self.entradas["precio"].get(),

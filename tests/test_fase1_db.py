@@ -181,6 +181,7 @@ def test_capa_db():
     shutil.copyfile(os.path.join(SCRIPT_DIR, "assets", "database.db"), ruta_tmp)
 
     modulo_db.close()
+    get_db_path_anterior = modulo_db.get_db_path
     modulo_db.get_db_path = lambda: ruta_tmp  # redirige la conexión compartida
 
     try:
@@ -219,6 +220,7 @@ def test_capa_db():
         chequear("Claves foráneas activadas", fk_ok)
     finally:
         modulo_db.close()
+        modulo_db.get_db_path = get_db_path_anterior
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

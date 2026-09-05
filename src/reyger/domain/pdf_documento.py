@@ -110,7 +110,8 @@ class PdfDocumento:
             pie_legal: Texto legal o None.
             columnas_productos: Cabecera de la tabla de productos. Por defecto
                 ['DESCRIPCIÓN', 'CANTIDAD', 'P. UNITARIO (símbolo)',
-                'SUBTOTAL (símbolo)'] según la moneda global.            filas_extra: Filas adicionales a añadir bajo la tabla.
+                'SUBTOTAL (símbolo)'] según la moneda global.
+            filas_extra: Filas adicionales a añadir bajo la tabla.
         """
         if output_path is None:
             output_path = self._ruta_por_defecto(subtitulo_documento, numero)
@@ -120,8 +121,8 @@ class PdfDocumento:
             pagesize=A4,
             rightMargin=1.5 * cm,
             leftMargin=1.5 * cm,
-            topMargin=1.5 * cm,
-            bottomMargin=1.5 * cm,
+            topMargin=2.0 * cm,
+            bottomMargin=2.0 * cm,
         )
 
         story = []
@@ -177,10 +178,12 @@ class PdfDocumento:
         )
         if logo_path and os.path.exists(logo_path):
             try:
-                elementos.append(Paragraph(
-                    f'<img src="{logo_path}" width="70" height="70"/>',
-                    self.estilos["Normal"],
-                ))
+                # Flowable Image de reportlab (en lugar de <img> dentro de un
+                # Paragraph): respeta proporción y evita que el logotipo se
+                # recorte por el leading del párrafo o por el margen superior.
+                img = Image(logo_path, width=2.4 * cm, height=2.4 * cm)
+                img.hAlign = "LEFT"
+                elementos.append(img)
                 elementos.append(Spacer(1, 0.2 * cm))
             except Exception:
                 pass
@@ -194,7 +197,7 @@ class PdfDocumento:
         nombre_comercial = bp.obtener_campo("nombre_comercial")
         if nombre_comercial:
             elementos.append(
-                Paragraph(str(nombre_comercial), self.estilos["Normal"])
+                Paragraph(str(nombre_comercial), self.estilo_empresa)
             )
 
         perfil = bp.obtener()
@@ -220,12 +223,24 @@ class PdfDocumento:
         return elementos
 
     def _info_documento(self, subtitulo_documento, numero, fecha):
-        """Cabecera de información del documento."""
+        """Cabecera de información del documento.
+
+        Acepta una fecha como ``datetime`` o como cadena en cualquiera de
+        los formatos soportados (``%Y-%m-%d`` e ISO con hora, o el formato
+        español ``dd/mm/aaaa [HH:MM]`` usado por el TPV). Si no se puede
+        interpretar, se usa la fecha actual en lugar de "asumir" hoy
+        silenciosamente con un formato incorrecto.
+        """
         if isinstance(fecha, str):
-            try:
-                fecha = datetime.strptime(fecha, "%Y-%m-%d")
-            except Exception:
-                fecha = datetime.now()
+            fecha_parseada = None
+            for formato in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S",
+                            "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+                try:
+                    fecha_parseada = datetime.strptime(fecha, formato)
+                    break
+                except ValueError:
+                    continue
+            fecha = fecha_parseada if fecha_parseada is not None else datetime.now()
         fecha_str = fecha.strftime("%d/%m/%Y")
 
         elementos = [Paragraph(

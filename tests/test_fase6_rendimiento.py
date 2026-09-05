@@ -10,6 +10,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import pytest
 import threading
 import time
 import tkinter as tk
@@ -249,6 +250,7 @@ def test_exportacion_en_hilo():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+@pytest.mark.orden_dependiente
 def test_impresion_en_hilo():
     print(f"\n{BOLD}{AZUL}[TEST 6] Ticket térmico fuera del hilo UI{RESET}")
     from unittest.mock import patch

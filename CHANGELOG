@@ -1,140 +1,44 @@
 Changelog content
 
-## v3.0.0-beta.10 (2026-09-03)
+## Unreleased
 
-### Características
-- **Inventario · Margen / ganancia**: nuevo campo **«Margen / ganancia
-  (%)»** en el formulario de **alta** y de **edición** de productos.
-  - Al indicar el **precio de coste** y el **margen (%)**, el **precio de
-    venta** se calcula automáticamente con la fórmula
-    `coste × (1 + margen/100)`.
-  - Al editar el **precio de venta**, el margen resultante se recalcula en
-    tiempo real con `((venta − coste) / coste) × 100`.
-  - El porcentaje se guarda en la columna `margen_porcentaje` de la tabla
-    `inventario` (migración 12) y se conserva al volver a editar el producto.
-  - Los campos se actualizan de forma bidireccional sin bucles, aceptando
-    tanto el punto como la coma decimal.
+### Ticketing y correlatividad fiscal (Módulo 1)
+- Ventas emite Ticket (factura simplificada) por defecto o Factura completa,
+  que exige cliente; los borradores no consumen correlativo.
+- Correlatividad fiscal con garantía de NO retroceso: el máximo emitido se
+  persiste en `contadores_documentos` (`UNIQUE(tipo, serie)`) aunque se borre
+  la venta más alta; series configurables (`business_profile` y arranque
+  embebido, p.ej. `TK-100`).
+- `pagar()` y la conversión borrador → factura reservan el número dentro de la
+  misma transacción SQL.
+- Migraciones 9–12: esquema Ticket/Factura, VeriFactu on/off, `contadores_documentos`,
+  `business_profile.nombre_comercial` e `inventario.margen_porcentaje`.
 
-### Cambios internos
-- Migración 12: columna `margen_porcentaje REAL` en `inventario`.
-- Tests headless de las fórmulas y de la persistencia del margen
-  (`tests/test_inventario_margen.py`).
-- Versión reflejada en `README.md` (badge e instaladores) y en el
-  `__version__` de la aplicación (bump a `3.0.0b10`).
+### Impresión y tickets (Módulo 2)
+- Alineaciones configurables de encabezado, datos y pie; letra del ticket.
+- Logo monocromo en el ticket; se oculta la actividad económica en el membrete
+  cuando no está definida; tabla de ticket a 7,4 cm.
 
+### Funcionalidades b10 reintroducidas sobre la base b6
+- Margen/ganancia en Inventario (cálculo bidireccional costo ↔ margen ↔ precio).
+- `nombre_comercial` en perfil, membrete de PDF y encabezado de ticket.
 
-## v3.0.0-beta.9 (2026-09-02)
+### Impresoras multiplataforma (Fase 3)
+- `impresoras.py` pasa de Windows-only a Linux/macOS vía CUPS (`lpstat`/`lp`),
+  con detección de herramientas ausentes y fallos controlados.
 
-### Correcciones
-- **Cierre de Caja · Arqueo: maquetación y usabilidad del conteo físico**:
-  - Todo el formulario queda ahora dentro de un **contenedor con scrollbar
-    vertical dinámico** (`Canvas` con actualización de `scrollregion` en
-    `<Configure>`), de modo que el contenido nunca se corta en pantallas de
-    poca altura.
-  - La grilla de denominaciones (500 €, 200 €, 100 €, 50 €, 20 €, 10 €, 5 €,
-    2 €, 1 €, 0,50 €, …) se reorganiza como **tabla vertical alineada**
-    (Denominación | Cantidad | Subtotal) en lugar de filas desbordadas,
-    visible en cualquier resolución.
-  - El panel de **Totales, Descuadre y acciones** ("Finalizar y Guardar
-    Cierre de Caja") se fija en una **barra inferior siempre visible**, con
-    scroll asegurado, para que el botón de confirmación quede siempre a la
-    vista y accesible.
+### Impresión directa (Módulo 3)
+- Presupuestos: botón "Enviar a impresora" que genera el PDF A4 y abre el
+  diálogo de selección de impresora (térmica nunca se usa para presupuestos).
+- Albaranes: botón "Imprimir…" que envía a la impresora el PDF del albarán
+  seleccionado en el listado.
+- Infraestructura de tests: `conftest.py` sanea el estado global de la capa de
+  datos por prueba; los tests de Fase 1 y Categorías ya no dejan
+  `get_db_path` apuntando a directorios temporales borrados.
 
-### Cambios internos
-- Versión reflejada en `README.md` (badge de versión e instaladores de
-  descarga) y en el `__version__` de la aplicación.
-
-
-## v3.0.0-beta.8 (2026-09-01)
-
-### Características
-- **Sistema de Devoluciones / Rectificaciones**: nuevo módulo accesible
-  desde Ajustes (sección «Devoluciones / Rectificaciones»).
-  - Selección de una factura emitida y visualización de sus productos con
-    la cantidad disponible (lo vendido menos lo ya devuelto).
-  - Devolución total o parcial con validación de cantidades (rechaza
-    sobre-devoluciones y productos ajenos a la factura).
-  - Reintegro automático del stock devuelto en el inventario.
-  - Reembolso en Efectivo, Tarjeta o **Vale / Tarjeta Regalo** (emite una
-    tarjeta regalo por el importe devuelto).
-  - Registro persistente en las tablas `devoluciones` y
-    `devolucion_productos`, e impresión del «Ticket de Rectificación /
-    Devolución» en la impresora térmica configurada.
-- **Ticket Regalo sin precios (Code128 + QR)**: botón «Imprimir Ticket
-  Regalo» en el historial de facturas.
-  - Genera un ticket promocional con el nombre y cantidad de cada artículo,
-    **ocultando precios, subtotales y totales**.
-  - Incluye un código único registrado en la tabla `tickets_regalo`,
-    impreso como código de barras **Code128** (implementación manual con
-    Pillow, sin dependencias extra) y como **código QR**.
-- **Tarjetas Regalo / Vales**: nuevo módulo accesible desde Ajustes
-  (sección «Tarjetas Regalo / Vales») para crear tarjetas con saldo,
-  listarlas, consultar su saldo y recargarlas (tablas `tarjetas_regalo` y
-  `tarjetas_regalo_movimientos`).
-- **Pago con Tarjeta Regalo**: nuevo método de pago «Tarjeta Regalo» en la
-  ventana de cobro de Ventas. Se ingresa el código, se valida el saldo y se
-  aplica como medio de pago (descuenta el saldo y registra el canje).
-
-### Cambios internos
-- Migración de base de datos `v11` (tablas `devoluciones`,
-  `devolucion_productos`, `tickets_regalo`, `tarjetas_regalo` y
-  `tarjetas_regalo_movimientos`). Plantillas `database.db` regeneradas a v11.
-- Nuevos módulos de lógica `core/devoluciones.py` y
-  `core/tarjetas_regalo.py`.
-- Nuevo módulo de códigos `hardware/codigos.py` (`generar_barcode_pil` y
-  `generar_qr_pil`).
-- Nuevos builders en `impresion_termica.py`: `construir_ticket_regalo`,
-  `imprimir_ticket_regalo`, `construir_ticket_devolucion` e
-  `imprimir_ticket_devolucion`, con rasterizado de imágenes PIL en memoria.
-
-
-## v3.0.0-beta.7 (2026-08-31)
-
-### Características
-- **Cierre de Caja y Conteo de Caja (Arqueo)**: nuevo módulo accesible
-  desde Ventas (botón «Cierre de Caja») y desde Ajustes (sección
-  «Cierre de Caja»).
-  - Conteo de efectivo físico desglosado por denominaciones de billetes y
-    monedas (€), con subtotales y total contado en vivo.
-  - Contraste con el total esperado según las ventas del período (neto en
-    efectivo + tarjeta) y los movimientos manuales (ingresos/retiros),
-    mostrando el descuadre (a favor / en contra).
-  - Resumen por método de pago (efectivo, tarjeta, mixto) filtrado por
-    rango de fechas.
-  - Registro persistente del arqueo en la nueva tabla `cierres_caja`
-    (fecha/hora, usuario, desglose, descuadre) y de los movimientos en
-    `movimientos_caja`.
-  - Impresión automática del «Informe de Cierre de Caja» en la impresora
-    de tickets configurada.
-- **Nombre comercial / Tienda**: nuevo campo en el perfil de empresa y en
-  Ajustes («Nombre comercial / Tienda»). Si se informa, se imprime bajo la
-  Razón Social en los tickets térmicos (ESC/POS) y en los membrete de
-  facturas/presupuestos/albaranes PDF (p. ej. «GIGA»).
-- **Selectores de impresora independientes**: Ajustes ahora distingue
-  «Impresora Térmica (tickets)» e «Impresora de Facturas (A4 / driver del
-  sistema)». Cada flujo usa su dispositivo:
-  - Tickets → impresora térmica ESC/POS (`impresora_termica`).
-  - Facturas → si se elige impresora A4 (`impresora_facturas`), el PDF se
-    envía a esa impresora; si no, se abre en el visor del sistema.
-- **Reimpresión de tickets antiguos**: en el historial de facturas se añade
-  el botón «Reimprimir ticket seleccionado», que reconstruye y reimprime en
-  la térmica configurada el ticket de una venta previa.
-- Apertura/impresión de PDFs de facturas con rutas absolutas y visor del
-  sistema. Nueva utilidad `print_file()` en `resources.py`.
-
-### Cambios internos
-- Migración de base de datos `v10` (tablas `cierres_caja` y
-  `movimientos_caja`). Plantillas `database.db` regeneradas a v10.
-- Migración `v9` (columna `nombre_comercial` en `business_profile`).
-- Nuevo módulo de lógica `core/cierre_caja.py` y nueva función
-  `imprimir_ticket_arqueo()` en `impresion_termica.py`.
-- Nueva clave `impresora_facturas` en `config.json` (por defecto `None`).
-- Limpieza de cabecera redundante de la pantalla principal en `container.py`.
-
-### Correcciones
-- Nombre comercial propagado al membrete fiscal de `impresion_termica.py` y
-  `pdf_documento.py`.
-
+### Apartados de compra no restaurados
+- No se reintroducen cierre de caja, devoluciones ni tarjetas regalo
+  (eliminados en el rollback a b6).
 
 ## v3.0.0-beta.4 (2026-08-26)
 

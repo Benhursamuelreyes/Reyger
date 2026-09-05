@@ -3,7 +3,8 @@
 
 """Tests de la Fase 5 (hardware): captura HID, barra manual y alta automática.
 
-Ejecuta:  python src/reyger/test_fase5_escaner.py
+Ejecuta (pytest):  pytest tests/test_fase5_escaner.py
+Ejecuta (script):  python tests/test_fase5_escaner.py
 """
 
 import os
@@ -14,6 +15,8 @@ import tempfile
 import time
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(TESTS_DIR)
@@ -28,10 +31,12 @@ from reyger.ui import ventas as mod_ventas
 from reyger.ui import inventario as mod_inventario
 from reyger.hardware.barcode_scanner import (
     CapturaEscanero,
-    EscanerCodigoBarras,
+    DialogoAsignarCodigoBarras,
     registrar_producto_rapido,
 )
 from reyger.config import ConfigManager
+
+import reyger.core.db as modulo_db
 
 VERDE = "\033[92m"
 ROJO = "\033[91m"
@@ -51,15 +56,14 @@ def chequear(nombre, condicion, detalle=""):
         FALLOS.append(nombre)
 
 
-def preparar_bd(tmpdir):
+def preparar_bd():
     """Copia la plantilla completa y siembra un producto con código."""
+    tmpdir = tempfile.mkdtemp(prefix="reyger_fase5_")
     ruta = os.path.join(tmpdir, "database.db")
     shutil.copyfile(
         os.path.join(SCRIPT_DIR, "assets", "database.db"), ruta
     )
     conn = sqlite3.connect(ruta)
-    # El propio escáner crea la columna + índice único (dogfood del fix)
-    EscanerCodigoBarras(ruta)
     conn.execute(
         "INSERT INTO inventario (nombre, proveedor, precio, costo, stock,"
         " tipo_iva, categoria_id, codigo_barras) VALUES (?,?,?,?,?,?,?,?)",
@@ -68,6 +72,32 @@ def preparar_bd(tmpdir):
     conn.commit()
     conn.close()
     return ruta
+
+
+def redirigir_bd(ruta):
+    """Redirige la capa db compartida a *ruta* y devuelve el path original."""
+    anterior = modulo_db.get_db_path
+    modulo_db.close()
+    modulo_db.get_db_path = lambda: ruta
+    return anterior
+
+
+@pytest.fixture
+def root():
+    """Ventana raíz Tk visible y mínima (para mantener el foco real)."""
+    ventana = tk.Tk()
+    # Visible (no withdraw): con la ventana retirada X11 no mantiene foco
+    # y el chequeo de campo editable sería irreal.
+    ventana.geometry("160x100+5+5")
+    yield ventana
+    ventana.destroy()
+
+
+@pytest.fixture
+def bd():
+    ruta = preparar_bd()
+    yield ruta
+    shutil.rmtree(os.path.dirname(ruta), ignore_errors=True)
 
 
 def evento_tecla(caracter):
@@ -163,8 +193,7 @@ def test_registro_rapido(bd):
 
 def test_ventas_por_codigo(root, bd):
     print(f"\n{BOLD}{AZUL}[TEST 3] Ventas: barra manual, carrito y toggle{RESET}")
-    original_db = mod_ventas.Ventas.db_name
-    mod_ventas.Ventas.db_name = bd
+    anterior = redirigir_bd(bd)
     try:
         ventana = mod_ventas.Ventas(root)
         root.update()
@@ -193,9 +222,9 @@ def test_ventas_por_codigo(root, bd):
 
         # Código desconocido aceptando el alta (diálogo simulado)
         class DialogoFalso:
-            def __init__(self, parent, codigo, db_path):
+            def __init__(self, parent, codigo):
                 self.resultado = registrar_producto_rapido(
-                    db_path, codigo, "Teclado USB", "12,90", stock="7"
+                    bd, codigo, "Teclado USB", "12,90", stock="7"
                 )
 
         with patch.object(mod_ventas.messagebox, "askyesno",
@@ -222,14 +251,14 @@ def test_ventas_por_codigo(root, bd):
 
         ventana.destroy()
     finally:
-        mod_ventas.Ventas.db_name = original_db
+        modulo_db.close()
+        modulo_db.get_db_path = anterior
         ConfigManager().set("escaner_activo", False)
 
 
 def test_inventario_por_codigo(root, bd):
     print(f"\n{BOLD}{AZUL}[TEST 4] Inventario: búsqueda y alta desde la barra{RESET}")
-    original_db = mod_inventario.Inventario.db_name
-    mod_inventario.Inventario.db_name = bd
+    anterior = redirigir_bd(bd)
     try:
         panel = mod_inventario.Inventario(root)
         root.update()
@@ -253,9 +282,9 @@ def test_inventario_por_codigo(root, bd):
 
         # Desconocido con alta: aparece registrado y seleccionado
         class DialogoFalso:
-            def __init__(self, parent, codigo, db_path):
+            def __init__(self, parent, codigo):
                 self.resultado = registrar_producto_rapido(
-                    db_path, codigo, "Monitor 24\"", "129.99", stock="5"
+                    bd, codigo, "Monitor 24\"", "129.99", stock="5"
                 )
 
         with patch.object(mod_inventario.messagebox, "askyesno",
@@ -278,18 +307,74 @@ def test_inventario_por_codigo(root, bd):
 
         panel.destroy()
     finally:
-        mod_inventario.Inventario.db_name = original_db
+        modulo_db.close()
+        modulo_db.get_db_path = anterior
+
+
+def test_modal_asignar_codigo(root, monkeypatch):
+    import reyger.hardware.barcode_scanner as mod_escaner
+
+    class EscanerFalso:
+        def __init__(self, resultado=True):
+            self.resultado = resultado
+            self.llamado = None
+
+        def guardar_codigo_barras(self, id_producto, codigo):
+            self.llamado = (id_producto, codigo)
+            return self.resultado
+
+    # Código vacío: error y sin destruir
+    d = DialogoAsignarCodigoBarras(root, 1, "Coca Cola", EscanerFalso())
+    destruidos = []
+    monkeypatch.setattr(d, "destroy", lambda: destruidos.append("destroy"))
+    errores = []
+    monkeypatch.setattr(
+        mod_escaner.messagebox, "showerror",
+        lambda *a, **k: errores.append(a),
+    )
+    monkeypatch.setattr(
+        mod_escaner.messagebox, "showinfo",
+        lambda *a, **k: None,
+    )
+    d._guardar_codigo()
+    assert not d.codigo_asignado
+    assert not destruidos
+    assert errores and "Ingrese un código" in errores[0][1]
+
+    # Código correcto: guarda en el escáner y destruye
+    esc = EscanerFalso(resultado=True)
+    d2 = DialogoAsignarCodigoBarras(root, 1, "Coca Cola", esc)
+    destruidos2 = []
+    monkeypatch.setattr(d2, "destroy", lambda: destruidos2.append("destroy"))
+    d2.entry_codigo.insert(0, "841234567890")
+    d2._guardar_codigo()
+    assert esc.llamado == (1, "841234567890")
+    assert d2.codigo_asignado
+    assert destruidos2 == ["destroy"]
+
+    # Código duplicado: error, limpia el campo y no destruye
+    esc_dup = EscanerFalso(resultado=False)
+    d3 = DialogoAsignarCodigoBarras(root, 1, "Coca Cola", esc_dup)
+    destruidos3 = []
+    monkeypatch.setattr(d3, "destroy", lambda: destruidos3.append("destroy"))
+    d3.entry_codigo.insert(0, "840000000001")
+    errores3 = []
+    monkeypatch.setattr(
+        mod_escaner.messagebox, "showerror",
+        lambda *a, **k: errores3.append(a),
+    )
+    d3._guardar_codigo()
+    assert esc_dup.llamado == (1, "840000000001")
+    assert not d3.codigo_asignado
+    assert not destruidos3
+    assert errores3 and "ya está asignado" in errores3[0][1]
+    assert d3.entry_codigo.get() == ""
 
 
 def main():
-    tmpdir = tempfile.mkdtemp(prefix="reyger_fase5_")
-    bd = preparar_bd(tmpdir)
-
     root = tk.Tk()
-    # Visible y mínima (no withdraw): con la ventana retirada X11 no
-    # mantiene foco y el chequeo de campo editable sería irreal.
     root.geometry("160x100+5+5")
-
+    bd = preparar_bd()
     try:
         test_captura_escanero(root)
         test_registro_rapido(bd)
@@ -297,6 +382,7 @@ def main():
         test_inventario_por_codigo(root, bd)
     finally:
         root.destroy()
+        shutil.rmtree(os.path.dirname(bd), ignore_errors=True)
 
     print()
     if FALLOS:

@@ -11,6 +11,7 @@ Ejecuta: python test_nuevas_funcionalidades.py
 import os
 import sys
 import tkinter as tk
+import pytest
 from datetime import datetime
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -183,6 +184,7 @@ def test_estructura_proyecto():
     return all(resultados)
 
 
+@pytest.mark.orden_dependiente
 def test_funcionalidad_basica():
     """Test 5: Pruebas funcionales básicas"""
     print(f"\n{BOLD}{AZUL}[TEST 5] Funcionalidad básica{RESET}")

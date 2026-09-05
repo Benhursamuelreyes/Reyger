@@ -22,6 +22,10 @@ CAMPOS = (
     "logo_path",
     "moneda",
     "locale",
+    "numero_serie_ticket",
+    "numero_serie_factura",
+    "verifactu_activo",
+    "whatsapp",
 )
 
 DEFAULTS = {
@@ -38,6 +42,10 @@ DEFAULTS = {
     "logo_path": None,
     "moneda": "EUR",
     "locale": "es_ES",
+    "numero_serie_ticket": "T-",
+    "numero_serie_factura": "F-",
+    "verifactu_activo": 1,
+    "whatsapp": "",
 }
 
 

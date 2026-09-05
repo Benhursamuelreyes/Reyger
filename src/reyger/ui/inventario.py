@@ -432,7 +432,7 @@ class Inventario(tk.Frame):
         if costo and venta:
             return round(self._calcular_margen(costo, venta), 2)
         return 0.0
-    
+
     def cargar_categorias(self):
         try:
             filas = self.eje_consulta(

@@ -24,8 +24,9 @@ class ConfigManager:
             "escaner_activo": False,
             "ancho_ticket": 80,
             "letra_ticket": "muy_grande",
-            "impresora_termica": None,
-            "impresora_facturas": None,
+            "alineacion_encabezado": "centro",
+            "alineacion_datos": "izquierda",
+            "alineacion_pie": "centro",
         }
         if os.path.exists(self.config_file):
             try:

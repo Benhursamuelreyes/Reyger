@@ -225,8 +225,10 @@ class TicketSimplificado:
                 f"{subtotal:.2f}"
             ])
         
-        # Crear tabla
-        tabla = Table(datos, colWidths=[3.8*cm, 1*cm, 1.5*cm, 1.5*cm])
+        # Crear tabla (los anchos deben sumar ≤ 7.4 cm = 74 mm del ticket
+        # menos los 6 mm de márgenes; antes sumaban 7.8 cm y reportlab
+        # lanzaba un error de diseño que impedía generar el PDF).
+        tabla = Table(datos, colWidths=[3.6*cm, 1.2*cm, 1.3*cm, 1.3*cm])
         tabla.setStyle(TableStyle([
             # Encabezado
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#CCCCCC')),

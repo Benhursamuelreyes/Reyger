@@ -25,8 +25,8 @@ from ..hardware.impresion_termica import (
     ANCHO_58MM,
     ANCHO_80MM,
     imprimir_ticket_venta,
-    imprimir_ticket_regalo,
 )
+from ..core import correlativos
 
 
 def _resolver_logo(config):
@@ -52,9 +52,12 @@ class Ventas(tk.Frame):
         self._ult_codigo = None
         self._ult_momento = 0.0
         self.crear_tabla_ventas()
+        # Tipo de documento por defecto: Ticket (factura simplificada)
+        self.var_tipo_documento = tk.StringVar(value="ticket")
+        self.numero_ticket_actual = self.obtener_numero_ticket_actual()
         self.numero_factura_actual = self.obtener_numero_factura_actual()
         self.widgets()
-        self.mostrar_numero_factura()
+        self.mostrar_numero_documento()
         if self.var_escaner.get():
             self.captura.iniciar()
 
@@ -72,7 +75,23 @@ class Ventas(tk.Frame):
                     metodo_pago TEXT DEFAULT 'Efectivo',
                     cantidad_efectivo REAL DEFAULT 0,
                     cantidad_tarjeta REAL DEFAULT 0,
-                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    tipo_documento TEXT DEFAULT 'ticket',
+                    estado TEXT DEFAULT 'emitido',
+                    numero_ticket TEXT
+                )
+            """)
+            # Asegura las columnas del flujo Ticket/Factura (idempotente)
+            from ..core.migrations import _add_column
+            _add_column(conn, "ventas", "tipo_documento TEXT NOT NULL DEFAULT 'ticket'")
+            _add_column(conn, "ventas", "estado TEXT NOT NULL DEFAULT 'emitido'")
+            _add_column(conn, "ventas", "numero_ticket TEXT")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS contadores_documentos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tipo TEXT NOT NULL UNIQUE,
+                    serie TEXT NOT NULL,
+                    ultimo_numero INTEGER NOT NULL DEFAULT 0
                 )
             """)
             conn.commit()
@@ -91,49 +110,74 @@ class Ventas(tk.Frame):
         lblframe = LabelFrame(frame2, text="Información de la venta", bg="#C6D9E3", font="sans 16 bold")
         lblframe.pack(fill="x", padx=10, pady=10)
 
-        nFactura = tk.Label(lblframe, text="Num.factura: ", bg="#C6D9E3", font="sans 14 bold")
+        nFactura = tk.Label(lblframe, text="Num.documento: ", bg="#C6D9E3", font="sans 14 bold")
         nFactura.grid(row=0, column=0, padx=(10, 0), pady=12, sticky="w")
 
-        self.numero_factura = tk.StringVar()
-        self.entry_numero_factura = ttk.Entry(lblframe, textvariable=self.numero_factura, state="readonly", font="sans 12 bold", width=10)
+        self.numero_documento = tk.StringVar()
+        self.entry_numero_factura = ttk.Entry(lblframe, textvariable=self.numero_documento, state="readonly", font="sans 12 bold", width=12)
         self.entry_numero_factura.grid(row=0, column=1, padx=6, sticky="w")
 
+        label_tipo = tk.Label(lblframe, text="Emisión: ", bg="#C6D9E3", font="sans 14 bold")
+        label_tipo.grid(row=0, column=2, padx=(20, 0), sticky="w")
+
+        self.radio_ticket = tk.Radiobutton(
+            lblframe, text="Ticket", variable=self.var_tipo_documento,
+            value="ticket", bg="#C6D9E3", font="sans 13 bold",
+            command=self._cambio_tipo_documento,
+        )
+        self.radio_ticket.grid(row=0, column=3, padx=6, sticky="w")
+
+        self.radio_factura = tk.Radiobutton(
+            lblframe, text="Factura completa", variable=self.var_tipo_documento,
+            value="factura", bg="#C6D9E3", font="sans 13 bold",
+            command=self._cambio_tipo_documento,
+        )
+        self.radio_factura.grid(row=0, column=4, padx=6, sticky="w")
+
         label_nombre = tk.Label(lblframe, text="Productos: ", bg="#C6D9E3", font="sans 14 bold")
-        label_nombre.grid(row=0, column=2, padx=(20, 0), sticky="w")
+        label_nombre.grid(row=0, column=5, padx=(20, 0), sticky="w")
 
         self.entry_nombre = ttk.Combobox(lblframe, font="sans 14 bold", state="readonly")
-        self.entry_nombre.grid(row=0, column=3, padx=6, sticky="ew")
+        self.entry_nombre.grid(row=0, column=6, padx=6, sticky="ew")
         self.entry_nombre.bind("<<ComboboxSelected>>", self.actualizar_precio)
         self.cargar_productos()
 
         label_valor = tk.Label(lblframe, text="Precio de venta: ", bg="#C6D9E3", font="sans 14 bold")
-        label_valor.grid(row=0, column=4, padx=(20, 0), sticky="w")
+        label_valor.grid(row=0, column=7, padx=(20, 0), sticky="w")
 
-        self.entry_valor = ttk.Entry(lblframe, font="sans 14 bold", state="readonly", width=16)
-        self.entry_valor.grid(row=0, column=5, padx=6, sticky="w")
+        self.entry_valor = ttk.Entry(lblframe, font="sans 14 bold", state="readonly", width=12)
+        self.entry_valor.grid(row=0, column=8, padx=6, sticky="w")
 
         label_cantidad = tk.Label(lblframe, text="Cantidad: ", bg="#C6D9E3", font="sans 14 bold")
-        label_cantidad.grid(row=0, column=6, padx=(20, 0), sticky="w")
+        label_cantidad.grid(row=0, column=9, padx=(20, 0), sticky="w")
 
-        self.entry_cantidad = ttk.Entry(lblframe, font="sans 14 bold", width=8)
-        self.entry_cantidad.grid(row=0, column=7, padx=(6, 10), sticky="w")
+        self.entry_cantidad = ttk.Entry(lblframe, font="sans 14 bold", width=6)
+        self.entry_cantidad.grid(row=0, column=10, padx=(6, 10), sticky="w")
 
-        label_cliente = tk.Label(lblframe, text="Cliente (opcional): ", bg="#C6D9E3", font="sans 14 bold")
+        label_cliente = tk.Label(lblframe, text="Cliente: ", bg="#C6D9E3", font="sans 14 bold")
         label_cliente.grid(row=1, column=0, padx=(10, 0), pady=(0, 12), sticky="w")
 
-        self.combo_cliente = ttk.Combobox(lblframe, font="sans 12", state="readonly", width=38)
-        self.combo_cliente.grid(row=1, column=1, columnspan=4, padx=6, pady=(0, 12), sticky="w")
+        self.combo_cliente = ttk.Combobox(lblframe, font="sans 12", state="readonly", width=30)
+        self.combo_cliente.grid(row=1, column=1, columnspan=3, padx=6, pady=(0, 12), sticky="w")
+        self.combo_cliente.bind("<<ComboboxSelected>>", self._cliente_seleccionado)
         self.cargar_clientes_venta()
+
+        self.boton_nuevo_cliente = tk.Button(
+            lblframe, text="+ Nuevo cliente", bg="#17A2B8", fg="white",
+            font="sans 11 bold", relief="flat", cursor="hand2",
+            command=self.abrir_nuevo_cliente,
+        )
+        self.boton_nuevo_cliente.grid(row=1, column=4, padx=(6, 0), pady=(0, 12), sticky="w")
 
         # Barra de entrada manual de códigos de barras (scanner o teclado)
         label_codigo = tk.Label(lblframe, text="🏷️ Código: ", bg="#C6D9E3", font="sans 14 bold")
         label_codigo.grid(row=1, column=5, padx=(20, 0), pady=(0, 12), sticky="w")
 
-        self.entry_codigo_barras = ttk.Entry(lblframe, font="sans 14 bold", width=22)
+        self.entry_codigo_barras = ttk.Entry(lblframe, font="sans 14 bold", width=20)
         self.entry_codigo_barras.grid(row=1, column=6, columnspan=2, padx=6, pady=(0, 12), sticky="w")
         self.entry_codigo_barras.bind("<Return>", self._desde_barra)
 
-        lblframe.columnconfigure(3, weight=1)
+        lblframe.columnconfigure(6, weight=1)
 
         frame_categorias = tk.Frame(frame2, bg="#C6D9E3")
         frame_categorias.pack(fill="x", padx=10)
@@ -204,11 +248,11 @@ class Ventas(tk.Frame):
         boton_pagar = tk.Button(lblframe1, text="Pagar", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_paga)
         boton_pagar.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
-        boton_ver_factura = tk.Button(lblframe1, text="Ver Factura", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_factura)
-        boton_ver_factura.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
+        boton_borrador = tk.Button(lblframe1, text="Guardar borrador", bg="#6C757D", fg="white", font="sans 14 bold", command=self.guardar_borrador)
+        boton_borrador.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
-        boton_cierre = tk.Button(lblframe1, text="Cierre de Caja", bg="#8B6914", fg="white", font="sans 14 bold", command=self.abrir_cierre_caja)
-        boton_cierre.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
+        boton_ver_factura = tk.Button(lblframe1, text="Ver Facturas", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_factura)
+        boton_ver_factura.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
     def cargar_productos(self):
         try:
@@ -474,7 +518,7 @@ class Ventas(tk.Frame):
             total += subtotal
         return round(total, 2)
 
-    def _actualizar_campos_pago(self, var_metodo, label_efe=None, entry_efe=None, label_tar=None, entry_tar=None, label_gc=None, entry_gc=None):
+    def _actualizar_campos_pago(self, var_metodo, label_efe=None, entry_efe=None, label_tar=None, entry_tar=None):
         if label_efe is None:
             return
         metodo = var_metodo.get()
@@ -483,34 +527,16 @@ class Ventas(tk.Frame):
             entry_efe.grid()
             label_tar.grid_remove()
             entry_tar.grid_remove()
-            if label_gc is not None:
-                label_gc.grid_remove()
-                entry_gc.grid_remove()
         elif metodo == "Tarjeta":
             label_efe.grid_remove()
             entry_efe.grid_remove()
             label_tar.grid()
             entry_tar.grid()
-            if label_gc is not None:
-                label_gc.grid_remove()
-                entry_gc.grid_remove()
-        elif metodo == "TarjetaRegalo":
-            label_efe.grid_remove()
-            entry_efe.grid_remove()
-            label_tar.grid_remove()
-            entry_tar.grid_remove()
-            if label_gc is not None:
-                label_gc.grid()
-                entry_gc.grid()
-        else:  # Mixto
+        else:
             label_efe.grid()
             entry_efe.grid()
             label_tar.grid()
             entry_tar.grid()
-            if label_gc is not None:
-                label_gc.grid_remove()
-                entry_gc.grid_remove()
-
 
     def abrir_ventana_paga(self):
         if not self.tree.get_children():
@@ -545,7 +571,7 @@ class Ventas(tk.Frame):
         var_metodo = tk.StringVar(value="Efectivo")
 
         def actualizar_campos():
-            self._actualizar_campos_pago(var_metodo, label_efectivo, entry_efectivo, label_tarjeta, entry_tarjeta, label_gc, entry_gc)
+            self._actualizar_campos_pago(var_metodo, label_efectivo, entry_efectivo, label_tarjeta, entry_tarjeta)
 
         frame_radios = tk.Frame(ventana_pago, bg="#C6D9E3")
         frame_radios.grid(row=2, column=0, sticky="w", padx=20)
@@ -557,10 +583,7 @@ class Ventas(tk.Frame):
         radio_tarjeta.pack(side="left", padx=(0, 30))
 
         radio_mixto = tk.Radiobutton(frame_radios, text="Mixto", variable=var_metodo, value="Mixto", bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos)
-        radio_mixto.pack(side="left", padx=(0, 30))
-
-        radio_gc = tk.Radiobutton(frame_radios, text="Tarjeta Regalo", variable=var_metodo, value="TarjetaRegalo", bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos)
-        radio_gc.pack(side="left")
+        radio_mixto.pack(side="left")
 
         label_efectivo = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad en efectivo:", font="sans 12 bold")
         label_efectivo.grid(row=3, column=0, sticky="w", padx=20, pady=(15, 2))
@@ -574,35 +597,13 @@ class Ventas(tk.Frame):
         label_tarjeta.grid_remove()
         entry_tarjeta.grid_remove()
 
-        label_gc = tk.Label(ventana_pago, bg="#C6D9E3", text="Código de tarjeta regalo:", font="sans 12 bold")
-        label_gc.grid(row=7, column=0, sticky="w", padx=20, pady=(15, 2))
-        entry_gc = ttk.Entry(ventana_pago, font="sans 12 bold")
-        entry_gc.grid(row=8, column=0, sticky="ew", padx=20)
-        label_gc.grid_remove()
-        entry_gc.grid_remove()
-
         label_cambio = tk.Label(ventana_pago, bg="#C6D9E3", text="", font="sans 14 bold", fg="#27AE60")
-        label_cambio.grid(row=9, column=0, sticky="w", padx=20, pady=15)
+        label_cambio.grid(row=7, column=0, sticky="w", padx=20, pady=15)
 
         def calcular_cambio():
             try:
                 metodo = var_metodo.get()
-                if metodo == "TarjetaRegalo":
-                    codigo = entry_gc.get().strip()
-                    if not codigo:
-                        messagebox.showerror("Error", "Ingrese el código de la tarjeta regalo")
-                        return
-                    from ..core import tarjetas_regalo as tr
-                    saldo_gc = tr.saldo(codigo)
-                    if saldo_gc is None:
-                        messagebox.showerror("Error", "La tarjeta regalo no existe")
-                        return
-                    if saldo_gc < total:
-                        messagebox.showerror("Error", f"Saldo insuficiente (disponible: {mod_moneda.format_currency(saldo_gc)})")
-                        label_cambio.config(text="")
-                        return
-                    label_cambio.config(text=f"Pago con tarjeta regalo (saldo {mod_moneda.format_currency(saldo_gc)})")
-                elif metodo == "Efectivo":
+                if metodo == "Efectivo":
                     cantidad_pagada = float(entry_efectivo.get())
                     cambio = cantidad_pagada - total
                     if cambio < 0:
@@ -631,26 +632,21 @@ class Ventas(tk.Frame):
                 messagebox.showerror("Error", "Ingrese valores numericos validos")
 
         boton_calcular = tk.Button(ventana_pago, text="Calcular", bg="#0078D4", fg="white", font="sans 12 bold", command=calcular_cambio)
-        boton_calcular.grid(row=10, column=0, sticky="ew", padx=20, pady=10, ipady=4)
+        boton_calcular.grid(row=8, column=0, sticky="ew", padx=20, pady=10, ipady=4)
 
-        boton_pagar = tk.Button(ventana_pago, text="Confirmar pago", bg="#27AE60", fg="white", font="sans 14 bold", command=lambda: self.pagar(ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total, entry_gc))
-        boton_pagar.grid(row=11, column=0, sticky="ew", padx=20, pady=10, ipady=6)
+        boton_pagar = tk.Button(ventana_pago, text="Confirmar pago", bg="#27AE60", fg="white", font="sans 14 bold", command=lambda: self.pagar(ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total))
+        boton_pagar.grid(row=9, column=0, sticky="ew", padx=20, pady=10, ipady=6)
 
         boton_cancelar = tk.Button(ventana_pago, text="Cancelar", bg="#C0392B", fg="white", font="sans 12 bold", command=ventana_pago.destroy)
-        boton_cancelar.grid(row=12, column=0, sticky="ew", padx=20, pady=(10, 20), ipady=4)
+        boton_cancelar.grid(row=10, column=0, sticky="ew", padx=20, pady=(10, 20), ipady=4)
 
         ventana_pago.columnconfigure(0, weight=1)
 
-    def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total, entry_gc=None):
+    def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total):
         try:
             metodo_pago = var_metodo.get()
             cantidad_efectivo = 0.0
             cantidad_tarjeta = 0.0
-
-            from ..core import tarjetas_regalo as tr
-
-            codigo_gc = (entry_gc.get().strip() if entry_gc is not None else "")
-            monto_gc = 0.0
 
             if metodo_pago == "Efectivo":
                 cantidad_efectivo = float(entry_efectivo.get())
@@ -662,22 +658,6 @@ class Ventas(tk.Frame):
                 if cantidad_tarjeta < total:
                     messagebox.showerror("Error", "Cantidad en tarjeta insuficiente")
                     return
-            elif metodo_pago == "TarjetaRegalo":
-                if not codigo_gc:
-                    messagebox.showerror("Error", "Ingrese el código de la tarjeta regalo")
-                    return
-                ok_gc, monto_gc, restante_gc, mensaje_gc = tr.aplicar_pago(
-                    codigo_gc, total, self.numero_factura_actual
-                )
-                if not ok_gc:
-                    messagebox.showerror("Error", f"Tarjeta regalo: {mensaje_gc}")
-                    return
-                if restante_gc > 0:
-                    messagebox.showerror(
-                        "Error",
-                        f"Saldo insuficiente. Resto a pagar: {mod_moneda.format_currency(restante_gc)}",
-                    )
-                    return
             elif metodo_pago == "Mixto":
                 cantidad_efectivo = float(entry_efectivo.get())
                 cantidad_tarjeta = float(entry_tarjeta.get())
@@ -685,13 +665,34 @@ class Ventas(tk.Frame):
                     messagebox.showerror("Error", "Pago insuficiente (efectivo + tarjeta)")
                     return
 
+            tipo_documento = self.var_tipo_documento.get()
             cliente_nombre = self.combo_cliente.get()
             cliente_id = None
+
+            # La factura completa SIEMPRE exige un cliente (seleccionado o nuevo)
+            if tipo_documento == "factura" and (
+                not cliente_nombre or cliente_nombre == "(Sin cliente)"
+            ):
+                messagebox.showerror(
+                    "Factura completa",
+                    "Para emitir una Factura completa es obligatorio seleccionar "
+                    "un cliente o registrar uno nuevo.",
+                )
+                return
+
             if cliente_nombre and cliente_nombre != "(Sin cliente)":
                 fila_cliente = db.query_one(
                     "SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,)
                 )
                 cliente_id = fila_cliente["id"] if fila_cliente else None
+
+            # Asignación de número correlativo con garantía de NO retroceso.
+            # Se calcula el candidato y, dentro de la transacción, se
+            # registra en contadores_documentos (solo sube, nunca baja).
+            if tipo_documento == "factura":
+                prefijo, numero_asignado = correlativos.siguiente_numero("factura")
+            else:
+                prefijo, numero_asignado = correlativos.siguiente_numero("ticket")
 
             productos = []
             lineas_fiscales = []
@@ -712,26 +713,48 @@ class Ventas(tk.Frame):
                     ))
                     lineas_fiscales.append((precio, cantidad_vendida, tipo_iva))
 
+                    if tipo_documento == "factura":
+                        numero_doc = f"{prefijo}{numero_asignado:04d}"
+                        numero_ticket = None
+                    else:
+                        numero_doc = f"{prefijo}{numero_asignado:04d}"
+                        numero_ticket = numero_doc
+
                     conn.execute("""
                         INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
                             cantidad, subtotal, metodo_pago, cantidad_efectivo,
                             cantidad_tarjeta, cliente_id, tipo_iva, cuota_iva,
-                            base_imponible)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            base_imponible, tipo_documento, estado, numero_ticket)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        self.numero_factura_actual, producto, precio,
+                        numero_doc, producto, precio,
                         cantidad_vendida, subtotal_linea, metodo_pago,
                         cantidad_efectivo, cantidad_tarjeta, cliente_id,
                         tipo_iva, cuota_linea, base_linea,
+                        tipo_documento, "emitido", numero_ticket,
                     ))
 
                     conn.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
 
                 total, base_total, cuota_total = desglose_total(lineas_fiscales)
-                numero_factura_emitida = self.numero_factura_actual
-                messagebox.showinfo("Exito", f"La venta se ha completado\nMetodo de pago: {metodo_pago}")
-                self.numero_factura_actual += 1
-                self.mostrar_numero_factura()
+                messagebox.showinfo("Exito", f"La venta se ha completado\nDocumento: {tipo_documento}\nMetodo de pago: {metodo_pago}")
+
+                # Registrar el número oficial emitido en el contador de
+                # correlatividad (solo asciende: la secuencia nunca retrocede).
+                conn.execute(
+                    "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) "
+                    "VALUES (?, ?, ?) "
+                    "ON CONFLICT(tipo, serie) DO UPDATE SET "
+                    "ultimo_numero = MAX(ultimo_numero, excluded.ultimo_numero)",
+                    (tipo_documento, prefijo, numero_asignado),
+                )
+
+                # Fijar el siguiente número evitando tocar el emitido
+                if tipo_documento == "factura":
+                    self.numero_factura_actual = numero_asignado + 1
+                else:
+                    self.numero_ticket_actual = numero_asignado + 1
+                self.mostrar_numero_documento()
 
                 for i in self.tree.get_children():
                     self.tree.delete(i)
@@ -742,26 +765,109 @@ class Ventas(tk.Frame):
                 ventana_pago.destroy()
 
                 fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                self.generar_factura_pdf(
-                    productos, total, numero_factura_emitida, fecha, metodo_pago,
-                    base_imponible=base_total, cuota_iva=cuota_total,
-                    cliente_nombre=None if cliente_id is None else cliente_nombre,
-                )
-                self._registrar_verifactu(
-                    numero_factura_emitida, fecha, productos, total,
-                    base_total, cuota_total,
-                    nif_receptor=None, nombre_receptor=None if cliente_id is None else cliente_nombre,
-                )
-                self._imprimir_ticket_termico(
-                    numero_factura_emitida, fecha, productos, total,
-                    base_total, cuota_total, metodo_pago,
-                    None if cliente_id is None else cliente_nombre,
-                )
+                if tipo_documento == "factura":
+                    self.generar_factura_pdf(
+                        productos, total, numero_doc,
+                        fecha, metodo_pago,
+                        base_imponible=base_total, cuota_iva=cuota_total,
+                        cliente_nombre=cliente_nombre,
+                    )
+                    # VeriFactu: solo facturas emitidas y con integración activa
+                    if self._verifactu_activo():
+                        self._registrar_verifactu(
+                            numero_doc,
+                            fecha, productos, total,
+                            base_total, cuota_total,
+                            nif_receptor=None, nombre_receptor=cliente_nombre,
+                        )
+                else:
+                    self._imprimir_ticket_termico(
+                        numero_ticket,
+                        fecha, productos, total,
+                        base_total, cuota_total, metodo_pago,
+                        None if cliente_id is None else cliente_nombre,
+                        tipo_documento="ticket",
+                    )
         except ValueError:
             messagebox.showerror("Error", "Valores ingresados no validos")
 
+    def _verifactu_activo(self):
+        """Devuelve si la integración Veri*factu* está activada en ajustes."""
+        try:
+            return bool(bp.obtener_campo("verifactu_activo"))
+        except Exception:
+            return True
+
+    def guardar_borrador(self):
+        """Guarda el carrito como borrador de factura (sin número correlativo).
+
+        El borrador queda en estado 'borrador' con un número interno temporal
+        y puede convertirse posteriormente en factura emitida (ver
+        ``_convertir_borrador_en_factura``).
+        """
+        if not self.tree.get_children():
+            messagebox.showerror("Error", "No hay artículos para guardar")
+            return
+
+        cliente_nombre = self.combo_cliente.get()
+        cliente_id = None
+        if cliente_nombre and cliente_nombre != "(Sin cliente)":
+            fila_cliente = db.query_one(
+                "SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,)
+            )
+            cliente_id = fila_cliente["id"] if fila_cliente else None
+
+        fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        productos = []
+        lineas_fiscales = []
+
+        with db.transaccion() as conn:
+            for i in self.tree.get_children():
+                item = self.tree.item(i, "values")
+                producto = item[0]
+                precio = float(item[1])
+                cantidad_vendida = int(item[2])
+                tipo_iva = float(str(item[3]).replace("%", ""))
+                subtotal_linea, base_linea, cuota_linea = desglose_linea(
+                    precio, cantidad_vendida, tipo_iva
+                )
+                productos.append((
+                    producto, precio, cantidad_vendida, subtotal_linea,
+                    tipo_iva, base_linea, cuota_linea,
+                ))
+                lineas_fiscales.append((precio, cantidad_vendida, tipo_iva))
+
+                conn.execute("""
+                    INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
+                        cantidad, subtotal, metodo_pago, cantidad_efectivo,
+                        cantidad_tarjeta, cliente_id, tipo_iva, cuota_iva,
+                        base_imponible, tipo_documento, estado, numero_ticket)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    f"BORRADOR-{int(time.time())}", producto, precio,
+                    cantidad_vendida, subtotal_linea, "Pendiente",
+                    0.0, 0.0, cliente_id,
+                    tipo_iva, cuota_linea, base_linea,
+                    "factura", "borrador", None,
+                ))
+
+            total, base_total, cuota_total = desglose_total(lineas_fiscales)
+
+        messagebox.showinfo(
+            "Borrador guardado",
+            "El borrador de factura se ha guardado para revisión.\n"
+            "Podrás convertirlo en factura emitida desde el historial.",
+        )
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        self.label_base.config(text=f"Base imponible: {mod_moneda.format_currency(0)}")
+        self.label_cuota.config(text=f"Cuota IVA: {mod_moneda.format_currency(0)}")
+        self.label_suma_total.config(text=f"Total a pagar: {mod_moneda.format_currency(0)}")
+        self.combo_cliente.current(0)
+
     def _imprimir_ticket_termico(self, numero_factura, fecha, productos, total,
-                                 base, cuota, metodo_pago, cliente):
+                                 base, cuota, metodo_pago, cliente,
+                                 tipo_documento="ticket"):
         """Imprime el ticket térmico si hay una impresora configurada.
 
         El envío al spooler/subproceso puede tardar segundos: corre en
@@ -784,6 +890,7 @@ class Ventas(tk.Frame):
             "provincia": bp.obtener_campo("provincia"),
             "telefono": bp.obtener_campo("telefono"),
             "email": bp.obtener_campo("email"),
+            "whatsapp": bp.obtener_campo("whatsapp"),
         }
 
         def trabajo():
@@ -791,6 +898,10 @@ class Ventas(tk.Frame):
                 numero_factura, fecha, productos, total, base, cuota,
                 metodo_pago, cliente, empresa=empresa, ancho=ancho,
                 letra=letra, impresora=impresora, logo=logo, negocio=negocio,
+                alineacion_encabezado=config.get("alineacion_encabezado", "centro"),
+                alineacion_datos=config.get("alineacion_datos", "izquierda"),
+                alineacion_pie=config.get("alineacion_pie", "centro"),
+                tipo_documento=tipo_documento,
             )
 
         def al_terminar(resultado, error):
@@ -892,50 +1003,70 @@ class Ventas(tk.Frame):
             ),
         )
 
-        impresora_facturas = self.config_manager.get("impresora_facturas")
-        if impresora_facturas:
-            try:
-                from ..resources import print_file
-                print_file(archivo_pdf, impresora_facturas)
-                messagebox.showinfo(
-                    "Factura generada",
-                    f"La factura #{factura_numero} se ha impreso en '{impresora_facturas}'.\n"
-                    f"Archivo PDF: {archivo_pdf}",
-                )
-            except Exception:
-                messagebox.showinfo(
-                    "Factura generada",
-                    f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}",
-                )
-        else:
-            try:
-                open_file(archivo_pdf)
-            except Exception:
-                messagebox.showinfo(
-                    "Factura generada",
-                    f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}",
-                )
+        try:
+            open_file(archivo_pdf)
+        except Exception:
+            messagebox.showinfo("Factura generada", f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}")
+
+    def _cambio_tipo_documento(self):
+        """Al cambiar el tipo de documento se actualiza el número mostrado.
+
+        La factura completa exige seleccionar un cliente (obligatorio); se
+        muestra ese requisito al pulsar Pagar. El ticket es el modo por
+        defecto y admite venta sin cliente.
+        """
+        self.mostrar_numero_documento()
+
+    def _cliente_seleccionado(self, _evento=None):
+        pass
+
+    def abrir_nuevo_cliente(self):
+        from .clientes import abrir_clientes
+
+        abrir_clientes(self.winfo_toplevel())
+        self.cargar_clientes_venta()
+
+    def obtener_numero_ticket_actual(self):
+        """Siguiente número oficial de ticket (nunca retrocede)."""
+        _, numero = correlativos.siguiente_numero("ticket")
+        return numero
 
     def obtener_numero_factura_actual(self):
-        try:
-            fila = db.query_one("SELECT IFNULL(MAX(factura), 0) AS max_factura FROM ventas")
-            return fila["max_factura"] + 1
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al obtener el número de factura: {e}")
-            return 1
+        """Siguiente número oficial de factura (nunca retrocede)."""
+        _, numero = correlativos.siguiente_numero("factura")
+        return numero
+
+    def _numero_ticket_formateado(self, n=None):
+        if n is None:
+            n = self.obtener_numero_ticket_actual()
+        prefijo, _ = correlativos.siguiente_numero("ticket")
+        return f"{prefijo}{n:04d}"
+
+    def _numero_factura_formateado(self, n=None):
+        if n is None:
+            n = self.obtener_numero_factura_actual()
+        prefijo, _ = correlativos.siguiente_numero("factura")
+        return f"{prefijo}{n:04d}"
+
+    def mostrar_numero_documento(self):
+        """Muestra en pantalla el número correlativo del tipo seleccionado."""
+        if self.var_tipo_documento.get() == "factura":
+            self.numero_documento.set(self._numero_factura_formateado())
+        else:
+            self.numero_documento.set(self._numero_ticket_formateado())
 
     def mostrar_numero_factura(self):
-        self.numero_factura.set(self.numero_factura_actual)
+        self.mostrar_numero_documento()
 
     def abrir_ventana_factura(self):
         ventana_facturas = tk.Toplevel(self)
-        ventana_facturas.title("Facturas")
-        ventana_facturas.geometry("1000x620")
+        ventana_facturas.title("Documentos / Facturas")
+        ventana_facturas.geometry("1000x640")
         ventana_facturas.config(bg="#C6D9E3")
         ventana_facturas.resizable(True, True)
-        ventana_facturas.minsize(800, 500)
+        ventana_facturas.minsize(850, 520)
 
-        facturas_label = tk.Label(ventana_facturas, bg="#C6D9E3", text="Facturas registradas", font="sans 36 bold")
+        facturas_label = tk.Label(ventana_facturas, bg="#C6D9E3", text="Documentos registrados", font="sans 36 bold")
         facturas_label.pack(pady=15)
 
         treFrame = tk.Frame(ventana_facturas, bg="#C6D9E3")
@@ -946,226 +1077,225 @@ class Ventas(tk.Frame):
         scrol_x = ttk.Scrollbar(treFrame, orient=HORIZONTAL)
         scrol_x.pack(side=BOTTOM, fill=X)
 
-        tree_facturas = ttk.Treeview(treFrame, columns=("ID", "Factura", "Producto", "Precio", "Cantidad", "Subtotal"), show="headings", height=10, yscrollcommand=scrol_y.set, xscrollcommand=scrol_x.set)
+        tree_facturas = ttk.Treeview(
+            treFrame,
+            columns=("ID", "Documento", "Tipo", "Estado", "Producto", "Precio", "Cantidad", "Subtotal"),
+            show="headings", height=10,
+            yscrollcommand=scrol_y.set, xscrollcommand=scrol_x.set,
+        )
         scrol_y.config(command=tree_facturas.yview)
         scrol_x.config(command=tree_facturas.xview)
 
         tree_facturas.heading("ID", text="ID")
-        tree_facturas.heading("Factura", text="Factura")
+        tree_facturas.heading("Documento", text="Número")
+        tree_facturas.heading("Tipo", text="Tipo")
+        tree_facturas.heading("Estado", text="Estado")
         tree_facturas.heading("Producto", text="Producto")
         tree_facturas.heading("Precio", text="P. venta")
         tree_facturas.heading("Cantidad", text="Cantidad")
         tree_facturas.heading("Subtotal", text="Subtotal")
 
-        tree_facturas.column("ID", width=70, anchor="center")
-        tree_facturas.column("Factura", width=100, anchor="center")
-        tree_facturas.column("Producto", width=200, anchor="center")
-        tree_facturas.column("Precio", width=130, anchor="center")
-        tree_facturas.column("Cantidad", width=130, anchor="center")
-        tree_facturas.column("Subtotal", width=130, anchor="center")
+        tree_facturas.column("ID", width=60, anchor="center")
+        tree_facturas.column("Documento", width=130, anchor="center")
+        tree_facturas.column("Tipo", width=90, anchor="center")
+        tree_facturas.column("Estado", width=90, anchor="center")
+        tree_facturas.column("Producto", width=170, anchor="center")
+        tree_facturas.column("Precio", width=110, anchor="center")
+        tree_facturas.column("Cantidad", width=90, anchor="center")
+        tree_facturas.column("Subtotal", width=110, anchor="center")
 
         tree_facturas.pack(expand=True, fill=BOTH)
-        self.cargar_facturas(tree_facturas)
 
         frame_botones = tk.Frame(ventana_facturas, bg="#C6D9E3")
         frame_botones.pack(fill="x", padx=10, pady=(0, 15))
 
-        btn_reimprimir = tk.Button(
-            frame_botones,
-            text="🧾 Reimprimir ticket seleccionado",
-            bg="#0078D4",
-            fg="white",
-            font="sans 12 bold",
-            padx=15,
-            pady=8,
-            command=lambda: self._reimprimir_ticket(tree_facturas),
+        boton_emitir = tk.Button(
+            frame_botones, text="Emitir factura (desde borrador)",
+            bg="#27AE60", fg="white", font="sans 13 bold",
+            command=lambda: self.emitir_borrador_como_factura(tree_facturas),
         )
-        btn_reimprimir.pack(side="left", padx=5)
+        boton_emitir.pack(side="left", expand=True, fill="x", padx=6, ipady=6)
 
-        btn_ticket_regalo = tk.Button(
-            frame_botones,
-            text="🎁 Imprimir Ticket Regalo",
-            bg="#8E44AD",
-            fg="white",
-            font="sans 12 bold",
-            padx=15,
-            pady=8,
-            command=lambda: self._imprimir_ticket_regalo(tree_facturas),
+        boton_reimprimir = tk.Button(
+            frame_botones, text="Reimprimir documento",
+            bg="#17A2B8", fg="white", font="sans 13 bold",
+            command=lambda: self.reimprimir_documento(tree_facturas),
         )
-        btn_ticket_regalo.pack(side="left", padx=5)
+        boton_reimprimir.pack(side="left", expand=True, fill="x", padx=6, ipady=6)
 
-    def _imprimir_ticket_regalo(self, tree):
-        """Imprime un Ticket Regalo (sin precios, con código y QR) de una venta."""
-        seleccion = tree.selection()
-        if not seleccion:
-            messagebox.showwarning(
-                "Ticket Regalo",
-                "Seleccione una línea de la venta para el ticket regalo.",
-            )
-            return
-        valores = tree.item(seleccion[0], "values")
-        if not valores:
-            return
-        try:
-            numero_factura = int(valores[1])
-        except (TypeError, ValueError):
-            messagebox.showerror("Error", "Número de factura no válido.")
-            return
-
-        filas = db.query(
-            "SELECT * FROM ventas WHERE factura = ? ORDER BY id ASC",
-            (numero_factura,),
-        )
-        if not filas:
-            messagebox.showwarning(
-                "Ticket Regalo",
-                f"No hay líneas para la factura #{numero_factura}.",
-            )
-            return
-
-        productos = []
-        fecha = None
-        for fila in filas:
-            f = dict(fila)
-            productos.append((
-                f.get("nombre_articulo") or "",
-                f.get("valor_articulo") or 0.0,
-                f.get("cantidad") or 0,
-                f.get("subtotal") or 0.0,
-            ))
-        fecha = dict(filas[0]).get("fecha")
-
-        import secrets
-        codigo = f"TR-{numero_factura}-{secrets.token_hex(3).upper()}"
-        try:
-            db.execute(
-                "INSERT INTO tickets_regalo (factura, codigo) VALUES (?, ?)",
-                (numero_factura, codigo),
-            )
-        except Exception:
-            codigo = f"TR-{numero_factura}"
-
-        config = ConfigManager()
-        impresora = config.get("impresora_termica")
-        if not impresora:
-            messagebox.showinfo(
-                "Ticket Regalo",
-                f"Código del ticket regalo: {codigo}\n(No hay impresora térmica "
-                "configurada para imprimirlo.)",
-            )
-            return
-        ancho = ANCHO_58MM if config.get("ancho_ticket") == 58 else ANCHO_80MM
-        letra = config.get("letra_ticket", "muy_grande")
-        empresa = bp.nombre_empresa()
-        logo = _resolver_logo(config)
-        negocio = {
-            "nombre": bp.obtener_campo("nombre"),
-            "nombre_comercial": bp.obtener_campo("nombre_comercial"),
-            "nif": bp.obtener_campo("nif"),
-            "direccion": bp.obtener_campo("direccion"),
-            "codigo_postal": bp.obtener_campo("codigo_postal"),
-            "provincia": bp.obtener_campo("provincia"),
-            "telefono": bp.obtener_campo("telefono"),
-            "email": bp.obtener_campo("email"),
-        }
-
-        def trabajo():
-            return imprimir_ticket_regalo(
-                numero_factura, fecha, productos, codigo,
-                empresa=empresa, ancho=ancho, letra=letra,
-                impresora=impresora, logo=logo, negocio=negocio,
-            )
-
-        def al_terminar(resultado, error):
-            if error is not None:
-                messagebox.showwarning(
-                    "Impresora térmica", f"No se pudo imprimir: {error}"
-                )
-                return
-            ok, mensaje = resultado
-            if not ok:
-                messagebox.showwarning("Impresora térmica", mensaje)
-
-        en_hilo(self, trabajo, al_terminar)
-
-    def _reimprimir_ticket(self, tree):
-        """Reimprime en la térmica configurada el ticket de una venta previa."""
-        seleccion = tree.selection()
-        if not seleccion:
-            messagebox.showwarning(
-                "Reimprimir ticket",
-                "Seleccione una línea de la venta a reimprimir.",
-            )
-            return
-        valores = tree.item(seleccion[0], "values")
-        if not valores:
-            return
-        numero_factura = valores[1]
-        try:
-            numero_factura = int(numero_factura)
-        except (TypeError, ValueError):
-            messagebox.showerror("Error", "Número de factura no válido.")
-            return
-
-        filas = db.query(
-            "SELECT * FROM ventas WHERE factura = ? "
-            "ORDER BY id ASC",
-            (numero_factura,),
-        )
-        if not filas:
-            messagebox.showwarning(
-                "Reimprimir ticket",
-                f"No hay líneas para la factura #{numero_factura}.",
-            )
-            return
-
-        productos = []
-        total = 0.0
-        base = None
-        cuota = None
-        metodo_pago = "Efectivo"
-        fecha = None
-        cliente = "(Consumidor final)"
-        primera = dict(filas[0])
-        metodo_pago = primera.get("metodo_pago") or "Efectivo"
-        fecha = primera.get("fecha")
-        cliente_id = primera.get("cliente_id")
-        base = primera.get("base_imponible")
-        cuota = primera.get("cuota_iva")
-        for fila in filas:
-            f = dict(fila)
-            productos.append((
-                f.get("nombre_articulo") or "",
-                f.get("valor_articulo") or 0.0,
-                f.get("cantidad") or 0,
-                f.get("subtotal") or 0.0,
-            ))
-        total = sum(p[3] for p in productos)
-        if fecha is None:
-            fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if cliente_id is not None:
-            try:
-                cfila = db.query_one(
-                    "SELECT nombre FROM clientes WHERE id = ?", (cliente_id,)
-                )
-                if cfila:
-                    cliente = cfila["nombre"]
-            except Exception:
-                cliente = "(Consumidor final)"
-
-        self._imprimir_ticket_termico(
-            numero_factura, fecha, productos, total, base, cuota,
-            metodo_pago, cliente,
-        )
+        self.cargar_facturas(tree_facturas)
 
     def cargar_facturas(self, tree):
         try:
-            filas = db.query("SELECT * FROM ventas")
+            filas = db.query(
+                "SELECT id, factura, tipo_documento, estado, nombre_articulo, "
+                "valor_articulo, cantidad, subtotal "
+                "FROM ventas ORDER BY id DESC"
+            )
             for fila in filas:
-                tree.insert("", "end", values=tuple(fila))
+                tree.insert("", "end", values=(
+                    fila["id"],
+                    fila["factura"],
+                    "Factura" if fila["tipo_documento"] == "factura" else "Ticket",
+                    "Borrador" if fila["estado"] == "borrador" else "Emitido",
+                    fila["nombre_articulo"],
+                    f"{fila['valor_articulo']:.2f}",
+                    fila["cantidad"],
+                    f"{fila['subtotal']:.2f}",
+                ))
         except Exception as e:
-            messagebox.showerror("Error", f"Error al cargar las facturas: {e}")
+            messagebox.showerror("Error", f"Error al cargar los documentos: {e}")
 
-    def abrir_cierre_caja(self):
-        from .cierre_caja import CierreCaja
-        CierreCaja(self)
+    def _borrador_seleccionado(self, tree):
+        seleccion = tree.selection()
+        if not seleccion:
+            return None, None
+        item = tree.item(seleccion[0], "values")
+        tipo = item[2]
+        estado = item[3]
+        if tipo == "Factura" and estado == "Borrador":
+            return int(item[0]), item[1]
+        return None, None
+
+    def emitir_borrador_como_factura(self, tree):
+        """Convierte un borrador de factura en factura emitida.
+
+        Asigna el número correlativo oficial definitivo (garantizando que
+        no retrocede) y actualiza el estado a 'emitido', sin necesidad de
+        anular primero el borrador.
+        """
+        doc_id, numero_temp = self._borrador_seleccionado(tree)
+        if doc_id is None:
+            messagebox.showinfo(
+                "Emitir factura",
+                "Selecciona un borrador de factura en la lista para emitirlo.",
+            )
+            return
+
+        confirmar = messagebox.askyesno(
+            "Emitir factura",
+            f"El borrador #{numero_temp} se convertirá en factura final.\n"
+            "Se le asignará el siguiente número correlativo oficial.\n¿Continuar?",
+        )
+        if not confirmar:
+            return
+
+        prefijo, numero_final = correlativos.siguiente_numero("factura")
+        numero_formateado = f"{prefijo}{numero_final:04d}"
+
+        with db.transaccion() as conn:
+            conn.execute(
+                "UPDATE ventas SET factura = ?, estado = 'emitido' "
+                "WHERE id = ?",
+                (numero_formateado, doc_id),
+            )
+            # Registrar el número oficial emitido en el contador de
+            # correlatividad (solo asciende: la secuencia nunca retrocede).
+            conn.execute(
+                "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(tipo, serie) DO UPDATE SET "
+                "ultimo_numero = MAX(ultimo_numero, excluded.ultimo_numero)",
+                ("factura", prefijo, numero_final),
+            )
+
+        self.numero_factura_actual = numero_final + 1
+        self.mostrar_numero_documento()
+
+        # Regenera la factura PDF con el número oficial
+        filas = db.query(
+            "SELECT nombre_articulo, valor_articulo, cantidad, subtotal, "
+            "tipo_iva, cuota_iva, base_imponible FROM ventas WHERE id = ?",
+            (doc_id,),
+        )
+        productos = [
+            (
+                fila["nombre_articulo"], fila["valor_articulo"],
+                fila["cantidad"], fila["subtotal"],
+                fila["tipo_iva"], fila["cuota_iva"], fila["base_imponible"],
+            )
+            for fila in filas
+        ]
+        total = round(sum(p[3] for p in productos), 2)
+        cuota_total = round(sum(p[5] for p in productos), 2)
+        base_total = round(sum(p[6] for p in productos), 2)
+        fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        fila_cliente = db.query_one(
+            "SELECT cliente_id FROM ventas WHERE id = ?", (doc_id,)
+        )
+        cliente_nombre = None
+        if fila_cliente and fila_cliente["cliente_id"]:
+            fila_c = db.query_one(
+                "SELECT nombre FROM clientes WHERE id = ?",
+                (fila_cliente["cliente_id"],),
+            )
+            cliente_nombre = fila_c["nombre"] if fila_c else None
+
+        self.generar_factura_pdf(
+            productos, total, numero_formateado, fecha,
+            base_imponible=base_total, cuota_iva=cuota_total,
+            cliente_nombre=cliente_nombre,
+        )
+        if self._verifactu_activo():
+            self._registrar_verifactu(
+                numero_formateado, fecha, productos, total,
+                base_total, cuota_total,
+                nif_receptor=None, nombre_receptor=cliente_nombre,
+            )
+
+        messagebox.showinfo(
+            "Factura emitida",
+            f"La factura {numero_formateado} se ha emitido correctamente.",
+        )
+        tree.delete(*tree.get_children())
+        self.cargar_facturas(tree)
+
+    def reimprimir_documento(self, tree):
+        seleccion = tree.selection()
+        if not seleccion:
+            messagebox.showinfo("Reimprimir", "Selecciona un documento para reimprimir.")
+            return
+        item = tree.item(seleccion[0], "values")
+        doc_id = int(item[0])
+        numero = item[1]
+        tipo = item[2]
+
+        filas = db.query(
+            "SELECT nombre_articulo, valor_articulo, cantidad, subtotal, "
+            "tipo_iva, cuota_iva, base_imponible, metodo_pago, cliente_id "
+            "FROM ventas WHERE id = ?", (doc_id,)
+        )
+        productos = [
+            (
+                fila["nombre_articulo"], fila["valor_articulo"],
+                fila["cantidad"], fila["subtotal"],
+            )
+            for fila in filas
+        ]
+        total = round(sum(p[3] for p in productos), 2)
+        base_total = round(sum(f["base_imponible"] for f in filas), 2)
+        cuota_total = round(sum(f["cuota_iva"] for f in filas), 2)
+        metodo = filas[0]["metodo_pago"] if filas else "Efectivo"
+
+        cliente_nombre = None
+        if filas and filas[0]["cliente_id"]:
+            fila_c = db.query_one(
+                "SELECT nombre FROM clientes WHERE id = ?",
+                (filas[0]["cliente_id"],),
+            )
+            cliente_nombre = fila_c["nombre"] if fila_c else None
+
+        fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        if tipo == "Ticket":
+            self._imprimir_ticket_termico(
+                numero, fecha, productos, total, base_total, cuota_total,
+                metodo, cliente_nombre, tipo_documento="ticket",
+            )
+        else:
+            self.generar_factura_pdf(
+                productos, total, numero, fecha,
+                base_imponible=base_total, cuota_iva=cuota_total,
+                cliente_nombre=cliente_nombre,
+            )

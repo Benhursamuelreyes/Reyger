@@ -143,6 +143,7 @@ def test_crud_categorias():
     tmp_dir, ruta = db_temporal()
     try:
         shutil.copyfile(PLANTILLA, ruta)
+        get_db_path_anterior = modulo_db.get_db_path
         modulo_db.get_db_path = lambda: ruta
         modulo_db.close()
 
@@ -188,6 +189,8 @@ def test_crud_categorias():
         chequear("eliminar General rechazado", not eliminar(id_general()))
         root.destroy()
     finally:
+        modulo_db.close()
+        modulo_db.get_db_path = get_db_path_anterior
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
@@ -205,6 +208,7 @@ def test_mapas_y_filtro_ventas():
     tmp_dir, ruta = db_temporal()
     try:
         shutil.copyfile(PLANTILLA, ruta)
+        get_db_path_anterior = modulo_db.get_db_path
         modulo_db.get_db_path = lambda: ruta
         modulo_db.close()
         Ventas.db_name = ruta
@@ -262,6 +266,8 @@ def test_mapas_y_filtro_ventas():
         chequear("boton activo resaltado", btn_activo != ventas.botones_categoria["Frutas"].cget("bg"))
         root.destroy()
     finally:
+        modulo_db.close()
+        modulo_db.get_db_path = get_db_path_anterior
         shutil.rmtree(tmp_dir, ignore_errors=False)
 
 
@@ -271,6 +277,7 @@ def test_inventario_filtro_y_columna():
     tmp_dir, ruta = db_temporal()
     try:
         shutil.copyfile(PLANTILLA, ruta)
+        get_db_path_anterior = modulo_db.get_db_path
         modulo_db.get_db_path = lambda: ruta
         modulo_db.close()
         Inventario.db_name = ruta
@@ -310,6 +317,8 @@ def test_inventario_filtro_y_columna():
         chequear("Todas muestra los dos productos", len(inventario.tre.get_children()) == 2)
         root.destroy()
     finally:
+        modulo_db.close()
+        modulo_db.get_db_path = get_db_path_anterior
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

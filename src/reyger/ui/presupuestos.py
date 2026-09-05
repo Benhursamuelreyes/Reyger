@@ -264,6 +264,15 @@ class Presupuestos(tk.Frame):
 
         tk.Button(
             frame_acciones,
+            text="Enviar a impresora",
+            bg="#8E44AD",
+            fg="white",
+            font="sans 10 bold",
+            command=self._enviar_a_impresora,
+        ).pack(side="left", padx=5)
+
+        tk.Button(
+            frame_acciones,
             text="Limpiar",
             bg="#95A5A6",
             fg="white",
@@ -456,20 +465,20 @@ class Presupuestos(tk.Frame):
         except Exception as e:
             messagebox.showerror("Error", f"Error generando PDF: {e}")
 
-    def _imprimir_presupuesto(self):
-        """Abre el PDF del presupuesto en el visor del sistema para imprimir en A4.
+    def _generar_pdf_temporal(self):
+        """Genera el PDF del presupuesto en un archivo temporal y lo devuelve.
 
-        Los presupuestos NO se envían a la impresora térmica de tickets: se
-        generan en PDF A4 estandarizado y se abren en el visor predeterminado
-        para permitir la impresión estándar.
+        Devuelve la ruta del PDF A4 generado o ``None`` si no se puede
+        completar el presupuesto o falla la generación.
         """
+        import tempfile
+
         cliente = self.entry_cliente.get().strip()
         if not cliente or not self.tree.get_children():
             messagebox.showerror("Error", "Complete el presupuesto primero")
-            return
+            return None
 
         try:
-            import tempfile
             with tempfile.NamedTemporaryFile(
                 suffix=".pdf", prefix="presupuesto_", delete=False
             ) as f:
@@ -497,7 +506,7 @@ class Presupuestos(tk.Frame):
                 output_path=archivo_tmp,
                 titulo_documento=bp.nombre_empresa(),
                 subtitulo_documento="PRESUPUESTO",
-                numero="",
+                numero=getattr(self, "numero_presupuesto_actual", None) or "",
                 fecha=datetime.now(),
                 cliente_nombre=cliente,
                 cliente_email=self.entry_email.get().strip(),
@@ -508,11 +517,34 @@ class Presupuestos(tk.Frame):
                 total=total,
                 campos_firma=False,
             )
-
-            # Abrir en el visor de PDF del sistema (permite imprimir en A4).
-            open_file(os.path.abspath(archivo_tmp))
+            return archivo_tmp
         except Exception as e:
-            messagebox.showerror("Error", f"Error al imprimir: {e}")
+            messagebox.showerror("Error", f"Error generando PDF: {e}")
+            return None
+
+    def _imprimir_presupuesto(self):
+        """Abre el PDF del presupuesto en el visor del sistema para imprimir en A4.
+
+        Los presupuestos NO se envían a la impresora térmica de tickets: se
+        generan en PDF A4 estandarizado y se abren en el visor predeterminado
+        para permitir la impresión estándar.
+        """
+        archivo_tmp = self._generar_pdf_temporal()
+        if not archivo_tmp:
+            return
+
+        # Abrir en el visor de PDF del sistema (permite imprimir en A4).
+        open_file(os.path.abspath(archivo_tmp))
+
+    def _enviar_a_impresora(self):
+        """Genera el PDF A4 y lo envía directamente a una impresora elegida."""
+        archivo_tmp = self._generar_pdf_temporal()
+        if not archivo_tmp:
+            return
+
+        from ..hardware.impresoras import DialogoSeleccionImpresora
+        dialogo = DialogoSeleccionImpresora(self, archivo_tmp)
+        self.wait_window(dialogo)
     
     def limpiar_presupuesto(self):
         """Limpia el presupuesto actual"""

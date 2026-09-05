@@ -35,6 +35,9 @@ class Ajustes(tk.Frame):
         self.configure(bg=self.colors["bg_principal"])
         
         self.logo_image_preview = None
+        self.verifactu_var = None
+        self.bp_entries = {}
+        self._alineaciones_vars = {}
         self.widgets()
     
     def widgets(self):
@@ -140,24 +143,6 @@ class Ajustes(tk.Frame):
 
         # Sección 6: Impresora térmica
         self.crear_seccion_impresora_termica(main_frame)
-
-        # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
-
-        # Sección 6b: Impresora de facturas (A4)
-        self.crear_seccion_impresora_facturas(main_frame)
-
-        # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
-
-        # Sección 6c: Cierre de caja (arqueo)
-        self.crear_seccion_arqueo(main_frame)
-
-        # Sección 6d: Devoluciones
-        self.crear_seccion_devoluciones(main_frame)
-
-        # Sección 6e: Tarjetas regalo / vales
-        self.crear_seccion_tarjetas(main_frame)
 
         # Separador
         tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
@@ -400,9 +385,12 @@ class Ajustes(tk.Frame):
             ("codigo_postal", "Código postal:", perfil.get("codigo_postal", "") or "", 8),
             ("provincia", "Provincia:", perfil.get("provincia", "") or "", 25),
             ("telefono", "Teléfono:", perfil.get("telefono", "") or "", 20),
+            ("whatsapp", "WhatsApp:", perfil.get("whatsapp", "") or "", 20),
             ("email", "Email:", perfil.get("email", "") or "", 35),
             ("actividad_economica", "Actividad económica:", perfil.get("actividad_economica", "") or "", 40),
             ("numero_series", "Nº de series (VeriFactu):", perfil.get("numero_series", "A") or "A", 6),
+            ("numero_serie_ticket", "Serie / nº inicial tickets:", perfil.get("numero_serie_ticket", "T-") or "T-", 12),
+            ("numero_serie_factura", "Serie / nº inicial facturas:", perfil.get("numero_serie_factura", "F-") or "F-", 12),
         ]
 
         self.bp_entries = {}
@@ -582,6 +570,37 @@ class Ajustes(tk.Frame):
             pady=10,
         )
         frame.pack(fill="x", pady=10)
+
+        # --- Conmutador (toggle) de activación de VeriFactu ----------------
+        fila_activa = tk.Frame(frame, bg=self.colors["bg_principal"])
+        fila_activa.pack(fill="x", padx=20, pady=(0, 6))
+        self.verifactu_var = tk.BooleanVar(
+            value=bool(bp.obtener_campo("verifactu_activo"))
+        )
+        tk.Checkbutton(
+            fila_activa,
+            variable=self.verifactu_var,
+            text="Activar integración / soporte VeriFactu",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            activebackground=self.colors["bg_principal"],
+            activeforeground=self.colors["fg_texto"],
+            selectcolor=self.colors["bg_secundario"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            anchor="w",
+        ).pack(fill="x")
+        tk.Label(
+            fila_activa,
+            text="Al desactivarla, las ventas se registrarán sin generar "
+                 "la cadena VeriFactu ni los ficheros de envío a la AEAT.",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=650,
+            justify="left",
+        ).pack(anchor="w")
+
+        tk.Frame(frame, bg="#CCCCCC", height=1).pack(fill="x", pady=(6, 10))
 
         self._verifactu_estado_labels = {}
 
@@ -942,6 +961,39 @@ class Ajustes(tk.Frame):
         )
         self.combo_letra_ticket.pack(anchor="w", padx=20, pady=(0, 10))
 
+        # --- Alineación de bloques del ticket -----------------------------
+        frame_alineaciones = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_alineaciones.pack(fill="x", padx=20, pady=(0, 10))
+
+        opciones_alineacion = ["izquierda", "centro", "derecha"]
+
+        self._alineaciones_vars = {}
+        for etiqueta, clave, default in [
+            ("Alineación encabezado:", "alineacion_encabezado", "centro"),
+            ("Alineación datos fiscales:", "alineacion_datos", "izquierda"),
+            ("Alineación pie de página:", "alineacion_pie", "centro"),
+        ]:
+            var = tk.StringVar(value=self.config_manager.get(clave, default))
+            self._alineaciones_vars[clave] = var
+            tk.Label(
+                frame_alineaciones,
+                text=etiqueta,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            ).grid(row=len(self._alineaciones_vars) - 1, column=0, sticky="w", padx=(0, 10))
+            combo = ttk.Combobox(
+                frame_alineaciones,
+                textvariable=var,
+                values=opciones_alineacion,
+                state="readonly",
+                width=14,
+            )
+            combo.grid(
+                row=len(self._alineaciones_vars) - 1, column=1,
+                sticky="w", pady=(2, 2),
+            )
+
         btn_prueba = tk.Button(
             frame,
             text="🧾 Imprimir página de prueba",
@@ -953,183 +1005,6 @@ class Ajustes(tk.Frame):
             pady=8
         )
         btn_prueba.pack(anchor="w", padx=20, pady=(0, 10))
-
-    def crear_seccion_impresora_facturas(self, parent):
-        """Sección de configuración de la impresora de facturas (A4)."""
-        frame = tk.LabelFrame(
-            parent,
-            text="🖨️ Impresora de Facturas (A4 / driver del sistema)",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            padx=15,
-            pady=10
-        )
-        frame.pack(fill="x", pady=10)
-
-        label_impresora = tk.Label(
-            frame,
-            text="Impresora de facturas (A4):",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
-        )
-        label_impresora.pack(anchor="w", padx=20, pady=(10, 5))
-
-        impresoras = ["(Desactivada)"] + listar_impresoras_termicas()
-        self.combo_impresora_facturas = ttk.Combobox(
-            frame,
-            values=impresoras,
-            state="readonly",
-            font=f"sans {self.config_manager.get_tamaño_fuente()}",
-            width=38
-        )
-        actual = self.config_manager.get("impresora_facturas")
-        if actual and actual not in impresoras:
-            etiqueta = f"{actual} (no detectada)"
-            self.combo_impresora_facturas["values"] = impresoras + [etiqueta]
-            self.combo_impresora_facturas.set(etiqueta)
-        elif actual in impresoras:
-            self.combo_impresora_facturas.set(actual)
-        else:
-            self.combo_impresora_facturas.current(0)
-        self.combo_impresora_facturas.pack(anchor="w", padx=20, pady=(0, 10))
-
-        lbl_info = tk.Label(
-            frame,
-            text=(
-                "Las facturas se generan en PDF A4. Si eliges una impresora, "
-                "se envía directamente a esa impresora; si no, se abren en el "
-                "visor del sistema para imprimirlas manualmente."
-            ),
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
-            wraplength=560,
-            justify="left"
-        )
-        lbl_info.pack(anchor="w", padx=20, pady=(0, 10))
-
-    def crear_seccion_arqueo(self, parent):
-        """Sección de acceso al cierre y conteo de caja."""
-        frame = tk.LabelFrame(
-            parent,
-            text="💵 Cierre de Caja (Arqueo)",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            padx=15,
-            pady=10
-        )
-        frame.pack(fill="x", pady=10)
-
-        tk.Label(
-            frame,
-            text="Cuenta el efectivo físico, contrasta con el total esperado "
-                 "de las ventas y emite el informe de cierre en la impresora "
-                 "de tickets.",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
-            wraplength=560,
-            justify="left"
-        ).pack(anchor="w", padx=20, pady=(6, 10))
-
-        btn_abrir = tk.Button(
-            frame,
-            text="💵 Abrir Cierre de Caja",
-            bg="#8B6914",
-            fg="white",
-            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
-            command=self._abrir_cierre_caja,
-            padx=15,
-            pady=8
-        )
-        btn_abrir.pack(anchor="w", padx=20, pady=(0, 10))
-
-    def _abrir_cierre_caja(self):
-        from .cierre_caja import CierreCaja
-        CierreCaja(self)
-
-    def crear_seccion_devoluciones(self, parent):
-        """Sección de acceso al sistema de devoluciones."""
-        frame = tk.LabelFrame(
-            parent,
-            text="🔄 Devoluciones / Rectificaciones",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            padx=15,
-            pady=10
-        )
-        frame.pack(fill="x", pady=10)
-
-        tk.Label(
-            frame,
-            text="Devuelve productos de una factura, reintegra el stock y "
-                 "registra la rectificación (reembolso en efectivo, tarjeta "
-                 "o vale).",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
-            wraplength=560,
-            justify="left"
-        ).pack(anchor="w", padx=20, pady=(6, 10))
-
-        tk.Button(
-            frame,
-            text="🔄 Abrir Devoluciones",
-            bg="#27AE60",
-            fg="white",
-            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
-            command=self._abrir_devoluciones,
-            padx=15,
-            pady=8
-        ).pack(anchor="w", padx=20, pady=(0, 10))
-
-    def _abrir_devoluciones(self):
-        from .devoluciones import Devoluciones
-        Devoluciones(self)
-
-    def crear_seccion_tarjetas(self, parent):
-        """Sección de acceso a tarjetas regalo / vales."""
-        frame = tk.LabelFrame(
-            parent,
-            text="🎁 Tarjetas Regalo / Vales",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-            padx=15,
-            pady=10
-        )
-        frame.pack(fill="x", pady=10)
-
-        tk.Label(
-            frame,
-            text="Crea tarjetas regalo con saldo, consulta el saldo, recárgalas "
-                 "y úsalas como método de pago en las ventas.",
-            bg=self.colors["bg_principal"],
-            fg=self.colors["fg_texto"],
-            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
-            wraplength=560,
-            justify="left"
-        ).pack(anchor="w", padx=20, pady=(6, 10))
-
-        tk.Button(
-            frame,
-            text="🎁 Abrir Tarjetas Regalo",
-            bg="#8E44AD",
-            fg="white",
-            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
-            command=self._abrir_tarjetas_regalo,
-            padx=15,
-            pady=8
-        ).pack(anchor="w", padx=20, pady=(0, 10))
-
-    def _abrir_tarjetas_regalo(self):
-        from .tarjetas_regalo import TarjetasRegalo
-        TarjetasRegalo(self)
-
 
     def imprimir_pagina_prueba(self):
         """Envía un ticket de ejemplo a la impresora seleccionada."""
@@ -1161,15 +1036,23 @@ class Ajustes(tk.Frame):
             base=0.91,
             cuota=0.19,
             metodo_pago="Efectivo",
-            empresa=self.entry_nombre.get() or "Mi Empresa",
+            empresa=(
+                self.bp_entries["nombre"].get()
+                if "nombre" in self.bp_entries
+                else "Mi Empresa"
+            ),
             ancho=ancho,
             letra=letra,
             logo=logo,
             negocio={
                 clave: self.bp_entries[clave].get() if clave in self.bp_entries else ""
                 for clave in ("nombre", "nombre_comercial", "nif", "direccion",
-                              "codigo_postal", "provincia", "telefono", "email")
+                              "codigo_postal", "provincia", "telefono", "email",
+                              "whatsapp")
             },
+            alineacion_encabezado=self._alineaciones_vars["alineacion_encabezado"].get(),
+            alineacion_datos=self._alineaciones_vars["alineacion_datos"].get(),
+            alineacion_pie=self._alineaciones_vars["alineacion_pie"].get(),
         )
         if enviar_bytes(datos, None if impresora == "" else impresora):
             messagebox.showinfo(
@@ -1628,16 +1511,14 @@ class Ajustes(tk.Frame):
                     if self.combo_impresora.get() in ("", "(Desactivada)")
                     else self.combo_impresora.get().removesuffix(" (no detectada)")
                 ),
-                "impresora_facturas": (
-                    None
-                    if self.combo_impresora_facturas.get() in ("", "(Desactivada)")
-                    else self.combo_impresora_facturas.get().removesuffix(" (no detectada)")
-                ),
                 "ancho_ticket": int(self.var_ancho_ticket.get()),
                 "letra_ticket": next(
                     clave for clave, etiqueta in ETIQUETAS_LETRA.items()
                     if etiqueta == self.var_letra_ticket.get()
                 ),
+                "alineacion_encabezado": self._alineaciones_vars["alineacion_encabezado"].get(),
+                "alineacion_datos": self._alineaciones_vars["alineacion_datos"].get(),
+                "alineacion_pie": self._alineaciones_vars["alineacion_pie"].get(),
             })
             self.config_manager.save_config()
 
@@ -1650,9 +1531,13 @@ class Ajustes(tk.Frame):
                 codigo_postal=self.bp_entries["codigo_postal"].get(),
                 provincia=self.bp_entries["provincia"].get(),
                 telefono=self.bp_entries["telefono"].get(),
+                whatsapp=self.bp_entries["whatsapp"].get(),
                 email=self.bp_entries["email"].get(),
                 actividad_economica=self.bp_entries["actividad_economica"].get(),
                 numero_series=self.bp_entries["numero_series"].get(),
+                numero_serie_ticket=self.bp_entries["numero_serie_ticket"].get(),
+                numero_serie_factura=self.bp_entries["numero_serie_factura"].get(),
+                verifactu_activo=1 if self.verifactu_var.get() else 0,
                 moneda=self.combo_moneda.get(),
                 locale=self.combo_locale.get(),
             )
@@ -1681,7 +1566,10 @@ class Ajustes(tk.Frame):
                 "escaner_activo": False,
                 "impresora_termica": None,
                 "ancho_ticket": 80,
-                "letra_ticket": "muy_grande"
+                "letra_ticket": "muy_grande",
+                "alineacion_encabezado": "centro",
+                "alineacion_datos": "izquierda",
+                "alineacion_pie": "centro",
             }
             
             self.config_manager.config_data = default_config
@@ -1690,13 +1578,25 @@ class Ajustes(tk.Frame):
             # Actualizar controles
             self.var_tema.set("claro")
             self.scale_tamaño.set(14)
-            self.entry_nombre.delete(0, "end")
-            self.entry_nombre.insert(0, "Mi Empresa")
+            if "nombre" in self.bp_entries:
+                self.bp_entries["nombre"].delete(0, "end")
+                self.bp_entries["nombre"].insert(0, "Mi Empresa")
+            if "nombre_comercial" in self.bp_entries:
+                self.bp_entries["nombre_comercial"].delete(0, "end")
+                self.bp_entries["nombre_comercial"].insert(0, "")
             self.var_hora.set(True)
             self.var_decimales.set(2)
             self.combo_impresora.current(0)
             self.var_ancho_ticket.set(80)
             self.var_letra_ticket.set(ETIQUETAS_LETRA["muy_grande"])
+            for clave, var in self._alineaciones_vars.items():
+                var.set({
+                    "alineacion_encabezado": "centro",
+                    "alineacion_datos": "izquierda",
+                    "alineacion_pie": "centro",
+                }.get(clave, "centro"))
+            if self.verifactu_var is not None:
+                self.verifactu_var.set(True)
             self.logo_label.config(image="", text="📷\nSin logo")
             self.logo_image_preview = None
             

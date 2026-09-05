@@ -150,6 +150,10 @@ class VentanaAlbaranes(Toplevel):
             bg="#95A5A6", fg="white", command=self.quitar_linea,
         ).pack(side="left")
         Button(
+            frame_acciones, text="🖨 Imprimir…", font="sans 12 bold",
+            bg="#8E44AD", fg="white", command=self.imprimir_seleccionado,
+        ).pack(side="left", padx=(8, 0))
+        Button(
             frame_acciones, text="📄 Generar PDF y guardar", font="sans 13 bold",
             bg="#000CFF", fg="white", command=self.generar_albaran,
         ).pack(side="right")
@@ -326,3 +330,28 @@ class VentanaAlbaranes(Toplevel):
         carpeta = get_output_path("albaranes")
         os.makedirs(carpeta, exist_ok=True)
         open_file(carpeta)
+
+    def imprimir_seleccionado(self):
+        """Envía el PDF del albarán seleccionado a la impresora elegida."""
+        import glob
+
+        numero = self._numero_seleccionado()
+        if numero is None:
+            return
+
+        from ..resources import get_output_path
+        carpeta = get_output_path("albaranes")
+        coincidencias = sorted(glob.glob(
+            os.path.join(carpeta, f"Albaran_{numero}_*.pdf") or []
+        ))
+        if not coincidencias:
+            messagebox.showwarning(
+                "Albaranes",
+                f"No se encontró el PDF del albarán {numero}.",
+                parent=self,
+            )
+            return
+
+        from ..hardware.impresoras import DialogoSeleccionImpresora
+        dialogo = DialogoSeleccionImpresora(self, coincidencias[-1])
+        self.wait_window(dialogo)

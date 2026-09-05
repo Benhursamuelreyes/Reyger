@@ -1,14 +1,22 @@
 """
-Módulo para gestión de impresoras en Windows.
+Módulo para gestión de impresoras multiplataforma.
 Permite seleccionar y imprimir documentos a cualquier impresora disponible.
 
-Requiere: pip install pywin32
+* Windows: usa pywin32 (``win32print``); si no está instalado, intenta
+  una vía alternativa por ``wmic``.
+* Linux y macOS: usa CUPS (``lpstat`` / ``lp``), presente en ambas
+  plataformas; si las herramientas CUPS no existen, devuelve lista vacía.
 """
 
 import os
+import platform
+import shutil
+import subprocess
 import tkinter as tk
 from tkinter import messagebox, ttk
 from ..config import ConfigManager
+
+SISTEMA = platform.system()
 
 # Intentar importar win32print
 try:
@@ -16,7 +24,8 @@ try:
     WINDOWS_PRINTING_AVAILABLE = True
 except ImportError:
     WINDOWS_PRINTING_AVAILABLE = False
-    print("Advertencia: pywin32 no está instalado. La funcionalidad de impresoras estará limitada.")
+    if SISTEMA == "Windows":
+        print("Advertencia: pywin32 no está instalado. La funcionalidad de impresoras estará limitada.")
 
 
 class GestorImpresoras:
@@ -39,37 +48,85 @@ class GestorImpresoras:
     def obtener_impresoras_disponibles(self):
         """
         Obtiene la lista de impresoras disponibles en el sistema.
-        
+
         Returns:
             Lista de nombres de impresoras o lista vacía si no hay disponibles
         """
-        impresoras = []
-        
+        self.impresora_predeterminada = None
+
+        if SISTEMA != "Windows":
+            # Linux y macOS se apoyan en CUPS (lpstat / lp).
+            impresoras, predeterminada = self._obtener_impresoras_cups()
+            self.impresora_predeterminada = predeterminada
+            return impresoras
+
         if not WINDOWS_PRINTING_AVAILABLE:
             # Si no está disponible pywin32, intentar métodos alternativos
-            return self._obtener_impresoras_fallback()
-        
+            return self._obtener_impresoras_wmic()
+
+        impresoras = []
         try:
             # Obtener impresora predeterminada
             try:
                 self.impresora_predeterminada = win32print.GetDefaultPrinter()
-            except:
+            except Exception:
                 self.impresora_predeterminada = None
-            
+
             # Enumerar todas las impresoras
             flags = win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_NETWORK
             printers = win32print.EnumPrinters(flags)
-            
+
             for printer_info in printers:
                 if printer_info[2] and printer_info[2].strip():
                     impresoras.append(printer_info[2])
-        
+
         except Exception as e:
             print(f"Error obteniendo impresoras: {e}")
-        
+
         return impresoras
-    
-    def _obtener_impresoras_fallback(self):
+
+    def _obtener_impresoras_cups(self):
+        """
+        Impresoras vía CUPS (Linux y macOS).
+
+        Usa ``lpstat -e`` (lista) y ``lpstat -d`` (predeterminada), cuyo
+        formato de salida es estable e independiente del locale.
+
+        Returns:
+            Tupla (lista de impresoras, nombre de la predeterminada o None).
+        """
+        if shutil.which("lpstat") is None:
+            return [], None
+
+        impresoras = []
+        predeterminada = None
+
+        try:
+            salida = subprocess.run(
+                ["lpstat", "-e"], capture_output=True, text=True, timeout=10
+            )
+            if salida.returncode == 0:
+                impresoras = [
+                    linea.strip()
+                    for linea in salida.stdout.splitlines()
+                    if linea.strip()
+                ]
+        except Exception as e:
+            print(f"Error listando impresoras CUPS: {e}")
+
+        try:
+            salida = subprocess.run(
+                ["lpstat", "-d"], capture_output=True, text=True, timeout=10
+            )
+            linea = salida.stdout.strip() if salida.returncode == 0 else ""
+            if ":" in linea:
+                predeterminada = linea.split(":", 1)[1].strip() or None
+        except Exception:
+            predeterminada = None
+
+        return impresoras, predeterminada
+
+    def _obtener_impresoras_wmic(self):
         """
         Método alternativo para obtener impresoras si pywin32 no está disponible.
         """
@@ -84,7 +141,7 @@ class GestorImpresoras:
                     if partes:
                         impresoras.append(partes[0])
             return impresoras
-        except:
+        except Exception:
             return []
     
     def imprimir_archivo(self, ruta_archivo, nombre_impresora=None):
@@ -110,14 +167,35 @@ class GestorImpresoras:
             return False
         
         try:
-            if WINDOWS_PRINTING_AVAILABLE:
-                # Usar win32print
-                return self._imprimir_con_win32(ruta_archivo, nombre_impresora)
-            else:
+            if SISTEMA == "Windows":
+                if WINDOWS_PRINTING_AVAILABLE:
+                    # Usar win32print
+                    return self._imprimir_con_win32(ruta_archivo, nombre_impresora)
                 # Usar fallback
                 return self._imprimir_fallback(ruta_archivo, nombre_impresora)
+            # Linux y macOS: CUPS
+            return self._imprimir_con_cups(ruta_archivo, nombre_impresora)
         except Exception as e:
             print(f"Error imprimiendo: {e}")
+            return False
+
+    def _imprimir_con_cups(self, ruta_archivo, nombre_impresora):
+        """Imprime un archivo con ``lp`` (Linux/macOS) en la impresora dada."""
+        if shutil.which("lp") is None:
+            print("Error: CUPS (lp) no está disponible en este sistema")
+            return False
+
+        comando = ["lp"]
+        if nombre_impresora:
+            comando += ["-d", nombre_impresora]
+        comando.append(ruta_archivo)
+        try:
+            resultado = subprocess.run(
+                comando, capture_output=True, text=True, timeout=60
+            )
+            return resultado.returncode == 0
+        except Exception as e:
+            print(f"Error imprimiendo con CUPS: {e}")
             return False
     
     def _imprimir_con_win32(self, ruta_archivo, nombre_impresora):

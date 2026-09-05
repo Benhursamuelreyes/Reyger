@@ -44,6 +44,13 @@ ESCALAS_LETRA = {
     "muy_grande": b"\x1d!\x11",  # doble ancho y alto
 }
 
+#: Justificado (alineación) admisible para encabezados y pie de página.
+ALINEACIONES = {
+    "izquierda": IZQUIERDA,
+    "centro": CENTRO,
+    "derecha": b"\x1ba\x02",
+}
+
 #: Escala del nombre de la empresa: siempre un paso mayor que el cuerpo
 #: para que el encabezado destaque sobre los productos.
 ESCALA_ENCABEZADO = {
@@ -88,19 +95,23 @@ def _fila_dos_columnas(izquierda, derecha, ancho):
     return _linea(izquierda + " " * max(espacio, 0) + derecha)
 
 
-def _imagen_a_bitmap(imagen, puntos_ancho, puntos_alto_max=192):
-    """Convierte una imagen PIL (path o imagen) en mapa de bits ESC/POS.
+def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
+    """Convierte una imagen en mapa de bits ESC/POS (comando ``GS v 0``).
 
-    Reutiliza la lógica de :func:`_rasterizar_logo` partiendo de una imagen
-    ya cargada. Devuelve los bytes del comando ``GS v 0`` o ``None``.
+    El resultado es blanco y negro puro: primero se compone la imagen
+    sobre fondo blanco (para que las transparencias no salgan negras),
+    se reescala al ancho del cabezal y se umbraliza sin grises, porque
+    los térmicos imprimen los grises como manchas.
+
+    Devuelve los bytes del comando listo para enviar o ``None`` si no
+    hay Pillow, la imagen no existe o falla el procesado.
     """
     try:
         from PIL import Image
     except ImportError:
         return None
     try:
-        if not hasattr(imagen, "width"):
-            imagen = Image.open(imagen)
+        imagen = Image.open(ruta)
         if imagen.mode != "RGBA":
             imagen = imagen.convert("RGBA")
         fondo = Image.new("RGBA", imagen.size, (255, 255, 255, 255))
@@ -143,16 +154,6 @@ def _imagen_a_bitmap(imagen, puntos_ancho, puntos_alto_max=192):
         return None
 
 
-def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
-    """Convierte un archivo de imagen en mapa de bits ESC/POS (``GS v 0``)."""
-    return _imagen_a_bitmap(ruta, puntos_ancho, puntos_alto_max)
-
-
-def _rasterizar_imagen_pil(imagen, puntos_ancho, puntos_alto_max=320):
-    """Rasteriza una imagen PIL en memoria (p. ej. barcode o QR)."""
-    return _imagen_a_bitmap(imagen, puntos_ancho, puntos_alto_max)
-
-
 class TicketTermico:
     """Constructor de tickets ESC/POS.
 
@@ -164,7 +165,11 @@ class TicketTermico:
     """
 
     def __init__(self, ancho=ANCHO_80MM, empresa="Mi Empresa",
-                 letra="muy_grande", logo=None, negocio=None):
+                 letra="muy_grande", logo=None, negocio=None,
+                 alineacion_encabezado="centro",
+                 alineacion_datos="izquierda",
+                 alineacion_pie="centro",
+                 tipo_documento="ticket"):
         self.ancho = ancho
         self.empresa = empresa
         self.negocio = negocio or {}
@@ -180,6 +185,12 @@ class TicketTermico:
         self._escala_encabezado = ESCALA_ENCABEZADO[letra]
         self.logo_ruta = logo if logo and os.path.exists(logo) else None
         self.puntos_ancho = PUNTOS_POR_ANCHO.get(ancho, 512)
+        # Alineación configurable de cada bloque (por defecto: encabezado y
+        # pie centrados, datos fiscales a la izquierda).
+        self._just_encabezado = ALINEACIONES.get(alineacion_encabezado, CENTRO)
+        self._just_datos = ALINEACIONES.get(alineacion_datos, IZQUIERDA)
+        self._just_pie = ALINEACIONES.get(alineacion_pie, CENTRO)
+        self.tipo_documento = tipo_documento
         self._partes = [INICIO, CODEPAGE_PC850, self._fuente_cuerpo]
 
     # ---------------------------------------------------------- bloques
@@ -188,32 +199,43 @@ class TicketTermico:
         if self.logo_ruta is not None:
             raster = _rasterizar_logo(self.logo_ruta, self.puntos_ancho)
             if raster is not None:
-                self._partes += [CENTRO, raster, b"\n"]
+                self._partes += [self._just_encabezado, raster, b"\n"]
         self._partes += [
-            CENTRO,
+            self._just_encabezado,
             self._escala_encabezado,
             NEGRITA_ON,
             _linea(nombre[: self.columnas_encabezado]),
             self._fuente_cuerpo,
             NEGRITA_OFF,
         ]
-        # Nombre comercial / de la tienda, justo bajo la razón social.
+        # Nombre comercial de la tienda bajo la razón social si está informado
         nombre_comercial = self.negocio.get("nombre_comercial")
         if nombre_comercial:
-            self._partes += [CENTRO, _linea(str(nombre_comercial))]
-        # Membrete completo del negocio (NIF, dirección, teléfono, email)
+            self._partes += [self._just_encabezado, _linea(str(nombre_comercial))]
+        # Membrete completo del negocio (NIF, dirección, teléfono, email,
+        # WhatsApp) con la alineación de datos configurada.
         for linea_extra in self._lineas_negocio():
-            self._partes.append(CENTRO)
+            self._partes.append(self._just_encabezado)
             self._partes.append(_linea(linea_extra))
         self._partes += [
-            CENTRO,
-            _linea("RECIBO DE VENTA"),
+            self._just_encabezado,
+            _linea(self._titulo_documento()),
             b"\n",
         ]
         return self
 
+    def _titulo_documento(self):
+        """Cabecera del documento según el tipo (ticket o factura)."""
+        if self.tipo_documento == "factura":
+            return "FACTURA"
+        return "RECIBO DE VENTA"
+
     def _lineas_negocio(self):
-        """Devuelve las líneas del membrete fiscal usando datos del perfil."""
+        """Devuelve las líneas del membrete fiscal usando datos del perfil.
+
+        Por diseño se omite la «actividad económica» para mantener el
+        ticket limpio; también se añade el WhatsApp si está configurado.
+        """
         lineas = []
         nif = self.negocio.get("nif")
         if nif:
@@ -228,19 +250,26 @@ class TicketTermico:
             lineas.append(linea_dir.strip())
         telefono = self.negocio.get("telefono")
         email = self.negocio.get("email")
-        if telefono or email:
-            contacto = ", ".join(
-                p for p in (f"Tel: {telefono}" if telefono else "",
-                            email or "") if p
-            )
-            lineas.append(contacto)
+        whatsapp = self.negocio.get("whatsapp")
+        contacto = []
+        if telefono:
+            contacto.append(f"Tel: {telefono}")
+        if whatsapp:
+            contacto.append(f"WhatsApp: {whatsapp}")
+        if email:
+            contacto.append(email)
+        if contacto:
+            # Se corta a una línea: prioridad Tel/Wha/Email
+            linea_contacto = "  ".join(contacto)
+            lineas.append(linea_contacto[: self.columnas_encabezado])
         return lineas
 
     def info(self, numero_factura, fecha, cliente=None):
         self._partes += [
-            IZQUIERDA,
+            self._just_datos,
             _fila_dos_columnas(
-                f"Recibo: {numero_factura}", fecha, self.columnas
+                f"{'Factura' if self.tipo_documento == 'factura' else 'Recibo'}: {numero_factura}",
+                fecha, self.columnas,
             ),
         ]
         if cliente:
@@ -291,7 +320,7 @@ class TicketTermico:
 
     def pie(self):
         self._partes += [
-            CENTRO,
+            self._just_pie,
             _linea("Gracias por su compra"),
             _linea("Conserve este recibo"),
             b"\n\n",
@@ -322,6 +351,10 @@ def construir_ticket_venta(
     letra="muy_grande",
     logo=None,
     negocio=None,
+    alineacion_encabezado="centro",
+    alineacion_datos="izquierda",
+    alineacion_pie="centro",
+    tipo_documento="ticket",
 ):
     """Genera los bytes del ticket completo de una venta.
 
@@ -329,11 +362,20 @@ def construir_ticket_venta(
     ``(nombre, precio, cantidad, subtotal[, ...])`` tal y como las
     produce el módulo de ventas. *logo* es una ruta de imagen opcional
     que se imprime rasterizada en el encabezado. *negocio* es un diccionario
-    opcional con el membrete fiscal (``nombre``, ``nif``, ``direccion``,
-    ``codigo_postal``, ``provincia``, ``telefono``, ``email``).
+    opcional con el membrete fiscal (``nombre``, ``nombre_comercial``,
+    ``nif``, ``direccion``, ``codigo_postal``, ``provincia``, ``telefono``,
+    ``email``, ``whatsapp``).
+
+    Las alineaciones admiten 'izquierda', 'centro' o 'derecha' para cada
+    bloque (encabezado, datos fiscales y pie). *tipo_documento* distingue
+    entre 'ticket' (recibo simplificado, por defecto) y 'factura'.
     """
     ticket = TicketTermico(
-        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
+        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio,
+        alineacion_encabezado=alineacion_encabezado,
+        alineacion_datos=alineacion_datos,
+        alineacion_pie=alineacion_pie,
+        tipo_documento=tipo_documento,
     )
     ticket.encabezado().info(numero_factura, fecha, cliente).separador()
     for producto in productos:
@@ -342,264 +384,6 @@ def construir_ticket_venta(
     ticket.separador().totales(total, base, cuota).metodo_pago(metodo_pago)
     ticket.pie().cortar()
     return ticket.construir()
-
-
-def construir_ticket_arqueo(
-    resumen,
-    total_esperado,
-    total_contado,
-    diferencia,
-    fecha_apertura="",
-    fecha_cierre="",
-    usuario="",
-    empresa="Mi Empresa",
-    ancho=ANCHO_80MM,
-    letra="muy_grande",
-    logo=None,
-    negocio=None,
-):
-    """Genera los bytes del ticket térmico de informe de cierre de caja.
-
-    *resumen* es un diccionario (ver :func:`reyger.core.cierre_caja.resumen_ventas`)
-    con los totales por método de pago del período.
-    """
-    from ..core import moneda as mod_moneda
-
-    ticket = TicketTermico(
-        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
-    )
-    ticket.encabezado()
-    ticket._partes += [CENTRO, NEGRITA_ON, _linea("INFORME DE CIERRE DE CAJA"), NEGRITA_OFF]
-    ticket._partes += [IZQUIERDA]
-    if fecha_cierre:
-        ticket._partes.append(_linea(f"Fecha: {fecha_cierre}"))
-    if usuario:
-        ticket._partes.append(_linea(f"Usuario: {usuario}"))
-    ticket.separador()
-    if fecha_apertura and fecha_cierre:
-        ticket._partes.append(_linea(f"Desde: {fecha_apertura}"))
-        ticket._partes.append(_linea(f"Hasta: {fecha_cierre}"))
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Total ventas", mod_moneda.format_currency(resumen["total_ventas"]),
-            ticket.columnas,
-        )
-    )
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Efectivo esperado",
-            mod_moneda.format_currency(resumen["efectivo_neto"]),
-            ticket.columnas,
-        )
-    )
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Tarjeta", mod_moneda.format_currency(resumen["tarjeta"]),
-            ticket.columnas,
-        )
-    )
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Ingresos manuales", mod_moneda.format_currency(resumen["ingreso_manual"]),
-            ticket.columnas,
-        )
-    )
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Retiros manuales", mod_moneda.format_currency(resumen["retiro_manual"]),
-            ticket.columnas,
-        )
-    )
-    ticket.separador()
-    ticket._partes += [NEGRITA_ON]
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Total esperado", mod_moneda.format_currency(total_esperado),
-            ticket.columnas,
-        )
-    )
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Total contado", mod_moneda.format_currency(total_contado),
-            ticket.columnas,
-        )
-    )
-    ticket._partes += [NEGRITA_OFF]
-    if diferencia:
-        etiqueta = "Diferencia (a favor)" if diferencia > 0 else "Diferencia (en contra)"
-        ticket._partes.append(
-            _fila_dos_columnas(
-                etiqueta, mod_moneda.format_currency(diferencia), ticket.columnas
-            )
-        )
-    ticket.separador().pie().cortar()
-    return ticket.construir()
-
-
-def imprimir_ticket_arqueo(
-    resumen,
-    total_esperado,
-    total_contado,
-    diferencia,
-    fecha_apertura="",
-    fecha_cierre="",
-    usuario="",
-    empresa="Mi Empresa",
-    ancho=ANCHO_80MM,
-    letra="muy_grande",
-    impresora=None,
-    logo=None,
-    negocio=None,
-):
-    """Construye y envía el informe de cierre de caja. Devuelve (ok, mensaje)."""
-    datos = construir_ticket_arqueo(
-        resumen, total_esperado, total_contado, diferencia,
-        fecha_apertura, fecha_cierre, usuario, empresa, ancho, letra,
-        logo, negocio,
-    )
-    if enviar_bytes(datos, impresora):
-        return True, "Informe de cierre de caja impreso correctamente"
-    return False, "No se pudo imprimir el informe (impresora no disponible o error de envío)"
-
-
-def _insertar_codigos(partes, codigo, puntos_ancho):
-    """Añade el código de barras Code128 y el QR al final del ticket."""
-    from .codigos import generar_barcode_pil, generar_qr_pil
-
-    barcode = _rasterizar_imagen_pil(
-        generar_barcode_pil(str(codigo)), puntos_ancho, 160
-    )
-    if barcode:
-        partes.append(barcode)
-        partes.append(b"\n")
-    qr = _rasterizar_imagen_pil(generar_qr_pil(str(codigo)), puntos_ancho, 300)
-    if qr:
-        partes.append(qr)
-        partes.append(b"\n")
-    return partes
-
-
-def construir_ticket_regalo(
-    numero_factura,
-    fecha,
-    productos,
-    codigo,
-    empresa="Mi Empresa",
-    ancho=ANCHO_80MM,
-    letra="muy_grande",
-    logo=None,
-    negocio=None,
-):
-    """Genera los bytes del ticket regalo (oculta precios y totales).
-
-    *productos* es una secuencia de tuplas ``(nombre, precio, cantidad,
-    subtotal)`` — solo se usa el nombre y la cantidad; los importes se
-    omiten. Al final se imprime el código de barras y el QR con el
-    identificador único del ticket.
-    """
-    ticket = TicketTermico(
-        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
-    )
-    ticket.encabezado()
-    ticket._partes += [CENTRO, NEGRITA_ON, _linea("TICKET REGALO"), NEGRITA_OFF]
-    ticket._partes += [IZQUIERDA, _linea(f"Ticket: {numero_factura}")]
-    if fecha:
-        ticket._partes.append(_linea(f"Fecha: {fecha}"))
-    ticket.separador()
-    for producto in productos:
-        nombre, _precio, cantidad, _subtotal = (
-            producto[0], producto[1], producto[2], producto[3],
-        )
-        ticket._partes.append(_linea(str(nombre)))
-        ticket._partes.append(_linea(f"  Cantidad: {cantidad}"))
-    ticket.separador()
-    ticket._partes += [CENTRO, _linea("Sin precios de referencia")]
-    ticket.pie()
-    _insertar_codigos(ticket._partes, codigo, ticket.puntos_ancho)
-    ticket._partes += [IZQUIERDA, _linea(f"Ticket: {codigo}")]
-    ticket.cortar()
-    return ticket.construir()
-
-
-def imprimir_ticket_regalo(
-    numero_factura,
-    fecha,
-    productos,
-    codigo,
-    empresa="Mi Empresa",
-    ancho=ANCHO_80MM,
-    letra="muy_grande",
-    impresora=None,
-    logo=None,
-    negocio=None,
-):
-    """Construye y envía el ticket regalo. Devuelve (ok, mensaje)."""
-    datos = construir_ticket_regalo(
-        numero_factura, fecha, productos, codigo,
-        empresa=empresa, ancho=ancho, letra=letra, logo=logo, negocio=negocio,
-    )
-    if enviar_bytes(datos, impresora):
-        return True, "Ticket regalo impreso correctamente"
-    return False, "No se pudo imprimir el ticket regalo (impresora no disponible)"
-
-
-def construir_ticket_devolucion(
-    resumen,
-    empresa="Mi Empresa",
-    ancho=ANCHO_80MM,
-    letra="muy_grande",
-    logo=None,
-    negocio=None,
-):
-    """Genera los bytes del ticket de rectificación/devolución."""
-    from ..core import moneda as mod_moneda
-
-    ticket = TicketTermico(
-        ancho=ancho, empresa=empresa, letra=letra, logo=logo, negocio=negocio
-    )
-    ticket.encabezado()
-    ticket._partes += [CENTRO, NEGRITA_ON, _linea("RECTIFICACIÓN / DEVOLUCIÓN"), NEGRITA_OFF]
-    ticket._partes += [IZQUIERDA]
-    if resumen.get("fecha"):
-        ticket._partes.append(_linea(f"Fecha: {resumen['fecha']}"))
-    ticket._partes.append(_linea(f"Factura original: {resumen['factura_original']}"))
-    if resumen.get("usuario"):
-        ticket._partes.append(_linea(f"Usuario: {resumen['usuario']}"))
-    ticket.separador()
-    for nombre, cantidad in resumen["lineas"]:
-        ticket._partes.append(_linea(f"{nombre}  x{cantidad}"))
-    ticket.separador()
-    ticket._partes += [NEGRITA_ON]
-    ticket._partes.append(
-        _fila_dos_columnas(
-            "Devuelto", mod_moneda.format_currency(resumen["importe_devuelto"]),
-            ticket.columnas,
-        )
-    )
-    ticket._partes += [NEGRITA_OFF]
-    ticket._partes.append(_linea(f"Reembolso: {resumen['metodo_reembolso']}"))
-    if resumen.get("codigo_vale"):
-        ticket._partes.append(_linea(f"Vale emitido: {resumen['codigo_vale']}"))
-    ticket.separador().pie().cortar()
-    return ticket.construir()
-
-
-def imprimir_ticket_devolucion(
-    resumen,
-    empresa="Mi Empresa",
-    ancho=ANCHO_80MM,
-    letra="muy_grande",
-    impresora=None,
-    logo=None,
-    negocio=None,
-):
-    """Construye y envía el ticket de devolución. Devuelve (ok, mensaje)."""
-    datos = construir_ticket_devolucion(
-        resumen, empresa=empresa, ancho=ancho, letra=letra, logo=logo, negocio=negocio,
-    )
-    if enviar_bytes(datos, impresora):
-        return True, "Ticket de devolución impreso correctamente"
-    return False, "No se pudo imprimir el ticket de devolución"
 
 
 # ------------------------------------------------------------------ envío
@@ -775,11 +559,15 @@ def imprimir_ticket_venta(numero_factura, fecha, productos, total, base=None,
                           cuota=None, metodo_pago="Efectivo", cliente=None,
                           empresa="Mi Empresa", ancho=ANCHO_80MM,
                           letra="muy_grande", impresora=None, logo=None,
-                          negocio=None):
+                          negocio=None, alineacion_encabezado="centro",
+                          alineacion_datos="izquierda", alineacion_pie="centro",
+                          tipo_documento="ticket"):
     """Construye y envía el ticket. Devuelve (ok, mensaje)."""
     datos = construir_ticket_venta(
         numero_factura, fecha, productos, total, base, cuota,
         metodo_pago, cliente, empresa, ancho, letra, logo, negocio,
+        alineacion_encabezado, alineacion_datos, alineacion_pie,
+        tipo_documento,
     )
     if enviar_bytes(datos, impresora):
         return True, "Ticket impreso correctamente"

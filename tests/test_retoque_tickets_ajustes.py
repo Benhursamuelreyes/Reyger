@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 import time
+import pytest
 import tkinter as tk
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,6 +86,7 @@ def test_escalas_ticket():
              TicketTermico(ancho=42, letra="muy_grande").columnas == 21)
 
 
+@pytest.mark.orden_dependiente
 def test_preferencia_en_ventas():
     print(f"\n{BOLD}{AZUL}[TEST 2] Ventas pasa la letra configurada{RESET}")
     from unittest.mock import patch

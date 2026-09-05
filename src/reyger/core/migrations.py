@@ -427,6 +427,171 @@ def _migracion_8(conn):
 
 @migracion(9)
 def _migracion_9(conn):
+    """Flujo Ticket/Factura, correlatividad fiscal y configuración Veri*factu*.
+
+    Añade a ``ventas`` el tipo de documento (ticket simplificado o factura
+    completa), el estado (emitido / borrador) y una numeración independiente
+    para tickets (``numero_ticket``), ya que hasta ahora ``numero_factura``
+    era la única secuencia y el flujo emitía siempre como factura.
+
+    Así mismo amplía la tabla singleton ``business_profile`` con:
+      - ``numero_serie_ticket`` / ``numero_serie_factura``: serie/número
+        inicial configurable de la secuencia de cada tipo de documento.
+      - ``verifactu_activo``: conmutador (toggle) para activar/desactivar
+        la integración Veri*factu*.
+      - ``whatsapp``: contacto WhatsApp mostrado en la cabecera de los
+        tickets (Módulo 2).
+
+    La seguridad de secuencia (imposibilidad de retroceder un número ya
+    emitido) se garantiza en la capa de aplicación comprobando el máximo
+    ya registrado antes de asignar cualquier número nuevo.
+    """
+    _asegurar_esquema_correlatividad(conn)
+
+
+def _asegurar_esquema_correlatividad(conn):
+    """Crea/repare las columnas y la tabla de contadores del flujo Ticket/Factura.
+
+    Es idempotente (``_add_column`` y ``CREATE TABLE IF NOT EXISTS``) y se
+    invoca desde la migración 9 (aplicación normal) y desde la 10
+    (consolidación), de modo que una instalación que quedó en la versión 9
+    con un esquema parcial de iteraciones anteriores de desarrollo queda
+    reparada antes de sembrar los contadores.
+    """
+    _add_column(conn, "ventas", "tipo_documento TEXT NOT NULL DEFAULT 'ticket'")
+    _add_column(conn, "ventas", "estado TEXT NOT NULL DEFAULT 'emitido'")
+    _add_column(conn, "ventas", "numero_ticket TEXT")
+
+    _add_column(conn, "business_profile", "numero_serie_ticket TEXT NOT NULL DEFAULT 'T-'")
+    _add_column(conn, "business_profile", "numero_serie_factura TEXT NOT NULL DEFAULT 'F-'")
+    _add_column(conn, "business_profile", "verifactu_activo INTEGER NOT NULL DEFAULT 1")
+    _add_column(conn, "business_profile", "whatsapp TEXT")
+
+    # Contadores independientes y a prueba de retroceso.
+    #
+    # La secuencia correlativa NUNCA puede retroceder: guardamos el último
+    # número oficial asignado para cada tipo de documento y serie. Un
+    # borrado físico de una venta no vuelve a ofrecer números ya usados,
+    # porque aqui persiste el máximo asignado.
+    #
+    # Nota: la unicidad es compuesta (tipo, serie); una iteración previa de
+    # desarrollo creó la tabla con UNIQUE sobre tipo solo, lo que impedía
+    # varias series para un mismo tipo. Se detecta y se reconstruye.
+    tablas = {
+        fila[0] for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    if "contadores_documentos" in tablas:
+        fila_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'contadores_documentos'"
+        ).fetchone()
+        ddl = (fila_sql[0] if fila_sql and fila_sql[0] else "").upper()
+        # La unicidad debe ser compuesta (tipo, serie); si no lo es (una
+        # iteración previa la creó con UNIQUE sobre tipo solo) se reconstruye.
+        if "UNIQUE(TIPO, SERIE)" not in ddl.replace(" ", ""):
+            conn.execute("DROP TABLE IF EXISTS contadores_documentos")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS contadores_documentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL,
+            serie TEXT NOT NULL,
+            ultimo_numero INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(tipo, serie)
+        )
+    """)
+
+
+def _sembrar_contadores_documentos(conn):
+    """Calcula los contadores iniciales desde las ventas existentes.
+
+    Se ejecuta como parte de la migración 9 para que una instalación con
+    datos históricos siga numerando después del máximo ya asignado.
+    Es tolerante a bases antiguas sin tabla ``ventas`` o sin las columnas
+    de estado, de modo que las migraciones siempre pueden aplicarse.
+    """
+    tablas = {
+        fila[0] for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    if "ventas" not in tablas:
+        _sembrar_contadores_vacios(conn)
+        return
+
+    columnas_ventas = {
+        fila[1] for fila in conn.execute("PRAGMA table_info(ventas)")
+    }
+    if not ({"factura", "estado"} <= columnas_ventas):
+        _sembrar_contadores_vacios(conn)
+        return
+
+    # Facturas: máximo de numero_factura numérico ya emitido (los
+    # borradores NO cuentan para la secuencia oficial).
+    fila_facturas = conn.execute(
+        "SELECT serie, MAX(numero) FROM ("
+        "  SELECT SUBSTR(factura, 1, 1) AS serie, "
+        "         CAST(SUBSTR(factura, 2) AS INTEGER) AS numero "
+        "  FROM ventas WHERE estado = 'emitido' AND factura NOT LIKE 'BORRADOR%'"
+        "  AND factura NOT GLOB '*[a-zA-Z]*'"
+        ") WHERE serie IS NOT NULL AND numero IS NOT NULL "
+        "GROUP BY serie"
+    ).fetchall()
+    for serie, maximo in fila_facturas:
+        conn.execute(
+            "INSERT OR IGNORE INTO contadores_documentos (tipo, serie, ultimo_numero) "
+            "VALUES ('factura', ?, ?)",
+            (serie, maximo or 0),
+        )
+
+    # Tickets: los emitidos sí cuentan (fase actual solo tickets).
+    if "numero_ticket" in columnas_ventas:
+        fila_tickets = conn.execute(
+            "SELECT serie, MAX(numero) FROM ("
+            "  SELECT SUBSTR(numero_ticket, 1, 1) AS serie, "
+            "         CAST(SUBSTR(numero_ticket, 2) AS INTEGER) AS numero "
+            "  FROM ventas WHERE estado = 'emitido' AND numero_ticket IS NOT NULL "
+            ") WHERE serie IS NOT NULL AND numero IS NOT NULL "
+            "GROUP BY serie"
+        ).fetchall()
+        for serie, maximo in fila_tickets:
+            conn.execute(
+                "INSERT OR IGNORE INTO contadores_documentos (tipo, serie, ultimo_numero) "
+                "VALUES ('ticket', ?, ?)",
+                (serie, maximo or 0),
+            )
+
+    _sembrar_contadores_vacios(conn)
+
+
+def _sembrar_contadores_vacios(conn):
+    """Si no hay contadores aún, siembra ticket y factura en 0.
+
+    La serie inicial configurable se aplica luego en la capa de
+    aplicación (``core/correlativos.py``) usando ``max(contador, inicio)``.
+    """
+    if not conn.execute("SELECT COUNT(*) FROM contadores_documentos").fetchone()[0]:
+        conn.execute(
+            "INSERT OR IGNORE INTO contadores_documentos (tipo, serie, ultimo_numero) VALUES "
+            "('ticket', 'T-', 0), ('factura', 'F-', 0)"
+        )
+
+
+@migracion(10)
+def _migracion_10(conn):
+    """Consolida el esquema de correlatividad y siembra los contadores.
+
+    Además de sembrar, repara instalaciones que quedaron en la versión 9 con
+    un esquema parcial (columnas o tabla ausentes por iteraciones previas de
+    desarrollo) antes de calcular los contadores iniciales.
+    """
+    _asegurar_esquema_correlatividad(conn)
+    _sembrar_contadores_documentos(conn)
+
+
+@migracion(11)
+def _migracion_11(conn):
     """Nombre comercial de la empresa.
 
     Añade a la tabla singleton ``business_profile`` el nombre comercial /
@@ -434,135 +599,6 @@ def _migracion_9(conn):
     social en tickets y facturas si está informado.
     """
     _add_column(conn, "business_profile", "nombre_comercial TEXT DEFAULT ''")
-
-
-@migracion(10)
-def _migracion_10(conn):
-    """Cierre y conteo de caja (arqueo).
-
-    Crea las tablas de movimientos de caja (ingresos/retiros manuales que
-    ajustan el total esperado) y de cierres de caja (registro del arqueo:
-    resumen de ventas por método de pago, total esperado, total contado,
-    descuadre y desglose por denominaciones).
-    """
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS movimientos_caja (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo TEXT NOT NULL CHECK (tipo IN ('INGRESO', 'RETIRO')),
-            importe REAL NOT NULL DEFAULT 0,
-            concepto TEXT,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cierres_caja (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_apertura TEXT,
-            fecha_cierre TEXT,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            usuario TEXT,
-            total_ventas REAL DEFAULT 0,
-            total_efectivo_esperado REAL DEFAULT 0,
-            total_tarjeta REAL DEFAULT 0,
-            num_facturas_mixtas INTEGER DEFAULT 0,
-            ingreso_manual REAL DEFAULT 0,
-            retiro_manual REAL DEFAULT 0,
-            total_esperado REAL DEFAULT 0,
-            total_contado REAL DEFAULT 0,
-            diferencia REAL DEFAULT 0,
-            notas TEXT,
-            desglose TEXT
-        )
-        """
-    )
-
-
-@migracion(11)
-def _migracion_11(conn):
-    """Devoluciones, tickets regalo y tarjetas regalo.
-
-    Crea las tablas para el sistema de devoluciones/rectificaciones
-    (``devoluciones`` + ``devolucion_productos``), para los tickets regalo
-    sin precios (``tickets_regalo``) y para las tarjetas regalo con saldo
-    (``tarjetas_regalo`` + ``tarjetas_regalo_movimientos``).
-    """
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS devoluciones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            factura_original INTEGER NOT NULL,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            usuario TEXT,
-            motivo TEXT,
-            metodo_reembolso TEXT DEFAULT 'Efectivo',
-            importe_devuelto REAL DEFAULT 0,
-            ticket_regalo_id INTEGER,
-            notas TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS devolucion_productos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            devolucion_id INTEGER NOT NULL,
-            factura_original INTEGER NOT NULL,
-            nombre_articulo TEXT NOT NULL,
-            valor_articulo REAL NOT NULL,
-            cantidad INTEGER NOT NULL,
-            subtotal REAL NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tickets_regalo (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            factura INTEGER NOT NULL,
-            codigo TEXT NOT NULL UNIQUE,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            estado TEXT DEFAULT 'ACTIVO',
-            creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tarjetas_regalo (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo TEXT NOT NULL UNIQUE,
-            saldo_inicial REAL NOT NULL DEFAULT 0,
-            saldo_actual REAL NOT NULL DEFAULT 0,
-            estado TEXT DEFAULT 'ACTIVA',
-            fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            fecha_vencimiento TEXT,
-            notas TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tarjetas_regalo_movimientos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarjeta_id INTEGER NOT NULL,
-            tipo TEXT NOT NULL,          -- EMISION / CANJE / RECARGA
-            importe REAL NOT NULL DEFAULT 0,
-            venta_factura INTEGER,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_devolucion_productos_dev ON "
-        "devolucion_productos (devolucion_id)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tarjeta_mov_tarjeta ON "
-        "tarjetas_regalo_movimientos (tarjeta_id)"
-    )
 
 
 @migracion(12)

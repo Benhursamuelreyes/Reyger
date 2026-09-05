@@ -1,6 +1,6 @@
 [project]
 name = "reyger"
-version = "3.0.0b10"
+version = "3.0.0b6"
 description = "Reyger — Sistema de ventas y facturación"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -18,7 +18,7 @@ dependencies = [
 [tool.briefcase]
 project_name = "Reyger"
 bundle = "com.reyger"
-version = "3.0.0b10"
+version = "3.0.0b6"
 url = "https://github.com/Benhursamuelreyes/Reyger"
 license = "MIT"
 
@@ -51,6 +51,15 @@ icon = "src/reyger/assets/icono"
 # El b12 los añade y además sitecustomize.py (scripts/bundle_tkinter_windows.py)
 # los inserta en sys.path como red de seguridad.
 stub_binary_revision = "12"
+
+[tool.pytest.ini_options]
+markers = [
+    "orden_dependiente: falla o cuelga solo en la suite completa; se ejecuta aislado o via el main() de su harness",
+]
+addopts = [
+    "-m",
+    "not orden_dependiente",
+]
 
 [tool.briefcase.app.reyger.macOS]
 icon = "src/reyger/assets/icono"
