@@ -1,5 +1,20 @@
 Changelog content
 
+## v1.0.1 (2026-09-07)
+
+PATCH: correcciones retrocompatibles de la interfaz.
+
+### Scrollbars verticales en ventanas desbordadas
+
+- Diálogo "Realizar pago" (cuenta efectivo/tarjeta/mixto): contenido
+  dentro de lienzo con scrollbar vertical + rueda del ratón.
+- Diálogo "Editar producto": formulario de 10 filas ahora scrollable.
+- Ventana "Albaranes de entrega": listado + formulario scrollables.
+- Tests: `test_ventanas_redimensionables` busca widgets recursivamente
+  (los campos viven ahora dentro del lienzo).
+- Workflow de release: nota de versión dinámica (`github.ref_name`) en
+  el cuerpo de la release.
+
 ## v1.0.0 (2026-09-05)
 
 Versión estable: se abandona el esquema beta y el versionado se reinicia en

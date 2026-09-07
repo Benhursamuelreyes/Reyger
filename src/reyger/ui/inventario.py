@@ -707,16 +707,53 @@ class Inventario(tk.Frame):
         ventana_editar.resizable(True, True)
         ventana_editar.minsize(480, 580)
         ventana_editar.config(bg="#C6D9E3")
+
+        # Contenido con scroll vertical (el formulario de 10 filas puede
+        # exceder la altura en pantallas pequeñas o con fuentes grandes)
+        contenedor = tk.Frame(ventana_editar, bg="#C6D9E3")
+        contenedor.pack(fill="both", expand=True, padx=10, pady=10)
+
+        barra = ttk.Scrollbar(contenedor, orient="vertical")
+        barra.pack(side="right", fill="y")
+
+        lienzo = tk.Canvas(
+            contenedor, bg="#C6D9E3", highlightthickness=0,
+            yscrollcommand=barra.set,
+        )
+        lienzo.pack(side="left", fill="both", expand=True)
+        barra.config(command=lienzo.yview)
+
+        main_frame = tk.Frame(lienzo, bg="#C6D9E3")
+        ventana_contenido = lienzo.create_window((0, 0), window=main_frame, anchor="nw")
+
+        main_frame.bind(
+            "<Configure>",
+            lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")),
+        )
+
+        def _ajustar_ancho(evento):
+            lienzo.itemconfigure(ventana_contenido, width=evento.width)
+
+        lienzo.bind("<Configure>", _ajustar_ancho)
+
+        def _rueda(evento):
+            if getattr(evento, "num", None) == 4 or evento.delta > 0:
+                lienzo.yview_scroll(-2, "units")
+            elif getattr(evento, "num", None) == 5 or evento.delta < 0:
+                lienzo.yview_scroll(2, "units")
+
+        for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            ventana_editar.bind(secuencia, _rueda)
         
-        lbl_nombre = Label(ventana_editar, text="Nombre:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_nombre = Label(main_frame, text="Nombre:", font="sans 14 bold", bg="#C6D9E3")
         lbl_nombre.grid(row=0, column=0, padx=10, pady=10)
-        entry_nombre = Entry(ventana_editar, font="sans 14 bold")
+        entry_nombre = Entry(main_frame, font="sans 14 bold")
         entry_nombre.grid(row=0, column=1, padx=10, pady=10)
         entry_nombre.insert(0, item_values[1])
         
-        lbl_proveedor = Label(ventana_editar, text="Proveedor:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_proveedor = Label(main_frame, text="Proveedor:", font="sans 14 bold", bg="#C6D9E3")
         lbl_proveedor.grid(row=1, column=0, padx=10, pady=10)
-        entry_proveedor = Entry(ventana_editar, font="sans 14 bold")
+        entry_proveedor = Entry(main_frame, font="sans 14 bold")
         entry_proveedor.grid(row=1, column=1, padx=10, pady=10)
         entry_proveedor.insert(0, item_values[2])
         
@@ -751,45 +788,45 @@ class Inventario(tk.Frame):
             finally:
                 _calculando_edit["on"] = False
 
-        lbl_precio = Label(ventana_editar, text="Precio de venta:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_precio = Label(main_frame, text="Precio de venta:", font="sans 14 bold", bg="#C6D9E3")
         lbl_precio.grid(row=2, column=0, padx=10, pady=10)
-        entry_precio = Entry(ventana_editar, font="sans 14 bold", textvariable=precio_sv)
+        entry_precio = Entry(main_frame, font="sans 14 bold", textvariable=precio_sv)
         entry_precio.grid(row=2, column=1, padx=10, pady=10)
         precio_sv.set(f"{precio_original}" if precio_original is not None else "")
         precio_sv.trace_add("write", _desde_venta_edit)
 
-        lbl_margen = Label(ventana_editar, text="Margen / ganancia (%):", font="sans 14 bold", bg="#C6D9E3")
+        lbl_margen = Label(main_frame, text="Margen / ganancia (%):", font="sans 14 bold", bg="#C6D9E3")
         lbl_margen.grid(row=3, column=0, padx=10, pady=10)
-        entry_margen = Entry(ventana_editar, font="sans 14 bold", textvariable=margen_sv)
+        entry_margen = Entry(main_frame, font="sans 14 bold", textvariable=margen_sv)
         entry_margen.grid(row=3, column=1, padx=10, pady=10)
         margen_sv.set(f"{margen_original}")
         margen_sv.trace_add("write", _desde_costo_margen_edit)
 
-        lbl_costo = Label(ventana_editar, text="Precio de costo:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_costo = Label(main_frame, text="Precio de costo:", font="sans 14 bold", bg="#C6D9E3")
         lbl_costo.grid(row=4, column=0, padx=10, pady=10)
-        entry_costo = Entry(ventana_editar, font="sans 14 bold", textvariable=costo_sv)
+        entry_costo = Entry(main_frame, font="sans 14 bold", textvariable=costo_sv)
         entry_costo.grid(row=4, column=1, padx=10, pady=10)
         costo_sv.set(f"{costo_original}" if costo_original is not None else "")
         costo_sv.trace_add("write", _desde_costo_margen_edit)
         
-        lbl_stock = Label(ventana_editar, text="Stock:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_stock = Label(main_frame, text="Stock:", font="sans 14 bold", bg="#C6D9E3")
         lbl_stock.grid(row=5, column=0, padx=10, pady=10)
-        entry_stock = Entry(ventana_editar, font="sans 14 bold")
+        entry_stock = Entry(main_frame, font="sans 14 bold")
         entry_stock.grid(row=5, column=1, padx=10, pady=10)
         entry_stock.insert(0, item_values[5])
 
-        lbl_iva = Label(ventana_editar, text="IVA:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_iva = Label(main_frame, text="IVA:", font="sans 14 bold", bg="#C6D9E3")
         lbl_iva.grid(row=6, column=0, padx=10, pady=10)
         combo_iva = ttk.Combobox(
-            ventana_editar, font="sans 14 bold",
+            main_frame, font="sans 14 bold",
             values=[f"{tipo:g}%" for tipo in TIPOS_IVA],
         )
         combo_iva.set(iva_original)
         combo_iva.grid(row=6, column=1, padx=10, pady=10)
 
-        lbl_categoria = Label(ventana_editar, text="Categoría:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_categoria = Label(main_frame, text="Categoría:", font="sans 14 bold", bg="#C6D9E3")
         lbl_categoria.grid(row=7, column=0, padx=10, pady=10)
-        frame_cat = tk.Frame(ventana_editar, bg="#C6D9E3")
+        frame_cat = tk.Frame(main_frame, bg="#C6D9E3")
         frame_cat.grid(row=7, column=1, padx=10, pady=10)
         combo_categoria = ttk.Combobox(
             frame_cat, font="sans 14 bold", state="readonly",
@@ -807,9 +844,9 @@ class Inventario(tk.Frame):
         )
         btn_nueva_cat.pack(side="left", padx=(6, 0))
 
-        lbl_codigo = Label(ventana_editar, text="Código de barras:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_codigo = Label(main_frame, text="Código de barras:", font="sans 14 bold", bg="#C6D9E3")
         lbl_codigo.grid(row=8, column=0, padx=10, pady=10)
-        entry_codigo = Entry(ventana_editar, font="sans 14 bold")
+        entry_codigo = Entry(main_frame, font="sans 14 bold")
         entry_codigo.grid(row=8, column=1, padx=10, pady=10)
         if db_row[4]:
             entry_codigo.insert(0, db_row[4])
@@ -876,7 +913,7 @@ class Inventario(tk.Frame):
             self.actualizar_inventario()
             ventana_editar.destroy()
 
-        btn_guardar = Button(ventana_editar, text="Guardar cambios", font="sans 14 bold", command=guardar_cambio)
+        btn_guardar = Button(main_frame, text="Guardar cambios", font="sans 14 bold", command=guardar_cambio)
         btn_guardar.grid(row=9, column=0, columnspan=2, padx=10, pady=(25, 10), ipady=4)
 
     def _categorias_disponibles(self):

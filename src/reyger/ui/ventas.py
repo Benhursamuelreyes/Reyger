@@ -550,6 +550,43 @@ class Ventas(tk.Frame):
         ventana_pago.resizable(True, True)
         ventana_pago.minsize(560, 700)
 
+        # Contenido con scroll vertical (el formulario puede exceder la
+        # altura en pantallas pequeñas o con fuentes grandes)
+        contenedor = tk.Frame(ventana_pago, bg="#C5D9E3")
+        contenedor.pack(fill="both", expand=True, padx=10, pady=10)
+
+        barra = ttk.Scrollbar(contenedor, orient="vertical")
+        barra.pack(side="right", fill="y")
+
+        lienzo = tk.Canvas(
+            contenedor, bg="#C5D9E3", highlightthickness=0,
+            yscrollcommand=barra.set,
+        )
+        lienzo.pack(side="left", fill="both", expand=True)
+        barra.config(command=lienzo.yview)
+
+        main_frame = tk.Frame(lienzo, bg="#C5D9E3")
+        ventana_contenido = lienzo.create_window((0, 0), window=main_frame, anchor="nw")
+
+        main_frame.bind(
+            "<Configure>",
+            lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")),
+        )
+
+        def _ajustar_ancho(evento):
+            lienzo.itemconfigure(ventana_contenido, width=evento.width)
+
+        lienzo.bind("<Configure>", _ajustar_ancho)
+
+        def _rueda(evento):
+            if getattr(evento, "num", None) == 4 or evento.delta > 0:
+                lienzo.yview_scroll(-2, "units")
+            elif getattr(evento, "num", None) == 5 or evento.delta < 0:
+                lienzo.yview_scroll(2, "units")
+
+        for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            ventana_pago.bind(secuencia, _rueda)
+
         total = self.obtener_total()
         lineas = [
             (precio, cantidad, tipo_iva)
@@ -557,7 +594,7 @@ class Ventas(tk.Frame):
         ]
         _, base, cuota = desglose_total(lineas)
         label_total = tk.Label(
-            ventana_pago, bg="#C6D9E3",
+            main_frame, bg="#C6D9E3",
             text=(f"Total a pagar: {mod_moneda.format_currency(total)}\n"
                   f"Base imponible: {mod_moneda.format_currency(base)}   |   "
                   f"Cuota IVA: {mod_moneda.format_currency(cuota)}"),
@@ -565,7 +602,7 @@ class Ventas(tk.Frame):
         )
         label_total.grid(row=0, column=0, sticky="w", padx=20, pady=(20, 5))
 
-        label_metodo = tk.Label(ventana_pago, bg="#C6D9E3", text="Método de pago:", font="sans 14 bold")
+        label_metodo = tk.Label(main_frame, bg="#C6D9E3", text="Método de pago:", font="sans 14 bold")
         label_metodo.grid(row=1, column=0, sticky="w", padx=20, pady=10)
 
         var_metodo = tk.StringVar(value="Efectivo")
@@ -573,7 +610,7 @@ class Ventas(tk.Frame):
         def actualizar_campos():
             self._actualizar_campos_pago(var_metodo, label_efectivo, entry_efectivo, label_tarjeta, entry_tarjeta)
 
-        frame_radios = tk.Frame(ventana_pago, bg="#C6D9E3")
+        frame_radios = tk.Frame(main_frame, bg="#C6D9E3")
         frame_radios.grid(row=2, column=0, sticky="w", padx=20)
 
         radio_efectivo = tk.Radiobutton(frame_radios, text="Efectivo", variable=var_metodo, value="Efectivo", bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos)
@@ -585,19 +622,19 @@ class Ventas(tk.Frame):
         radio_mixto = tk.Radiobutton(frame_radios, text="Mixto", variable=var_metodo, value="Mixto", bg="#C6D9E3", font="sans 12 bold", command=actualizar_campos)
         radio_mixto.pack(side="left")
 
-        label_efectivo = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad en efectivo:", font="sans 12 bold")
+        label_efectivo = tk.Label(main_frame, bg="#C6D9E3", text="Cantidad en efectivo:", font="sans 12 bold")
         label_efectivo.grid(row=3, column=0, sticky="w", padx=20, pady=(15, 2))
-        entry_efectivo = ttk.Entry(ventana_pago, font="sans 12 bold")
+        entry_efectivo = ttk.Entry(main_frame, font="sans 12 bold")
         entry_efectivo.grid(row=4, column=0, sticky="ew", padx=20)
 
-        label_tarjeta = tk.Label(ventana_pago, bg="#C6D9E3", text="Cantidad en tarjeta:", font="sans 12 bold")
+        label_tarjeta = tk.Label(main_frame, bg="#C6D9E3", text="Cantidad en tarjeta:", font="sans 12 bold")
         label_tarjeta.grid(row=5, column=0, sticky="w", padx=20, pady=(15, 2))
-        entry_tarjeta = ttk.Entry(ventana_pago, font="sans 12 bold")
+        entry_tarjeta = ttk.Entry(main_frame, font="sans 12 bold")
         entry_tarjeta.grid(row=6, column=0, sticky="ew", padx=20)
         label_tarjeta.grid_remove()
         entry_tarjeta.grid_remove()
 
-        label_cambio = tk.Label(ventana_pago, bg="#C6D9E3", text="", font="sans 14 bold", fg="#27AE60")
+        label_cambio = tk.Label(main_frame, bg="#C6D9E3", text="", font="sans 14 bold", fg="#27AE60")
         label_cambio.grid(row=7, column=0, sticky="w", padx=20, pady=15)
 
         def calcular_cambio():
@@ -631,16 +668,16 @@ class Ventas(tk.Frame):
             except ValueError:
                 messagebox.showerror("Error", "Ingrese valores numericos validos")
 
-        boton_calcular = tk.Button(ventana_pago, text="Calcular", bg="#0078D4", fg="white", font="sans 12 bold", command=calcular_cambio)
+        boton_calcular = tk.Button(main_frame, text="Calcular", bg="#0078D4", fg="white", font="sans 12 bold", command=calcular_cambio)
         boton_calcular.grid(row=8, column=0, sticky="ew", padx=20, pady=10, ipady=4)
 
-        boton_pagar = tk.Button(ventana_pago, text="Confirmar pago", bg="#27AE60", fg="white", font="sans 14 bold", command=lambda: self.pagar(ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total))
+        boton_pagar = tk.Button(main_frame, text="Confirmar pago", bg="#27AE60", fg="white", font="sans 14 bold", command=lambda: self.pagar(ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total))
         boton_pagar.grid(row=9, column=0, sticky="ew", padx=20, pady=10, ipady=6)
 
-        boton_cancelar = tk.Button(ventana_pago, text="Cancelar", bg="#C0392B", fg="white", font="sans 12 bold", command=ventana_pago.destroy)
+        boton_cancelar = tk.Button(main_frame, text="Cancelar", bg="#C0392B", fg="white", font="sans 12 bold", command=ventana_pago.destroy)
         boton_cancelar.grid(row=10, column=0, sticky="ew", padx=20, pady=(10, 20), ipady=4)
 
-        ventana_pago.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
 
     def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total):
         try:

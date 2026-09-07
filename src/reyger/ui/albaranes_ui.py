@@ -44,9 +44,46 @@ class VentanaAlbaranes(Toplevel):
 
     # ---------------------------------------------------------- interfaz
     def widgets(self):
+        # Contenido con scroll vertical (listado + formulario pueden
+        # exceder la altura en pantallas pequeñas o con fuentes grandes)
+        contenedor = tk.Frame(self, bg="#C6D9E3")
+        contenedor.pack(fill="both", expand=True, padx=10, pady=10)
+
+        barra = ttk.Scrollbar(contenedor, orient="vertical")
+        barra.pack(side="right", fill="y")
+
+        lienzo = tk.Canvas(
+            contenedor, bg="#C6D9E3", highlightthickness=0,
+            yscrollcommand=barra.set,
+        )
+        lienzo.pack(side="left", fill="both", expand=True)
+        barra.config(command=lienzo.yview)
+
+        main_frame = tk.Frame(lienzo, bg="#C6D9E3")
+        ventana_contenido = lienzo.create_window((0, 0), window=main_frame, anchor="nw")
+
+        main_frame.bind(
+            "<Configure>",
+            lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")),
+        )
+
+        def _ajustar_ancho(evento):
+            lienzo.itemconfigure(ventana_contenido, width=evento.width)
+
+        lienzo.bind("<Configure>", _ajustar_ancho)
+
+        def _rueda(evento):
+            if getattr(evento, "num", None) == 4 or evento.delta > 0:
+                lienzo.yview_scroll(-2, "units")
+            elif getattr(evento, "num", None) == 5 or evento.delta < 0:
+                lienzo.yview_scroll(2, "units")
+
+        for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind(secuencia, _rueda)
+
         # Listado existente
         frame_listado = LabelFrame(
-            self, text="Albaranes registrados",
+            main_frame, text="Albaranes registrados",
             font="sans 14 bold", bg="#C6D9E3",
         )
         frame_listado.pack(fill="both", expand=True, padx=15, pady=(15, 10))
@@ -88,7 +125,7 @@ class VentanaAlbaranes(Toplevel):
 
         # Formulario de creación
         frame_nuevo = LabelFrame(
-            self, text="Nuevo albarán", font="sans 14 bold", bg="#C6D9E3",
+            main_frame, text="Nuevo albarán", font="sans 14 bold", bg="#C6D9E3",
         )
         frame_nuevo.pack(fill="x", padx=15, pady=(0, 15))
 

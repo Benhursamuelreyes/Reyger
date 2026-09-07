@@ -244,8 +244,13 @@ def test_ventanas_redimensionables():
             )
 
         # Conmutación de campos Efectivo/Tarjeta vía grid
-        labels = [w for w in pago.winfo_children() if isinstance(w, tk.Label)]
-        entries = [w for w in pago.winfo_children() if isinstance(w, ttk.Entry)]
+        def _todos(widget):
+            yield widget
+            for hijo in widget.winfo_children():
+                yield from _todos(hijo)
+
+        labels = [w for w in _todos(pago) if isinstance(w, tk.Label)]
+        entries = [w for w in _todos(pago) if isinstance(w, ttk.Entry)]
         label_tarjeta = next(w for w in labels if "tarjeta" in w.cget("text").lower())
         entry_tarjeta = entries[-1]
         var_metodo = tk.StringVar(value="Tarjeta")
