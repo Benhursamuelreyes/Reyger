@@ -22,7 +22,9 @@ jobs:
       - name: Install Briefcase and dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install briefcase
+          # Fijar briefcase 0.4.4: 0.4.5 (2026-09-08) rompe `create` en
+          # Linux (`host_arch`) y no instala LICENSE.rtf para el MSI.
+          python -m pip install briefcase==0.4.4
           python -m pip install reportlab qrcode[pil] Pillow ttkthemes platformdirs
 
       - name: Create AppDir with Briefcase
@@ -101,7 +103,7 @@ jobs:
       - name: Install Briefcase and dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install briefcase
+          python -m pip install briefcase==0.4.4
           python -m pip install reportlab qrcode[pil] Pillow ttkthemes platformdirs pywin32
 
       - name: Build MSI with Briefcase
@@ -140,7 +142,7 @@ jobs:
       - name: Install Briefcase and dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install briefcase
+          python -m pip install briefcase==0.4.4
           python -m pip install reportlab qrcode[pil] Pillow platformdirs
 
       - name: Build DMG with Briefcase
