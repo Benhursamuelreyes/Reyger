@@ -5,4 +5,4 @@ try:
 
     __version__ = _pkg_version("reyger")
 except Exception:
-    __version__ = "1.0.1"
+    __version__ = "1.0.2"

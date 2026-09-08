@@ -36,6 +36,18 @@ from ..resources import get_output_path
 AZUL = colors.HexColor("#0078D4")
 FONDO_FILA = colors.HexColor("#F5F5F5")
 
+#: Márgenes A4 estándar en puntos (1 cm = 28.3465 pt).
+#: Laterales 15 mm ≈ 42.5 pt; superior 20 mm ≈ 56.7 pt; inferior 15 mm ≈ 42.5 pt.
+MARGEN_LATERAL = 1.5 * cm
+MARGEN_SUPERIOR = 2.0 * cm
+MARGEN_INFERIOR = 1.5 * cm
+
+#: Tamaño máximo del contenedor del logotipo en el membrete (escala
+#: proporcional; el logo se inserta respetando su proporción).
+ANCHO_LOGO = 2.2 * cm
+ALTO_LOGO = 2.2 * cm
+SEPARACION_LOGO = 0.3 * cm
+
 
 class PdfDocumento:
     """Genera un documento PDF A4 estandarizado con membrete de empresa."""
@@ -119,10 +131,10 @@ class PdfDocumento:
         doc = SimpleDocTemplate(
             output_path,
             pagesize=A4,
-            rightMargin=1.5 * cm,
-            leftMargin=1.5 * cm,
-            topMargin=2.0 * cm,
-            bottomMargin=2.0 * cm,
+            rightMargin=MARGEN_LATERAL,
+            leftMargin=MARGEN_LATERAL,
+            topMargin=MARGEN_SUPERIOR,
+            bottomMargin=MARGEN_INFERIOR,
         )
 
         story = []
@@ -179,12 +191,19 @@ class PdfDocumento:
         if logo_path and os.path.exists(logo_path):
             try:
                 # Flowable Image de reportlab (en lugar de <img> dentro de un
-                # Paragraph): respeta proporción y evita que el logotipo se
-                # recorte por el leading del párrafo o por el margen superior.
-                img = Image(logo_path, width=2.4 * cm, height=2.4 * cm)
+                # Paragraph): respeta la proporción original (escala en un
+                # contenedor ANCHO_LOGO × ALTO_LOGO) y nunca se recorta, ya
+                # que el primer flowable arranca justo en `topMargin`.
+                img = Image(
+                    logo_path,
+                    width=ANCHO_LOGO,
+                    height=ALTO_LOGO,
+                )
                 img.hAlign = "LEFT"
                 elementos.append(img)
-                elementos.append(Spacer(1, 0.2 * cm))
+                # Separación mínima entre el logotipo y la razón social
+                # ("RODISA 1900 S.L.U.") bajo el borde superior de la página.
+                elementos.append(Spacer(1, SEPARACION_LOGO))
             except Exception:
                 pass
 

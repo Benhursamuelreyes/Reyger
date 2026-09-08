@@ -1,5 +1,25 @@
 Changelog content
 
+## v1.0.2 (2026-09-08)
+
+PATCH: correcciones de usabilidad y de maquetación A4.
+
+### Scroll con rueda del ratón (Linux)
+
+- Corregido `AttributeError` en los handlers de rueda (`evento.delta` no
+  existe en eventos `<Button-5>` de Linux): la rueda **hacia abajo** no
+  respondía en Ajustes, "Realizar pago", "Editar producto" y Albaranes.
+- Ajustes: refresco explícito del `scrollregion` tras renderizar todas
+  las secciones, garantizando la barra de scroll desde el primer acceso.
+
+### Márgenes A4 en PDFs (Presupuestos, Albaranes, Facturas)
+
+- Márgenes estándar explícitos: superior 20 mm, inferior y laterales
+  15 mm (puntos constantes en `pdf_documento.py`).
+- Logotipo del membrete enmarcado en contenedor proporcional de 2.2 cm
+  con separación de 0.3 cm hacia la razón social: arranca en `topMargin`
+  y ya no se recorta en la impresión A4.
+
 ## v1.0.1 (2026-09-07)
 
 PATCH: correcciones retrocompatibles de la interfaz.

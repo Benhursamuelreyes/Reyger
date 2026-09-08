@@ -579,9 +579,11 @@ class Ventas(tk.Frame):
         lienzo.bind("<Configure>", _ajustar_ancho)
 
         def _rueda(evento):
-            if getattr(evento, "num", None) == 4 or evento.delta > 0:
+            num = getattr(evento, "num", 0)
+            delta = getattr(evento, "delta", 0)
+            if num == 4 or delta > 0:
                 lienzo.yview_scroll(-2, "units")
-            elif getattr(evento, "num", None) == 5 or evento.delta < 0:
+            elif num == 5 or delta < 0:
                 lienzo.yview_scroll(2, "units")
 
         for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):

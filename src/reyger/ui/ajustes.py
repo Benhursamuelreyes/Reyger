@@ -89,10 +89,11 @@ class Ajustes(tk.Frame):
         lienzo.bind("<Configure>", _ajustar_ancho)
 
         def _rueda(evento):
-            # Linux: Button-4/5; Windows/macOS: MouseWheel con delta
-            if getattr(evento, "num", None) == 4 or evento.delta > 0:
+            num = getattr(evento, "num", 0)
+            delta = getattr(evento, "delta", 0)
+            if num == 4 or delta > 0:
                 lienzo.yview_scroll(-2, "units")
-            elif getattr(evento, "num", None) == 5 or evento.delta < 0:
+            elif num == 5 or delta < 0:
                 lienzo.yview_scroll(2, "units")
 
         toplevel = self.winfo_toplevel()
@@ -195,6 +196,13 @@ class Ajustes(tk.Frame):
             pady=10,
         )
         btn_updates.pack(side="left", padx=10)
+
+        # Refresca el scrollregion tras renderizar todas las secciones,
+        # por si el <Configure> del frame interior no llegó a dispararse.
+        lienzo.update_idletasks()
+        region = lienzo.bbox("all")
+        if region:
+            lienzo.configure(scrollregion=region)
     
     def _buscar_actualizaciones(self):
         """Verifica si hay una nueva versión en GitHub."""
