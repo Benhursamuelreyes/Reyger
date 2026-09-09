@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 
 from ..core import backup as mod_backup
+from ..core import datos as mod_datos
 from . import business_profile as bp
 from . import categorias as mod_categorias
 from ..config import ConfigManager
@@ -15,7 +16,12 @@ from ..hardware.impresion_termica import (
     enviar_bytes,
     listar_impresoras_termicas,
 )
-from ..resources import get_user_data_path, get_bundled_path
+from ..resources import (
+    get_user_data_path,
+    get_bundled_path,
+    get_output_path,
+)
+from ..resources import open_file as abrir_fichero
 
 #: Etiquetas visibles del selector de letra ↔ claves de ESCALAS_LETRA
 ETIQUETAS_LETRA = {
@@ -1255,10 +1261,10 @@ class Ajustes(tk.Frame):
         self.refrescar_categorias()
 
     def crear_seccion_base_datos(self, parent):
-        """Sección de exportación/importación de la base de datos."""
+        """Sección de datos: clientes y catálogo por separado + copia completa."""
         frame = tk.LabelFrame(
             parent,
-            text="🗄️ Base de datos",
+            text="🗄️ Datos y copias de seguridad",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
             font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
@@ -1269,17 +1275,88 @@ class Ajustes(tk.Frame):
 
         tk.Label(
             frame,
-            text="Lleva tus datos a otro equipo o haz copias de seguridad.\n"
-                 "Al importar se crea automáticamente una copia de seguridad "
-                 "de la base actual.",
+            text="Gestiona por separado clientes y productos (catálogo), o "
+                 "haz una copia de seguridad completa.\n"
+                 "Al importar se creará automáticamente una copia de "
+                 "seguridad de la base actual.",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
             font="sans 10",
             justify="left",
-        ).pack(anchor="w", pady=(0, 8))
+        ).pack(anchor="w", pady=(0, 10))
 
-        frame_formatos = tk.Frame(frame, bg=self.colors["bg_principal"])
-        frame_formatos.pack(anchor="w", padx=20, pady=(0, 10))
+        # Botonera compartida para deshabilitar durante tareas en hilo:
+        # cada elemento es (botón, texto_mientras_ocupa, texto_normal).
+        self.botones_datos = []
+
+        def _subseccion(titulo, ayuda, exportar, importar, plantilla):
+            sub = tk.LabelFrame(
+                frame,
+                text=titulo,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+                padx=12,
+                pady=8
+            )
+            sub.pack(fill="x", pady=(0, 10))
+
+            tk.Label(
+                sub,
+                text=ayuda,
+                bg=self.colors["bg_principal"],
+                fg=self.colors["fg_texto"],
+                font="sans 10",
+                justify="left",
+            ).pack(anchor="w", pady=(0, 6))
+
+            fila = tk.Frame(sub, bg=self.colors["bg_principal"])
+            fila.pack(anchor="w")
+
+            for texto, comando in (exportar, importar, plantilla):
+                boton = tk.Button(
+                    fila,
+                    text=texto,
+                    bg="#28A745" if "Exportar" in texto else "#0078D4",
+                    fg="white",
+                    font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+                    command=comando,
+                    padx=10,
+                    pady=6
+                )
+                boton.pack(side="left", padx=(0, 8))
+                self.botones_datos.append((boton, "⏳ Procesando…", texto))
+
+        _subseccion(
+            "👥 Clientes",
+            "Exporta o importa solo la lista de clientes (…​.xlsx o .csv). "
+            "Se identifican por su NIF/CIF.",
+            ("📤 Exportar clientes…", lambda: self._exportar_datos("clientes")),
+            ("📥 Importar clientes…", lambda: self._importar_datos("clientes")),
+            ("📄 Plantilla de clientes", lambda: self._plantilla_datos("clientes")),
+        )
+        _subseccion(
+            "🛒 Productos / Catálogo",
+            "Exporta o importa solo el catálogo de productos (…​.xlsx o .csv). "
+            "Se identifican por su Código/SKU.",
+            ("📤 Exportar catálogo…", lambda: self._exportar_datos("productos")),
+            ("📥 Importar catálogo…", lambda: self._importar_datos("productos")),
+            ("📄 Plantilla de productos", lambda: self._plantilla_datos("productos")),
+        )
+
+        tk.Frame(frame, bg="#CCCCCC", height=2).pack(fill="x", pady=(0, 10))
+
+        # --- Copia de seguridad completa (opción avanzada) ----------------
+        avanzado = tk.LabelFrame(
+            frame,
+            text="💾 Copia de seguridad completa (avanzado)",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=12,
+            pady=8
+        )
+        avanzado.pack(fill="x")
 
         self.var_formato_bd = tk.StringVar(value="db")
         for valor, texto in (
@@ -1288,7 +1365,7 @@ class Ajustes(tk.Frame):
             ("csv", "CSV comprimido (.zip) — un CSV por tabla"),
         ):
             radio = tk.Radiobutton(
-                frame_formatos,
+                avanzado,
                 text=texto,
                 variable=self.var_formato_bd,
                 value=valor,
@@ -1299,11 +1376,11 @@ class Ajustes(tk.Frame):
             )
             if valor == "excel" and not mod_backup.EXCEL_DISPONIBLE:
                 radio.config(state="disabled")
-            radio.pack(side="left", padx=(0, 15))
+            radio.pack(anchor="w", padx=8, pady=(2, 2))
 
         self.var_encriptar_bd = tk.BooleanVar(value=False)
         check_enc = tk.Checkbutton(
-            frame,
+            avanzado,
             text="Encriptar copia de seguridad (Fernet AES)",
             variable=self.var_encriptar_bd,
             bg=self.colors["bg_principal"],
@@ -1311,10 +1388,10 @@ class Ajustes(tk.Frame):
             font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
             selectcolor=self.colors["bg_secundario"],
         )
-        check_enc.pack(anchor="w", padx=20, pady=(0, 10))
+        check_enc.pack(anchor="w", padx=8, pady=(2, 6))
 
-        frame_acciones = tk.Frame(frame, bg=self.colors["bg_principal"])
-        frame_acciones.pack(fill="x", padx=20, pady=(0, 5))
+        frame_acciones = tk.Frame(avanzado, bg=self.colors["bg_principal"])
+        frame_acciones.pack(fill="x", padx=8, pady=(0, 4))
 
         btn_exportar = tk.Button(
             frame_acciones,
@@ -1341,15 +1418,155 @@ class Ajustes(tk.Frame):
         )
         btn_importar.pack(side="left")
         self.btn_importar_bd = btn_importar
+        self.botones_datos.append(
+            (btn_exportar, "⏳ Exportando…", "📤 Exportar base de datos…")
+        )
+        self.botones_datos.append(
+            (btn_importar, "⏳ Importando…", "📥 Importar base de datos…")
+        )
 
     def _ocupar_botones_bd(self, ocupado):
-        """Deshabilita la botonera de BD mientras hay una tarea en hilo."""
+        """Deshabilita la botonera de datos mientras hay una tarea en hilo."""
         estado = "disabled" if ocupado else "normal"
-        self.btn_exportar_bd.config(
-            state=estado,
-            text="⏳ Exportando…" if ocupado else "📤 Exportar base de datos…",
+        for boton, en_espera, normal in self.botones_datos:
+            boton.config(
+                state=estado,
+                text=en_espera if ocupado else normal,
+            )
+
+    def _exportar_datos(self, tipo):
+        """Exporta 'clientes' o 'productos' a .xlsx/.csv (en hilo)."""
+        if tipo == "clientes":
+            titulo, base, funcion = (
+                "Exportar clientes", "clientes", mod_datos.exportar_clientes
+            )
+        else:
+            titulo, base, funcion = (
+                "Exportar productos / catálogo", "productos",
+                mod_datos.exportar_productos,
+            )
+        ruta = filedialog.asksaveasfilename(
+            title=titulo,
+            defaultextension=".xlsx",
+            initialfile=f"{base}_{datetime.now():%Y%m%d}.xlsx",
+            filetypes=[
+                ("Libro de Excel", "*.xlsx"),
+                ("CSV", "*.csv"),
+                ("Todos los ficheros", "*.*"),
+            ],
         )
-        self.btn_importar_bd.config(state=estado)
+        if not ruta:
+            return
+
+        def trabajo():
+            return funcion(ruta)
+
+        def al_terminar(final, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                messagebox.showerror(
+                    titulo, f"No se pudo exportar: {error}"
+                )
+                return
+            messagebox.showinfo(
+                titulo, f"Exportación completada correctamente:\n{final}"
+            )
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, trabajo, al_terminar)
+
+    def _importar_datos(self, tipo):
+        """Importa 'clientes' o 'productos' eligiendo estrategia de duplicados."""
+        if tipo == "clientes":
+            titulo, funcion = "Importar clientes", mod_datos.importar_clientes
+        else:
+            titulo, funcion = (
+                "Importar productos / catálogo", mod_datos.importar_productos
+            )
+        ruta = filedialog.askopenfilename(
+            title=titulo,
+            filetypes=[
+                ("Libro de Excel", "*.xlsx"),
+                ("CSV", "*.csv"),
+                ("Todos los ficheros", "*.*"),
+            ],
+        )
+        if not ruta:
+            return
+        actualizar = messagebox.askyesno(
+            titulo,
+            "¿Cómo tratar los registros que ya existen?\n\n"
+            "• Sí → ACTUALIZAR los existentes (clientes por NIF/CIF, "
+            "productos por Código/SKU).\n"
+            "• No → IGNORAR los duplicados y solo añadir los nuevos.\n\n"
+            "Antes se guardará una copia de seguridad automática.",
+        )
+        modo = "actualizar" if actualizar else "ignorar"
+
+        def trabajo():
+            return funcion(ruta, modo=modo)
+
+        def al_terminar(resultado, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                if isinstance(error, mod_backup.BackupError):
+                    messagebox.showerror(titulo, str(error))
+                else:
+                    messagebox.showerror(
+                        titulo,
+                        f"No se pudo importar (no se cambió nada):\n{error}",
+                    )
+                return
+            texto = (
+                f"Importación completada.\n\n"
+                f"• Insertados: {resultado['insertados']}\n"
+                f"• Actualizados: {resultado['actualizados']}\n"
+                f"• Duplicados ignorados: {resultado['ignorados']}"
+            )
+            if resultado.get("respaldo"):
+                texto += (
+                    f"\n\nCopia de seguridad previa:\n"
+                    f"{resultado['respaldo']}"
+                )
+            texto += (
+                "\n\nLos cambios se verán al entrar en Clientes o "
+                "Inventario. Si algún módulo estaba abierto, reinícialo."
+            )
+            messagebox.showinfo(titulo, texto)
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, trabajo, al_terminar)
+
+    def _plantilla_datos(self, tipo):
+        """Genera y abre la plantilla de ejemplo de 'clientes' o 'productos'."""
+        extension = ".xlsx" if mod_backup.EXCEL_DISPONIBLE else ".csv"
+        if tipo == "clientes":
+            titulo, funcion = "Plantilla de clientes", mod_datos.plantilla_clientes
+            nombre = f"plantilla_clientes{extension}"
+        else:
+            titulo, funcion = "Plantilla de productos", mod_datos.plantilla_productos
+            nombre = f"plantilla_productos{extension}"
+        ruta = os.path.join(get_output_path("plantillas"), nombre)
+
+        def trabajo():
+            return funcion(ruta)
+
+        def al_terminar(final, error):
+            self._ocupar_botones_bd(False)
+            if error is not None:
+                messagebox.showerror(
+                    titulo, f"No se pudo crear la plantilla: {error}"
+                )
+                return
+            if messagebox.askyesno(
+                titulo,
+                f"Plantilla creada en:\n{final}\n\n¿Desea abrirla para ver "
+                "los nombres exactos de las columnas?",
+            ):
+                abrir_fichero(final)
+
+        self._ocupar_botones_bd(True)
+        en_hilo(self, trabajo, al_terminar)
 
     def exportar_base_datos(self):
         """Exporta la base en el formato seleccionado.

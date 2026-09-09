@@ -1,5 +1,36 @@
 Changelog content
 
+## v1.1.0 (2026-09-09)
+
+FEATURE: gestión granular de datos (clientes y catálogo por separado).
+
+### Importación/exportación por tablas
+
+- Nuevo módulo `reyger/core/datos.py` con exportación e importación
+  independiente de **clientes** y **productos/catálogo** en `.xlsx` o `.csv`.
+- Los ficheros emparejan columnas por nombre de cabecera (con alias en
+  español: "Precio de Coste", "Precio de Venta", "NIF/CIF", "Razón
+  Social"…), por lo que el orden de las columnas no importa.
+- **Clientes**: se identifican por NIF/CIF (`documento`); el tipo de
+  documento (NIF/NIE/CIF) se detecta automáticamente.
+- **Productos**: se identifican por Código/SKU (`codigo_barras`); se
+  validan Nombre, Precio de Coste, Precio de Venta, Stock e IVA (21/10/4).
+- Estrategia de duplicados a elegir al importar: **actualizar los
+  existentes** (UPSERT) o **ignorar los duplicados** y solo añadir los
+  nuevos.
+- Validación previa de todo el fichero: ante cualquier fila inválida se
+  informa de la fila y el motivo y **no se modifica nada**; antes de
+  aplicar cambios se genera una copia de seguridad automática.
+- Plantillas de ejemplo descargables para clientes y productos con los
+  nombres exactos de las columnas esperadas.
+
+### Interfaz (Ajustes → Datos y copias de seguridad)
+
+- Sección rediseñada con sub-bloques separados: **Clientes** y
+  **Productos / Catálogo** (Exportar / Importar / Plantilla).
+- La **copia de seguridad completa** (.db / .xlsx / .zip, con encriptado)
+  se conserva como opción avanzada.
+
 ## v1.0.3 (2026-09-09)
 
 PATCH: importación de datos tolerante y con errores descriptivos.
