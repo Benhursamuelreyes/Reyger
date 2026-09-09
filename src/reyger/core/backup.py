@@ -335,6 +335,29 @@ def importar_sqlite(ruta_origen, db_path=None):
     return respaldo
 
 
+def _es_fila_vacia(fila):
+    """Devuelve ``True`` si la fila no contiene ninguna celda con valor.
+
+    Se considera vacía una fila formada solo por ``None`` o celdas en
+    blanco (incluidos espacios); una celda numérica (0, False) cuenta
+    como contenido.
+    """
+    return not any(v is not None and str(v).strip() != "" for v in fila)
+
+
+def _celda_segura(fila, indice, nombre_col):
+    """Lee la celda en ``indice`` de una fila sin desbordar el índice.
+
+    Si la fila es más corta que la cabecera, la columna se trata como
+    opcional y se devuelve ``None`` (no se lanza ``IndexError``). Las
+    celdas vacías (``""``) también se convierten a ``None``.
+    """
+    if indice < 0 or indice >= len(fila):
+        return None
+    valor = fila[indice]
+    return None if valor == "" else valor
+
+
 def _leer_csv_zip(ruta):
     datos = {}
     try:
@@ -345,7 +368,9 @@ def _leer_csv_zip(ruta):
                 tabla = os.path.splitext(os.path.basename(nombre))[0]
                 with zf.open(nombre) as f:
                     lector = csv.reader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-                    filas = list(lector)
+                    filas = [
+                        fila for fila in lector if not _es_fila_vacia(fila)
+                    ]
                 if filas:
                     datos[tabla] = filas
     except zipfile.BadZipFile as e:
@@ -366,18 +391,76 @@ def _leer_excel(ruta):
     except Exception as e:
         raise BackupError(f"No se pudo abrir el libro de Excel: {e}") from e
     try:
+        if not libro.worksheets:
+            raise BackupError(
+                "El libro de Excel no contiene ninguna hoja de cálculo."
+            )
         datos = {}
         for hoja in libro.worksheets:
-            filas = [list(fila) for fila in hoja.iter_rows(values_only=True)]
-            while filas and all(v is None for v in filas[-1]):
-                filas.pop()
-            if filas and any(v is not None for v in filas[0]):
+            filas = [
+                list(fila)
+                for fila in hoja.iter_rows(values_only=True)
+                if fila is not None and not _es_fila_vacia(fila)
+            ]
+            if filas:
                 datos[hoja.title] = filas
     finally:
         libro.close()
     if not datos:
-        raise BackupError("El libro de Excel no contiene datos exportables.")
+        raise BackupError(
+            "El libro de Excel no contiene datos exportables "
+            "(las hojas están vacías)."
+        )
     return datos
+
+
+def _importar_tabla(conn, tabla, filas, existentes, ignoradas, resumen):
+    """Inserta las filas de una hoja/CSV en ``tabla``.
+
+    Las columnas se emparejan por *nombre* de la cabecera (la primera fila),
+    no por su posición: el orden de columnas en el fichero no importa. Las
+    columnas cuyo nombre no exista en el esquema se descartan, las filas
+    más cortas que la cabecera se toleran (la celda ausente se deja en
+    ``NULL``) y las tablas desconocidas se informan como ignoradas.
+    """
+    if tabla not in existentes:
+        ignoradas.append(tabla)
+        return
+    if len(filas) < 2:
+        return
+    cabecera = [str(c) for c in filas[0]]
+    if not cabecera or all(not str(c).strip() for c in cabecera):
+        raise BackupError(
+            f"La hoja «{tabla}» no tiene una cabecera válida en su primera "
+            "fila. Escribe en la primera fila el nombre de cada columna y "
+            "vuelve a intentarlo."
+        )
+    columnas_reales = [
+        fila[1] for fila in conn.execute(f'PRAGMA table_info("{tabla}")')
+    ]
+    mapa = [
+        (indice, nombre)
+        for indice, nombre in enumerate(cabecera)
+        if nombre in columnas_reales
+    ]
+    if not mapa:
+        ignoradas.append(tabla)
+        return
+    columnas_sql = ", ".join(f'"{c}"' for _, c in mapa)
+    marcadores = ", ".join("?" for _ in mapa)
+    conn.execute(f'DELETE FROM "{tabla}"')
+    insertada = 0
+    for fila in filas[1:]:
+        valores = [
+            _celda_segura(fila, indice, nombre) for indice, nombre in mapa
+        ]
+        conn.execute(
+            f'INSERT INTO "{tabla}" ({columnas_sql}) '
+            f"VALUES ({marcadores})",
+            valores,
+        )
+        insertada += 1
+    resumen[tabla] = insertada
 
 
 def importar_tablas(datos, db_path=None):
@@ -401,39 +484,32 @@ def importar_tablas(datos, db_path=None):
 
         conn.execute("PRAGMA foreign_keys = OFF")
         try:
+            tabla_actual = ""
             for tabla, filas in datos.items():
-                if tabla not in existentes or len(filas) < 2:
-                    continue
-                cabecera = [str(c) for c in filas[0]]
-                reales = [
-                    fila[1]
-                    for fila in conn.execute(f'PRAGMA table_info("{tabla}")')
-                ]
-                mapa = [(i, c) for i, c in enumerate(cabecera) if c in reales]
-                if not mapa:
-                    ignoradas.append(tabla)
-                    continue
-                columnas_sql = ", ".join(f'"{c}"' for _, c in mapa)
-                marcadores = ", ".join("?" for _ in mapa)
-                conn.execute(f'DELETE FROM "{tabla}"')
-                insertada = 0
-                for fila in filas[1:]:
-                    valores = [
-                        None if fila[i] == "" else fila[i] for i, _ in mapa
-                    ]
-                    conn.execute(
-                        f'INSERT INTO "{tabla}" ({columnas_sql}) '
-                        f"VALUES ({marcadores})",
-                        valores,
-                    )
-                    insertada += 1
-                resumen[tabla] = insertada
+                tabla_actual = tabla
+                _importar_tabla(
+                    conn, tabla, filas, existentes, ignoradas, resumen
+                )
             conn.commit()
+        except (IndexError, KeyError) as e:
+            conn.rollback()
+            raise BackupError(
+                "El fichero tiene una estructura no válida en la hoja "
+                f"«{tabla_actual}»: a alguna fila le falta una columna. "
+                "Comprueba que la primera fila sea la cabecera con los "
+                "nombres de las columnas."
+            ) from e
         except Exception:
             conn.rollback()
             raise
         finally:
             conn.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.IntegrityError as e:
+        raise BackupError(
+            "El fichero contiene celdas vacías o valores no válidos para "
+            "alguna columna obligatoria de la base. Revísalo e inténtalo de "
+            "nuevo (no se ha modificado nada)."
+        ) from e
     except sqlite3.Error as e:
         raise BackupError(f"Error importando datos: {e}") from e
     finally:
@@ -476,17 +552,23 @@ def importar_datos(ruta_origen, db_path=None):
             "resumen": {},
             "ignoradas": [],
         }
-    if extension == ".zip":
-        datos = _leer_csv_zip(ruta_origen)
-    elif extension == ".xlsx":
-        datos = _leer_excel(ruta_origen)
-    else:
+    try:
+        if extension == ".zip":
+            datos = _leer_csv_zip(ruta_origen)
+        elif extension == ".xlsx":
+            datos = _leer_excel(ruta_origen)
+        else:
+            raise BackupError(
+                f"Formato no reconocido («{extension}»). Use .db, .sqlite, "
+                ".sqlite3, .xlsx o .zip."
+            )
+        resumen, ignoradas, respaldo = importar_tablas(datos, db_path)
+    except (IndexError, KeyError) as e:
         raise BackupError(
-            f"Formato no reconocido («{extension}»). Use .db, .sqlite, "
-            ".sqlite3, .xlsx o .zip."
-        )
-
-    resumen, ignoradas, respaldo = importar_tablas(datos, db_path)
+            "El archivo no tiene la estructura esperada (faltan columnas u "
+            "hojas). Comprueba que la primera fila de cada hoja sea la "
+            "cabecera con los nombres de las columnas."
+        ) from e
     return {
         "modo": "tablas",
         "respaldo": respaldo,

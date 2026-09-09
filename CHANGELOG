@@ -1,5 +1,24 @@
 Changelog content
 
+## v1.0.3 (2026-09-09)
+
+PATCH: importación de datos tolerante y con errores descriptivos.
+
+### Importación desde Excel (.xlsx) y CSV (.zip)
+
+- Corregido el fallo `list index out of range` al importar ficheros con
+  filas más cortas que la cabecera (el error llegaba a la interfaz sin
+  procesar; ahora la celda ausente se importa como `NULL`).
+- Las columnas se emparejan por *nombre* de la cabecera, no por posición:
+  el orden de las columnas en el fichero ya no importa y las columnas
+  extra se ignoran.
+- Se omiten las filas y hojas completamente vacías antes de insertar.
+- Errores descriptivos en lugar de tracebacks: libro sin hojas, hojas sin
+  cabecera válida o celdas vacías en columnas obligatorias se informan con
+  mensajes claros y, en todo caso, la importación es atómica (no se
+  modifica nada si falla).
+- Tests nuevos en `tests/test_importar_excel.py` (7 casos).
+
 ## v1.0.2 (2026-09-08)
 
 PATCH: correcciones de usabilidad y de maquetación A4.
