@@ -206,6 +206,11 @@ de versión generadas automáticamente.
 
 - Acotada a `>=42.0,<49` para compatibilidad con builds x86_64 (macOS
   Intel); `cryptography>=49` solo publica wheels arm64.
+- La alerta de Dependabot **CVE-2026-69249** (GHSA-jwv3-5hgf-82ww, rango
+  `>=42.0,<49`) **no es explotable** en Reyger: afecta al *path building*
+  de X.509 y la aplicación solo usa `Fernet` (AES + HMAC simétrico), sin
+  verificar cadenas de certificados. Se mantiene la cota `<49` por
+  compatibilidad con macOS Intel y la alerta se descarta como «no usada».
 
 ### v3.0.0-beta.3 — 2026-08-24
 
