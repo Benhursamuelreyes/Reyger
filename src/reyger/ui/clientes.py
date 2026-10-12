@@ -371,6 +371,29 @@ class Clientes(tk.Frame):
         if messagebox.askyesno(
             "Eliminar cliente", f"¿Eliminar el cliente '{nombre}'?"
         ):
+            # Con PRAGMA foreign_keys=ON, borrar un cliente con facturas,
+            # albaranes o presupuestos lanza IntegrityError y la app
+            # muestra un error técnico. Los documentos son registros
+            # fiscales: no se pueden reasignar ni borrar en cascada.
+            referencias = db.query_one(
+                "SELECT "
+                "(SELECT COUNT(*) FROM facturas_verifactu WHERE cliente_id = ?) + "
+                "(SELECT COUNT(*) FROM albaranes WHERE cliente_id = ?) + "
+                "(SELECT COUNT(*) FROM presupuestos WHERE cliente_id = ?) + "
+                "(SELECT COUNT(*) FROM ventas WHERE cliente_id = ?) "
+                "AS total",
+                (self.cliente_id_actual,) * 4,
+            )
+            total = (referencias["total"] if referencias else 0) or 0
+            if total:
+                messagebox.showerror(
+                    "Eliminar cliente",
+                    f"No se puede eliminar '{nombre}' porque tiene {total} "
+                    "documento(s) asociado(s) (facturas, albaranes, "
+                    "presupuestos o ventas). Los documentos son registros "
+                    "fiscales y deben conservarse.",
+                )
+                return
             db.execute("DELETE FROM clientes WHERE id = ?", (self.cliente_id_actual,))
             self.limpiar_formulario()
             self.cargar_clientes()

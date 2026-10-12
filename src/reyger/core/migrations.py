@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 12
+LATEST_VERSION = 13
 
 MIGRACIONES = []
 
@@ -491,7 +491,33 @@ def _asegurar_esquema_correlatividad(conn):
         # La unicidad debe ser compuesta (tipo, serie); si no lo es (una
         # iteración previa la creó con UNIQUE sobre tipo solo) se reconstruye.
         if "UNIQUE(TIPO, SERIE)" not in ddl.replace(" ", ""):
-            conn.execute("DROP TABLE IF EXISTS contadores_documentos")
+            # Reconstruir la tabla NO puede perder los contadores: son el
+            # máximo de número ya emitido, y si se pierden la secuencia
+            # retrocede y la app reemite números de factura ya usados (duplicado
+            # fiscal). Antes de tirar la tabla se preserva el máximo por
+            # (tipo, serie). MAX también colapsa de forma segura cualquier
+            # fila duplicada que una UNIQUE(tipo) previa hubiera permitido.
+            conn.execute("DROP TABLE IF EXISTS _contadores_respaldo")
+            conn.execute(
+                "CREATE TABLE _contadores_respaldo AS "
+                "SELECT tipo, serie, MAX(ultimo_numero) AS ultimo_numero "
+                "FROM contadores_documentos GROUP BY tipo, serie"
+            )
+            conn.execute("DROP TABLE contadores_documentos")
+            conn.execute("""
+                CREATE TABLE contadores_documentos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tipo TEXT NOT NULL,
+                    serie TEXT NOT NULL,
+                    ultimo_numero INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(tipo, serie)
+                )
+            """)
+            conn.execute(
+                "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) "
+                "SELECT tipo, serie, ultimo_numero FROM _contadores_respaldo"
+            )
+            conn.execute("DROP TABLE _contadores_respaldo")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS contadores_documentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -609,6 +635,206 @@ def _migracion_12(conn):
     porcentaje de margen/ganancia configurado al crear o editar un producto.
     """
     _add_column(conn, "inventario", "margen_porcentaje REAL")
+
+
+# ---------------------------------------------------------------------------
+# Índices y reconciliación de correlatividad
+# ---------------------------------------------------------------------------
+
+#: Índices que crea la migración 13, con el motivo medido de cada uno.
+#:
+#: Todos son ``IF NOT EXISTS`` y solo(additivos): no se reescribe ni una
+#: fila de ``ventas``, ``facturas_verifactu`` ni ``contadores_documentos``.
+INDICES_V13 = (
+    # Importacion de clientes: `SELECT id FROM clientes WHERE documento = ?` por
+    # fila. Medido sobre 5.000 clientes / 20.000 productos:
+    # SCAN clientes (200 us) -> SEARCH con indice covering (7 us), 27x.
+    ("clientes",
+     "CREATE INDEX IF NOT EXISTS idx_clientes_documento ON clientes(documento)"),
+    # Listado de ventas de un cliente (FK que se anade en esta migracion).
+    # SCAN ventas (1.568 us) -> SEARCH (7 us), 218x.
+    ("ventas",
+     "CREATE INDEX IF NOT EXISTS idx_ventas_cliente_id ON ventas(cliente_id)"),
+    # `SELECT IFNULL(MAX(numero_ord),0)` se ejecuta en CADA factura
+    # emitida: SEARCH facturas_verifactu (161 us) -> covering index (7 us),
+    # 23x. Ademas elimina el USE TEMP B-TREE de verificar_cadena(),
+    # exportar XML y el CSV de verificacion (1.17x-1.27x).
+    ("facturas_verifactu",
+     "CREATE INDEX IF NOT EXISTS idx_verifactu_numero_ord ON facturas_verifactu(numero_ord)"),
+    # Exportacion de XML de pendientes: la consulta filtra por estado y
+    # ordena por numero_ord. Sustituye a idx_verifactu_estado, que solo
+    # cubria el filtro y obligaba a ordenar en memoria (1.18x).
+    ("facturas_verifactu",
+     "CREATE INDEX IF NOT EXISTS idx_verifactu_estado_numero_ord ON facturas_verifactu(estado_envio, numero_ord)"),
+    # Índices de las claves foráneas hijas. Con foreign_keys=ON, borrar un
+    # cliente recorre facturas_verifactu, albaranes y presupuestos; sin
+    # estos índices cada borrado pagaba un SCAN completo de las tres.
+    ("facturas_verifactu",
+     "CREATE INDEX IF NOT EXISTS idx_facturas_verifactu_cliente_id ON facturas_verifactu(cliente_id)"),
+    ("albaranes",
+     "CREATE INDEX IF NOT EXISTS idx_albaranes_cliente_id ON albaranes(cliente_id)"),
+    ("presupuestos",
+     "CREATE INDEX IF NOT EXISTS idx_presupuestos_cliente_id ON presupuestos(cliente_id)"),
+    # Inventario: mismo motivo al borrar o reasignar una categoría o un
+    # proveedor (categorias.eliminar reasigna antes de borrar).
+    ("inventario",
+     "CREATE INDEX IF NOT EXISTS idx_inventario_categoria_id ON inventario(categoria_id)"),
+    ("inventario",
+     "CREATE INDEX IF NOT EXISTS idx_inventario_proveedor_id ON inventario(proveedor_id)"),
+    # Líneas de documento: se consultan siempre por su padre y las
+    # borradoras se borran con ON DELETE CASCADE.
+    ("albaranes_productos",
+     "CREATE INDEX IF NOT EXISTS idx_albaranes_productos_albaran_id ON albaranes_productos(albaran_id)"),
+    ("facturas_verifactu_productos",
+     "CREATE INDEX IF NOT EXISTS idx_facturas_verifactu_productos_factura_id ON facturas_verifactu_productos(factura_id)"),
+    ("facturas_borradores_productos",
+     "CREATE INDEX IF NOT EXISTS idx_facturas_borradores_productos_borrador_id ON facturas_borradores_productos(borrador_id)"),
+    ("presupuestos_productos",
+     "CREATE INDEX IF NOT EXISTS idx_presupuestos_productos_presupuesto_id ON presupuestos_productos(presupuesto_id)"),
+)
+
+#: Índices que dejan de ser necesarios al crear su versión compuesta.
+INDICES_V13_SOBRANTES = ("idx_verifactu_estado",)
+
+
+#: (tipo, columna de ``ventas``, prefijo de serie) usado por la app.
+SERIES_CORRELATIVAS = (
+    ("factura", "factura", "F-"),
+    ("ticket", "numero_ticket", "T-"),
+)
+
+
+def _maximo_correlativo(conn, columna, prefijo):
+    """Máximo ya emitido para *prefijo*, con la misma expresión que usa
+    ``core.correlativos._maximo_en_ventas`` (red de seguridad)."""
+    # ``columna`` y ``prefijo`` provienen de SERIES_CORRELATIVAS, no de
+    # entrada del usuario: el identificador se interpola, el prefijo se
+    # enlaza. (Si se enlazara también la columna, REPLACE() operaría
+    # sobre el texto "numero_ticket" y devolvería siempre 0.)
+    fila = conn.execute(
+        f"SELECT IFNULL(MAX(CAST(REPLACE({columna}, ?, '') AS INTEGER)), 0) "
+        f"FROM ventas WHERE estado = 'emitido' AND {columna} LIKE ?",
+        (prefijo, prefijo + "%"),
+    ).fetchone()
+    return fila[0] if fila and fila[0] and fila[0] > 0 else 0
+
+
+def _reconciliar_contadores_documentos(conn):
+    """Asegura que exista un contador utilizable por cada tipo/serie real.
+
+    ``_sembrar_contadores_documentos`` (migraciones 9/10) siembra la serie
+    con ``SUBSTR(numero, 1, 1)`` -- 'T' en vez de 'T-' -- y el número con
+    ``CAST(SUBSTR(numero, 2) AS INTEGER)``, que sobre 'T-9999' es -9999.
+    Una instalacion heredada de esa siembra queda con filas que la aplicacion
+    nunca consulta, asi que el numero sale siempre de la red de seguridad
+    ``_maximo_en_ventas``; y si la serie coincide, el contador arranca en
+    negativo y se reemiten números ya usados.
+
+    Aquí solo se INSERTA o se SUBE con ``MAX``: la secuencia nunca retrocede
+    y ninguna fila existente se reescribe o se borra.
+    """
+    if "ventas" not in {
+        fila[0]
+        for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }:
+        return
+
+    columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(ventas)")}
+    if "factura" not in columnas or "estado" not in columnas:
+        return
+
+    if "contadores_documentos" not in {
+        fila[0]
+        for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }:
+        return
+
+    # Deliberadamente NO se usa ``ON CONFLICT(tipo, serie)``: esa cláusula
+    # exige que exista una restricción UNIQUE que referencie, y si la tabla
+    # heredada se creó con ``UNIQUE(tipo)``, SQLite aborta con
+    # "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE
+    # constraint", la migración 13 falla y ``ensure_database()`` revierte
+    # --> la app no arranca. Resolver la fila a mano (SELECT + INSERT/UPDATE)
+    # da el mismo resultado y es independiente del esquema heredado.
+    for tipo, columna, prefijo in SERIES_CORRELATIVAS:
+        if columna not in columnas:
+            continue
+        maximo = _maximo_correlativo(conn, columna, prefijo)
+        if maximo <= 0:
+            continue
+        # Invariante del módulo: la secuencia NUNCA retrocede, así que solo
+        # se sube el contador, jamás se baja ni se reescribe a la baja.
+        existente = conn.execute(
+            "SELECT ultimo_numero FROM contadores_documentos "
+            "WHERE tipo = ? AND serie = ?",
+            (tipo, prefijo),
+        ).fetchone()
+        if existente is None:
+            conn.execute(
+                "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) "
+                "VALUES (?, ?, ?)",
+                (tipo, prefijo, maximo),
+            )
+        elif maximo > existente[0]:
+            conn.execute(
+                "UPDATE contadores_documentos SET ultimo_numero = ? "
+                "WHERE tipo = ? AND serie = ?",
+                (maximo, tipo, prefijo),
+            )
+
+
+@migracion(13)
+def _migracion_13(conn):
+    """Índices de acceso y reconciliación de la correlatividad.
+
+    - Crea los índices que convierten en ``SEARCH`` los recorridos que
+      antes eran ``SCAN`` completos (clientes por documento, ventas por
+      cliente, ordinal VeriFACTu, líneas de documento y claves foráneas
+      hijas). Aditivo puro: no reescribe filas ni altera valores.
+    - Reemplaza ``idx_verifactu_estado`` por su versión compuesta, que
+      además cubre el filtro por estado.
+    - Inserta los contadores ``('ticket','T-')`` / ``('factura','F-')``
+      que la aplicación realmente consulta, tomando el máximo de ``ventas``
+      y **sin decrementar** ningún contador existente.
+    - Prepara antes el esquema de correlatividad: una instalación heredada
+      con ``contadores_documentos`` en ``UNIQUE(tipo)`` (no compuesta) se
+      repara aquí, preservando el máximo ya emitido.
+    """
+    _asegurar_esquema_correlatividad(conn)
+    tablas = {
+        fila[0]
+        for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    columnas_por_tabla = {}
+
+    def _columnas_de(tabla):
+        if tabla not in columnas_por_tabla:
+            columnas_por_tabla[tabla] = {
+                fila[1] for fila in conn.execute(f"PRAGMA table_info({tabla})")
+            }
+        return columnas_por_tabla[tabla]
+
+    for tabla, sentencia in INDICES_V13:
+        # Tolerante igual que _add_column: una base heredada puede no
+        # tener la tabla, o tenerla sin la columna (las pruebas de
+        # migración crean esquemas mínimos a propósito).
+        if tabla not in tablas:
+            continue
+        columnas = [
+            c.strip() for c in sentencia[sentencia.index(f"ON {tabla}(") + len(f"ON {tabla}("):].split(")")[0].split(",")
+        ]
+        if any(c not in _columnas_de(tabla) for c in columnas):
+            continue
+        conn.execute(sentencia)
+    for indice in INDICES_V13_SOBRANTES:
+        conn.execute(f"DROP INDEX IF EXISTS {indice}")
+    _reconciliar_contadores_documentos(conn)
 
 
 def run_migrations(conn):

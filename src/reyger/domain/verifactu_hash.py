@@ -11,6 +11,8 @@ Reglas:
     - Nombre y valor separados por ``=``
     - Codificación UTF-8, salida hex mayúsculas (64 caracteres)
     - ``Huella`` vacía si es el primer registro de la cadena
+    - La cadena es **por serie**: cada factura encadena con la última
+      factura de su misma serie, nunca con la de otra.
     - Fecha: ``DD-MM-YYYY``
     - Timestamp: ISO 8601 con offset de timezone (``YYYY-MM-DDThh:mm:ss+hh:mm``)
 """
@@ -19,6 +21,7 @@ import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from ..core import correlativos
 from ..core import db
 from ..ui import business_profile as bp
 
@@ -97,17 +100,52 @@ def calcular_huella(
     return hashlib.sha256(cadena.encode("utf-8")).hexdigest().upper()
 
 
-def obtener_huella_anterior(numero_series: Optional[str] = None) -> tuple[str, str, str]:
-    """Obtiene la huella, número de serie y fecha de la última factura de la serie.
+def _prefijo_serie_factura(numero_factura: Optional[str] = None) -> str:
+    """Devuelve el prefijo de serie con el que se encadena la cadena.
 
-    Devuelve ``(huella, numero_serie, fecha)`` de la factura más reciente.
-    Si no hay facturas previas, devuelve cadenas vacías.
+    La serie tiene que salir de la **misma** fuente que la numeración
+    (``core.correlativos``), nunca de otro campo de ``business_profile``:
+    leerla de ``numero_series`` ('A' por defecto) en vez de la serie real de
+    facturas es lo que dejó la cadena de hashes vacía, porque el patrón
+    ``A-%`` no casa con ningún número de factura emitido.
+
+    Args:
+        numero_factura: Número completo de la factura que se va a registrar
+            (p. ej. ``'F-0100'``). Si se conoce, el prefijo se deduce de él,
+            de forma que la cadena no puede desviarse de la numeración real
+            aunque cambie la configuración.
+
+    Returns:
+        Prefijo ya normalizado, sin dígitos (p. ej. ``'F-'``). Se normaliza
+        con la misma regla que ``correlativos`` al numerar, de modo que una
+        serie configurada como ``'F-100'`` produce el prefijo ``'F-'`` que
+        es el que realmente llevan los números emitidos.
     """
-    serie = numero_series or bp.obtener_campo("numero_series") or "A"
+    if numero_factura:
+        return correlativos._limpiar_serie(numero_factura) or "F-"
+    return correlativos._limpiar_serie(correlativos._serie("factura")) or "F-"
+
+
+def obtener_huella_anterior(numero_series: Optional[str] = None,
+                            numero_factura: Optional[str] = None) -> tuple[str, str, str]:
+    """Obtiene la huella, número y fecha de la última factura de la serie.
+
+    Args:
+        numero_series: Prefijo de serie explícito. Si se indica, tiene
+            prioridad sobre el resto.
+        numero_factura: Número completo de la factura en curso, del que se
+            deduce el prefijo cuando no se pasa *numero_series*.
+
+    Returns:
+        ``(huella, numero_factura, fecha)`` de la factura anterior de esa
+        misma serie, o ``("", "", "")`` si es la primera de la cadena (en
+        ese caso la ``Huella`` de la spec va vacía).
+    """
+    serie = numero_series or _prefijo_serie_factura(numero_factura)
     fila = db.query_one(
         "SELECT numero_factura, fecha, huella FROM facturas_verifactu "
         "WHERE numero_factura LIKE ? ORDER BY id DESC LIMIT 1",
-        (f"{serie}-%",),
+        (f"{serie}%",),
     )
     if fila is None:
         return "", "", ""
@@ -125,9 +163,12 @@ def calcular_huella_para_factura(
 ) -> tuple[str, str, str, str]:
     """Calcula huella completa para una factura: hash, cadena, huella anterior y orden.
 
+    La cadena se encadena contra la factura anterior de la **propia serie de
+    esta factura** (*num_serie*), no contra la serie global configurada.
+
     Devuelve ``(huella, cadena_valores, huella_anterior, fecha_generacion)``.
     """
-    huella_ant, _, _ = obtener_huella_anterior()
+    huella_ant, _, _ = obtener_huella_anterior(numero_factura=num_serie)
     fecha_gen = _formato_timestamp_aeat(fecha_hora_gen)
 
     cadena = construir_cadena_valores(

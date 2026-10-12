@@ -11,7 +11,6 @@ El texto se codifica en CP858 (incluye € y caracteres españoles) con
 retroceso a CP437 si la impresora no lo soporta.
 """
 
-import glob
 import os
 import platform
 import subprocess
@@ -24,10 +23,24 @@ ANCHO_58MM = 32
 PUNTOS_POR_ANCHO = {ANCHO_80MM: 512, ANCHO_58MM: 384}
 
 INICIO = b"\x1b@"
-#: Fija la tabla de caracteres a PC850 / Latin-1 (Multilingual) para que
-#: los acentos y símbolos españoles se impriman bien en lugar de salir
-#: como caracteres extraños (p. ej. 'Ç ª ¿ ≡'). GS t 2 = PC850.
-CODEPAGE_PC850 = b"\x1dt\x02"
+#: Tabla de caracteres que se declara a la impresora con ``GS t n``.
+#:
+#: Antes se enviaba ``GS t 2`` (PC850) pero el texto se codificaba en
+#: CP858. Ambas coinciden en los acentos españoles y **difieren justo en el
+#: símbolo €**: en CP858 es el byte 0xD5, mientras que en PC850 ese mismo
+#: byte es la 'ı' (i sin punto). Como la moneda por defecto es el euro,
+#: todos los importes de todos los tickets se imprimían como «12,34 ı».
+#:
+#: Ahora se declara WPC1252 (``GS t 11``) y se codifica en ``cp1252``, de
+#: modo que los bytes emitidos y los que la impresora interpreta son
+#: siempre el mismo juego: '' y las tildes/ñ salen correctos.
+CODEPAGE_WPC1252 = b"\x1dt\x0b"
+
+#: Codec de Python que corresponde EXACTAMENTE a :data:`CODEPAGE_WPC1252`.
+#: La igualdad entre ambos es un invariante del módulo: si se cambia uno
+#: hay que cambiar el otro (o emitir el ``GS t`` correspondiente).
+CODEC_IMPRESORA = "cp1252"
+
 IZQUIERDA = b"\x1ba\x00"
 CENTRO = b"\x1ba\x01"
 NEGRITA_ON = b"\x1bE\x01"
@@ -53,46 +66,80 @@ ALINEACIONES = {
 
 #: Escala del nombre de la empresa: siempre un paso mayor que el cuerpo
 #: para que el encabezado destaque sobre los productos.
+#: En ``GS ! n`` el nibble alto del parámetro es el multiplicador de ancho
+#: MENOS UNO: 0x1 -> 2, 0x2 -> 3. La tabla anterior declaraba "2x3" para
+#: ``grande`` con 0x21, cuando 0x21 son realmente 3 de ancho por 2 de alto,
+#: y su tabla de multiplicadores decía 2. Como el ancho de columna se
+#: calcula dividiendo el papel entre ese multiplicador, el encabezado se
+#: calculaba con 21 columnas en papel de 42 y la impresora partía el nombre
+#: de la empresa a mitad de palabra.
 ESCALA_ENCABEZADO = {
     "pequena": b"\x1d!\x11",     # 2×2
-    "grande": b"\x1d!\x21",      # 2×3
+    "grande": b"\x1d!\x21",      # 3 de ancho × 2 de alto
     "muy_grande": b"\x1d!\x22",  # 3×3
 }
 
+
+def _multiplicador_horizontal(escape):
+    """Multiplicador de ancho real de un escape ``GS ! n``.
+
+    Se deriva del propio byte para que ``ESCALA_ENCABEZADO`` y el cálculo
+    de columnas no puedan volver a desincronizarse.
+    """
+    return (escape[-1] >> 4) + 1
+
+
 #: Multiplicador horizontal de la escala del encabezado.
-MULTIPLICADOR_ENCABEZADO = {"pequena": 2, "grande": 2, "muy_grande": 3}
+MULTIPLICADOR_ENCABEZADO = {
+    nombre: _multiplicador_horizontal(escape)
+    for nombre, escape in ESCALA_ENCABEZADO.items()
+}
 
 
 def _codificar(texto):
-    """Codifica texto a bytes de impresora (CP858 → CP850 → CP437 → Latin-1).
+    """Codifica texto a bytes en la tabla declarada a la impresora.
 
-    CP858 y CP850 comparten los bytes de los acentos españoles; solo
-    difieren en el símbolo € (byte 0xD5). Se intenta CP858 primero para
-    conservar el € y se degrada sin romper si el juego no lo soporta.
+    Se usa el codec que corresponde a :data:`CODEPAGE_WPC1252`
+    (``cp1252``), que cubre tildes, '' y ñ. Los caracteres fuera de él
+    (nombres en chino, símbolos de monedas de países no europeos) se
+    sustituyen por '?', pero **nunca** se recurre a otro juego de
+    caracteres: hacerlo produciría bytes que la impresora interpretaría con
+    la tabla equivocada, que es el error que causaba que el € saliera como
+    'ı'. Un carácter se convierte siempre en un byte, de modo que la
+    alineación por columnas se conserva.
     """
-    for codificacion in ("cp858", "cp850", "cp437", "latin-1"):
-        try:
-            return str(texto).encode(codificacion, errors="replace")
-        except LookupError:
-            continue
-    return str(texto).encode("ascii", errors="replace")
+    return str(texto).encode(CODEC_IMPRESORA, errors="replace")
 
 
 def _linea(texto=""):
-    return _codificar(texto) + b"\n"
+    # CR+LF: LF solo avanza una línea, CR es el que devuelve el carro al
+    # margen izquierdo. En impresoras que no autoconvierten LF en CRLF, el
+    # solo-LF produce tickets en escalera.
+    return _codificar(texto) + b"\r\n"
+
+
+def _recortar(texto, ancho):
+    """Recorta *texto* a *ancho* caracteres sin un límite de corte negativo."""
+    ancho = max(0, int(ancho))
+    return str(texto)[:ancho]
 
 
 def _fila_dos_columnas(izquierda, derecha, ancho):
     """Fila 'Nombre...... 12.34 €' recortada al ancho del papel."""
-    izquierda = str(izquierda)
-    derecha = str(derecha)
+    ancho = max(1, int(ancho))
+    izquierda = _recortar(izquierda, ancho)
+    derecha = _recortar(derecha, ancho)
     espacio = ancho - len(izquierda) - len(derecha)
     if espacio < 1:
-        # Nombre demasiado largo: partir en dos líneas
-        recortado = izquierda[: ancho - len(derecha) - 1]
+        # Nombre demasiado largo: la columna derecha no deja hueco. Sin
+        # acotar el límite, ``izquierda[:ancho - len(derecha) - 1]`` podía
+        # resultar negativo y Python recortaba por la derecha, generando
+        # una línea MÁS ANCHA que el papel.
+        recortado = _recortar(izquierda, max(0, ancho - len(derecha) - 1))
         espacio = ancho - len(recortado) - len(derecha)
         izquierda = recortado
     return _linea(izquierda + " " * max(espacio, 0) + derecha)
+
 
 
 def _rasterizar_logo(ruta, puntos_ancho, puntos_alto_max=192):
@@ -191,7 +238,7 @@ class TicketTermico:
         self._just_datos = ALINEACIONES.get(alineacion_datos, IZQUIERDA)
         self._just_pie = ALINEACIONES.get(alineacion_pie, CENTRO)
         self.tipo_documento = tipo_documento
-        self._partes = [INICIO, CODEPAGE_PC850, self._fuente_cuerpo]
+        self._partes = [INICIO, CODEPAGE_WPC1252, self._fuente_cuerpo]
 
     # ---------------------------------------------------------- bloques
     def encabezado(self):
@@ -396,7 +443,7 @@ def listar_impresoras_termicas():
     else:
         try:
             salida = subprocess.run(
-                ["lpstat", "-e"], capture_output=True, text=True, timeout=5
+                ["lpstat", "-e"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5
             )
             if salida.returncode == 0:
                 nombres += [l.strip() for l in salida.stdout.splitlines() if l.strip()]
@@ -527,31 +574,58 @@ def _enviar_windows(datos, impresora):
         winspool.ClosePrinter(handle)
 
 
-def _enviar_posix(datos, impresora):
-    # 1) Dispositivo directo (/dev/usb/lpN)
-    rutas = []
-    if impresora and impresora.startswith("/dev/"):
-        rutas.append(impresora)
-    else:
-        rutas += sorted(glob.glob("/dev/usb/lp*"))
-    for ruta in rutas:
-        try:
-            with open(ruta, "wb") as dispositivo:
-                dispositivo.write(datos)
-            return True
-        except OSError:
-            continue
+def _escritura_dispositivo(ruta, datos):
+    """Escribe *datos* en el dispositivo /dev/ indicado. True si se pudo."""
+    with open(ruta, "wb") as dispositivo:
+        dispositivo.write(datos)
+    return True
 
-    # 2) CUPS en modo raw
+
+def _enviar_posix(datos, impresora):
+    """Envía *datos* crudos a la impresora indicada en POSIX.
+
+    *impresora* es siempre el valor configurado en Ajustes, y ahí es un
+    **nombre de cola CUPS** (así lo devuelve ``listar_impresoras_termicas``
+    con ``lpstat -e``), no una ruta de dispositivo. La implementación
+    anterior recorría ``/dev/usb/lp*`` en cuanto el valor no empezaba por
+    ``/dev/``, es decir siempre, y escribía el ticket en el primer
+    dispositivo que aceptara la escritura: se ignoraba la cola elegida.
+    Y si la ruta ``/dev/…`` indicada fallaba, el flujo continuaba hasta
+    ``lp -o raw`` **sin** ``-d``, con lo que los bytes ESC/POS acababan en
+    la impresora por defecto (normalmente una A4) que los imprimía como
+    basura.
+    """
+    if impresora and impresora.startswith("/dev/"):
+        # Destino explícito por dispositivo: si falla, se informa. No se
+        # degrada a otra impresora porque el documento es fiscal.
+        try:
+            return _escritura_dispositivo(impresora, datos)
+        except OSError as e:
+            print(f"No se pudo escribir en {impresora}: {e}")
+            return False
+
+    # Cola CUPS: siempre se indica la elegida, nunca la de por defecto.
     comando = ["lp", "-o", "raw"]
-    if impresora and not impresora.startswith("/dev/"):
+    if impresora:
         comando += ["-d", impresora]
+    else:
+        # Sin impresora configurada no se envía nada: imprimir un ticket
+        # fiscal en la impresora por defecto es peor que no imprimirlo.
+        print("No hay impresora térmica configurada")
+        return False
+
     try:
         resultado = subprocess.run(
             comando, input=datos, capture_output=True, timeout=10
         )
+        if resultado.returncode != 0:
+            print(
+                f"lp devolvió {resultado.returncode}: "
+                f"{resultado.stderr.decode(errors='replace').strip()}"
+            )
         return resultado.returncode == 0
-    except Exception:
+    except Exception as e:
+        print(f"Error enviando a la impresora {impresora}: {e}")
         return False
 
 

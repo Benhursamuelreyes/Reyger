@@ -1,5 +1,6 @@
 # inventario.py
 import os
+import sqlite3
 from datetime import datetime
 from tkinter import *
 import tkinter as tk
@@ -13,7 +14,13 @@ from ..domain.fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
 from . import categorias as gestor_categorias
 from ..core import db
 from ..core import moneda as mod_moneda
-from ..core.backup import BackupError, importar_datos, exportar_sqlite
+from ..core.db import wal_activo
+from ..core.backup import (
+    AVISO_COPIA_MANUAL,
+    BackupError,
+    importar_datos,
+    exportar_sqlite,
+)
 from ..core.hilos import en_hilo
 
 
@@ -229,6 +236,18 @@ class Inventario(tk.Frame):
         if not ruta:
             return
 
+        # Aviso solo con WAL activo: es entonces cuando copiar el fichero a
+        # mano produce una copia incompleta (los datos recientes siguen en
+        # database.db-wal) y al restaurarla faltan tablas o la factura más
+        # nueva. En modo delete una copia normal sería válida y el aviso
+        # solo sería ruido. El texto vive en core.backup para que esta
+        # ventana y la de Ajustes no diverjan.
+        if wal_activo():
+            if not messagebox.askyesno(
+                "Exportar base de datos", AVISO_COPIA_MANUAL
+            ):
+                return
+
         def al_terminar(final, error):
             self._ocupar_botones_bd(False)
             if error is not None:
@@ -356,20 +375,40 @@ class Inventario(tk.Frame):
     
     def eje_consulta(self, consulta, parametros=()):
         conn = db.get_connection()
+        # Solo se commitea si la sentencia ESCRIBIÓ de verdad. Antes
+        # cualquier SELECT cerraba la transacción que hubiera abierto
+        # otro hilo sobre la conexión compartida, ajustando un pago a medio
+        # confirmar o el registro de una factura VeriFACTu.
+        antes = conn.total_changes
         cursor = conn.execute(consulta, parametros)
-        conn.commit()
+        if conn.total_changes != antes:
+            conn.commit()
         return cursor
     
     def validacion(self, nombre, prov, precio, costo, stock):
+        """Valida los campos del producto.
+
+        Devuelve ``(ok, mensaje)``. Antes solo comprobaba que los campos
+        fueran truthy y convertibles, de modo que un precio, un coste o un
+        stock negativos se guardaban: el coste negativo inflaba el margen y
+        el precio negativo llegaba a :func:`fiscal.desglose_linea` como
+        base imponible negativa en una venta.
+        """
         if not (nombre and prov and precio and costo and stock):
-            return False
+            return False, "Rellene todos los campos correctamente"
         try:
-            float(precio)
-            float(costo)
-            int(stock)
-        except ValueError:
-            return False
-        return True
+            precio_num = float(precio)
+            costo_num = float(costo)
+            stock_num = int(stock)
+        except (TypeError, ValueError):
+            return False, "Precio, coste y stock deben ser numéricos"
+        if precio_num < 0:
+            return False, "El precio de venta no puede ser negativo"
+        if costo_num < 0:
+            return False, "El coste no puede ser negativo"
+        if stock_num < 0:
+            return False, "El stock no puede ser negativo"
+        return True, ""
 
     @staticmethod
     def _calcular_precio_venta(costo, margen):
@@ -625,7 +664,11 @@ class Inventario(tk.Frame):
         tipo_iva = normalizar_tipo_iva(self.iva.get())
         codigo = self.codigo_barras.get().strip()
 
-        if self.validacion(nombre, prov, precio, costo, stock) and tipo_iva is not None:
+        valido, mensaje_error = self.validacion(nombre, prov, precio, costo, stock)
+        if not valido:
+            messagebox.showwarning(title="Error", message=mensaje_error)
+            return
+        if tipo_iva is not None:
             try:
                 if codigo:
                     duplicado = self.eje_consulta(
@@ -877,6 +920,22 @@ class Inventario(tk.Frame):
                 stock = int(stock)
             except ValueError:
                 messagebox.showwarning("Guardar cambios", "Ingrese valores numéricos válidos para precio de venta, precio de costo y stock")
+                return
+
+            if precio < 0:
+                messagebox.showwarning(
+                    "Guardar cambios", "El precio de venta no puede ser negativo."
+                )
+                return
+            if costo < 0:
+                messagebox.showwarning(
+                    "Guardar cambios", "El precio de costo no puede ser negativo."
+                )
+                return
+            if stock < 0:
+                messagebox.showwarning(
+                    "Guardar cambios", "El stock no puede ser negativo."
+                )
                 return
 
             if codigo_nuevo:

@@ -152,6 +152,7 @@ class FacturaVeriFACTU:
         Calcula la huella SHA-256, la cadena de valores y el encadenamiento
         con la factura anterior conforme a la spec AEAT.
         """
+        conn = None
         try:
             from .verifactu_hash import calcular_huella_para_factura
             from ..ui import business_profile as bp
@@ -205,4 +206,14 @@ class FacturaVeriFACTU:
             conn.commit()
             return True
         except Exception:
+            # Sin rollback explícito, la escritura parcial (fila de
+            # facturas_verifactu ya insertada) queda pendiente en la
+            # conexión compartida y el siguiente ``db.execute()`` de
+            # cualquier otro módulo la commitea, dejando una factura a
+            # medias en la cadena AEAT pese a devolver False.
+            try:
+                if conn is not None:
+                    conn.rollback()
+            except Exception:
+                pass
             return False

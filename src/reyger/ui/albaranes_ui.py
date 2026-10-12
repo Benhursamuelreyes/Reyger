@@ -199,19 +199,27 @@ class VentanaAlbaranes(Toplevel):
 
     # ------------------------------------------------------------- datos
     def siguiente_numero(self):
-        """Propone el número correlativo siguiente (ALB-0001…)."""
+        """Propone el número correlativo siguiente (ALB-0001…).
+
+        Se toma el **máximo** de la serie, no el de la última fila
+        insertada: tras una importación, una restauración de copia de
+        seguridad o una edición manual, ``ORDER BY id DESC`` puede devolver
+        un número más bajo que otro ya emitido y el siguiente albarán
+        repetiría uno existente.
+        """
         try:
-            fila = db.query_one(
-                "SELECT numero_albaran FROM albaranes"
-                " ORDER BY id DESC LIMIT 1"
+            filas = db.query(
+                "SELECT numero_albaran FROM albaranes WHERE numero_albaran IS NOT NULL"
             )
         except Exception:
-            fila = None
+            filas = []
         ultimo = 0
-        if fila and fila["numero_albaran"]:
-            digitos = "".join(c for c in str(fila["numero_albaran"]) if c.isdigit())
+        for fila in filas:
+            digitos = "".join(
+                c for c in str(fila["numero_albaran"] or "") if c.isdigit()
+            )
             if digitos:
-                ultimo = int(digitos)
+                ultimo = max(ultimo, int(digitos))
         return f"ALB-{ultimo + 1:04d}"
 
     def cargar_clientes(self):

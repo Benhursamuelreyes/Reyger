@@ -103,7 +103,7 @@ class GestorImpresoras:
 
         try:
             salida = subprocess.run(
-                ["lpstat", "-e"], capture_output=True, text=True, timeout=10
+                ["lpstat", "-e"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10
             )
             if salida.returncode == 0:
                 impresoras = [
@@ -116,7 +116,7 @@ class GestorImpresoras:
 
         try:
             salida = subprocess.run(
-                ["lpstat", "-d"], capture_output=True, text=True, timeout=10
+                ["lpstat", "-d"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10
             )
             linea = salida.stdout.strip() if salida.returncode == 0 else ""
             if ":" in linea:
@@ -129,19 +129,41 @@ class GestorImpresoras:
     def _obtener_impresoras_wmic(self):
         """
         Método alternativo para obtener impresoras si pywin32 no está disponible.
+
+        ``wmic`` devuelve el texto en la página de códigos de consola
+        (cp850/cp1252 en un Windows español), no en UTF-8: decodificarlo
+        como UTF-8 lanzaba ``UnicodeDecodeError`` en cuanto un nombre de
+        impresora contenía «ñ», «á» o «€», y el ``except`` devolvía una
+        lista vacía aunque las impresoras estuvieran instaladas. Además
+        ``wmic`` está obsoleto desde Windows 10 21H1 y ya no está presente
+        en Windows 11 actual, por lo que esta vía no devuelve nada.
         """
         try:
-            import subprocess
-            output = subprocess.check_output('wmic printer list brief', shell=True).decode('utf-8')
-            lineas = output.split('\n')[1:]  # Saltar encabezado
-            impresoras = []
-            for linea in lineas:
-                if linea.strip():
-                    partes = linea.split()
-                    if partes:
-                        impresoras.append(partes[0])
-            return impresoras
-        except Exception:
+            salida = subprocess.run(
+                ["wmic", "printer", "list", "brief"],
+                capture_output=True, timeout=10,
+            )
+            if salida.returncode != 0:
+                print(
+                    "wmic no disponible; no se pudieron listar las impresoras "
+                    f"({salida.returncode})"
+                )
+                return []
+            texto = salida.stdout.decode("mbcs", errors="replace")
+            lineas = texto.splitlines()[1:]  # Saltar encabezado
+            return [
+                partes[0]
+                for linea in lineas
+                if linea.strip() and (partes := linea.split())
+            ]
+        except FileNotFoundError:
+            print(
+                "wmic no está instalado; instale pywin32 para listar y usar "
+                "las impresoras de Windows."
+            )
+            return []
+        except Exception as e:
+            print(f"Error listando impresoras con wmic: {e}")
             return []
     
     def imprimir_archivo(self, ruta_archivo, nombre_impresora=None):
@@ -191,7 +213,7 @@ class GestorImpresoras:
         comando.append(ruta_archivo)
         try:
             resultado = subprocess.run(
-                comando, capture_output=True, text=True, timeout=60
+                comando, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60
             )
             return resultado.returncode == 0
         except Exception as e:
@@ -199,32 +221,70 @@ class GestorImpresoras:
             return False
     
     def _imprimir_con_win32(self, ruta_archivo, nombre_impresora):
-        """Imprime usando win32print"""
+        """Imprime en *nombre_impresora* mediante el verbo ``printto``.
+
+        Antes se lanzaba ``notepad /p <archivo>``, lo que tenía cuatro
+        fallos encadenados: ``notepad /p`` imprime siempre en la
+        impresora **predeterminada** (la elegida en el diálogo se
+        ignoraba), no sabe renderizar un PDF, el conmutador está
+        obsoleto en las versiones actuales de Windows, y el ``Popen`` no
+        se esperaba, así que el proceso nunca se recogía. Encima se
+        devolvía ``True`` incondicionalmente, de modo que el usuario veía
+        el aviso de éxito aunque no se hubiera impreso nada.
+
+        ``ShellExecute`` con el verbo ``printto`` sí acepta la impresora
+        de destino, y ``-Wait``/``-PassThru`` permiten conocer el
+        resultado real.
+        """
         try:
-            import subprocess
-            
-            # En Windows, usar Notepad o similar para imprimir
-            # O mejor, usar el comando de impresión nativa
-            subprocess.Popen(['notepad', '/p', ruta_archivo],
-                           stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL)
-            return True
-        except:
+            if WINDOWS_PRINTING_AVAILABLE:
+                win32api = __import__("win32api")
+                win32api.ShellExecute(
+                    0, "printto", ruta_archivo, f'"{nombre_impresora}"', ".", 0
+                )
+                return True
+            return self._imprimir_fallback(ruta_archivo, nombre_impresora)
+        except Exception as e:
+            print(f"Error imprimiendo con win32print: {e}")
             return False
-    
+
     def _imprimir_fallback(self, ruta_archivo, nombre_impresora):
-        """Método alternativo de impresión"""
+        """Impresión en Windows sin pywin32, vía PowerShell.
+
+        Se usa ``Start-Process -Verb PrintTo`` pasando la impresora como
+        argumento, que es la forma documentada de respetar la impresora
+        elegida. La alternativa anterior (``rundll32 printui.dll
+        /PrintUIEntry /p /n <impr> /pt <archivo>``) usaba conmutadores no
+        documentados en los que ``/pt`` es además la opción de *página de
+        prueba*, no de archivo: imprimía como mucho una página de prueba en
+        la impresora predeterminada.
+        """
+        comando = [
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "Start-Process -FilePath $args[0] -Verb PrintTo "
+            "-ArgumentList ('\"' + $args[1] + '\"') -Wait -PassThru",
+            ruta_archivo, nombre_impresora,
+        ]
         try:
-            import subprocess
-            
-            # Intentar con printto de Windows
-            subprocess.Popen(['rundll32.exe', 'printui.dll', ',PrintUIEntry',
-                            '/p', '/n', nombre_impresora,
-                            '/pt', ruta_archivo],
-                           stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL)
+            proceso = subprocess.run(
+                comando, capture_output=True, timeout=120
+            )
+            if proceso.returncode != 0:
+                print(
+                    "Error imprimiendo con PowerShell "
+                    f"({proceso.returncode}): "
+                    f"{proceso.stderr.decode(errors='replace').strip()}"
+                )
+                return False
             return True
-        except:
+        except FileNotFoundError:
+            print(
+                "No se encontró PowerShell ni pywin32: no se puede imprimir "
+                "en Windows."
+            )
+            return False
+        except Exception as e:
+            print(f"Error imprimiendo: {e}")
             return False
     
     def obtener_impresora_predeterminada(self):

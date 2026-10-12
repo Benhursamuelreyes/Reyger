@@ -23,6 +23,26 @@ junto a ella; se conservan las :data:`MAX_RESPALDOS` más recientes.
 
 Todas las funciones aceptan ``db_path`` para operar sobre otra base
 (útil en tests); por defecto trabajan sobre la del usuario.
+
+NUNCA copie ``database.db`` a mano
+-----------------------------------
+Con el modo **WAL** activo (lo activa ``core.db.get_connection()`` cuando el
+sistema de ficheros lo permite) los datos comprometidos también se escriben
+en ``database.db-wal`` y ``database.db-shm``. Copiar únicamente
+``database.db`` —con el explorador de archivos, por correo, con Drive/Dropbox
+sincronizada o copiando y pegando— se lleva un fichero incompleto: al
+restaurarlo, las ventas, facturas o clientes más recientes aparecen como
+vacíos, o SQLite avisa de que la base está dañada.
+
+Además, WAL degrada **en silencio** a ``delete`` en sistemas de ficheros que
+no lo soportan (algunas unidades de red, ciertos USB), de modo que no puede
+suponerse ni por el sistema operativo. Compruébese con
+``core.db.wal_activo()``.
+
+Use siempre las funciones de este módulo (los botones «Exportar base de
+datos…» de Inventario y el respaldo automático previo a cada importación):
+todas usan ``sqlite3.Connection.backup()``, que vuelca el estado
+consolidado incluyendo el WAL, y son seguras con la base abierta.
 """
 
 import csv
@@ -57,6 +77,26 @@ FORMATOS_EXPORTACION = {
 }
 
 TABLAS_NUCLEO = {"ventas", "inventario"}
+
+#: Aviso canónico para la interfaz: no copiar ``database.db`` a mano.
+#:
+#: Vive aquí, y no duplicado en cada ventana, porque hay más de un punto de
+#: exportación (Inventario y Ajustes) y dos textos distintos acabarían
+#: divergiendo: es exactamente lo que dejó a la exportación de Ajustes sin
+#: advertencia mientras la de Inventario sí la tenía.
+#:
+#: Solo debe mostrarse con WAL activo (``core.db.wal_activo()``): en modo
+#: ``delete`` una copia normal sería válida y el aviso solo sería ruido.
+AVISO_COPIA_MANUAL = (
+    "La base de datos está en modo WAL: los datos más recientes se guardan "
+    "también en un fichero «database.db-wal» aparte.\n\n"
+    "NO copie el fichero «database.db» a mano (ni con el explorador, ni por "
+    "correo, ni con una nube sincronizada): esa copia saldría incompleta y al "
+    "restaurarla faltarían ventas, facturas o clientes.\n\n"
+    "Use este botón, que hace la copia con la API de respaldo de SQLite "
+    "(sqlite3.Connection.backup()) e incluye los datos pendientes del WAL.\n\n"
+    "¿Continuar con la exportación?"
+)
 
 
 class BackupError(Exception):
@@ -128,7 +168,15 @@ def _nombre_hoja(nombre_tabla, usados=None):
 
 
 def exportar_sqlite(destino, db_path=None):
-    """Copia binaria completa mediante el API de backup de SQLite."""
+    """Copia binaria completa mediante el API de backup de SQLite.
+
+    Es la **única** forma fiable de llevarse la base. Con WAL activo los
+    datos comprometidos siguen en ``database.db-wal``, así que copiar solo
+    el fichero ``database.db`` a mano produce una copia incompleta. Aquí
+    ``origen_conn.backup(destino_conn)`` vuelca el estado consolidado
+    (incluido el WAL) al destino, y además es seguro aunque la base tenga
+    conexiones abiertas.
+    """
     destino = _asegurar_extension(destino, ".db")
     origen_conn = _conectar(db_path)
     try:
@@ -241,13 +289,39 @@ def respaldar_bd_actual(db_path=None):
 
     Devuelve la ruta del respaldo o ``None`` si la base aún no existe.
     Conserva solo las :data:`MAX_RESPALDOS` copias más recientes.
+
+    La copia se hace con la API de respaldo de SQLite, no copiando el
+    fichero a pelo: en modo WAL los últimos datos committeados viven en
+    ``database.db-wal`` hasta el siguiente checkpoint, así que
+    ``shutil.copy2`` produciría un respaldo al que le faltan ventas.
     """
     origen = Path(str(db_path or get_db_path()))
     if not origen.exists():
         return None
     sello = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     destino = origen.parent / f"database_respaldo_{sello}.bak"
-    shutil.copy2(origen, destino)
+
+    # Se reaprovecha la conexión ya viva si existe: es la que ve los
+    # datos recién committeados y no fuerza un checkpoint en el WAL.
+    from . import db as _db
+
+    origen_con = getattr(_db, "_conexion", None)
+    if origen_con is not None:
+        destino_con = sqlite3.connect(str(destino))
+        try:
+            origen_con.backup(destino_con)
+        finally:
+            destino_con.close()
+    else:
+        fuente = sqlite3.connect(str(origen))
+        destino_con = sqlite3.connect(str(destino))
+        try:
+            fuente.backup(destino_con)
+        finally:
+            fuente.close()
+            destino_con.close()
+
+    shutil.copystat(origen, destino)
     _purgar_respaldos(origen.parent)
     return str(destino)
 

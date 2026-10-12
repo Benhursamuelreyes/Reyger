@@ -255,6 +255,24 @@ de versión generadas automáticamente.
   única transacción — si algo falla, no se cambia nada.
 - Nueva dependencia `openpyxl>=3.1`, incluida en los instaladores.
 
+> ⚠️ **No copie `database.db` a mano.** Use siempre el botón «Exportar base
+> de datos…» de Inventario o de Ajustes (o el respaldo automático previo a
+> cada importación). Ambos botones le piden confirmación antes de exportar si
+> detecta WAL activo.
+>
+> Reyger usa el modo **WAL** de SQLite cuando el sistema de ficheros lo
+> permite. En ese modo los datos más recientes se escriben además en un
+> fichero `database.db-wal` aparte: copiar únicamente `database.db` —a mano,
+> por correo, o con una nube sincronizada tipo Drive/Dropbox— produce una
+> copia **incompleta**. Al restaurarla, las ventas, facturas o clientes más
+> recientes aparecerán vacíos o SQLite avisará de que la base está dañada.
+>
+> El botón de exportación usa internamente `sqlite3.Connection.backup()`,
+> que vuelca el estado consolidado (incluido el WAL) y además es seguro
+> aunque la base esté abierta. Ojo: WAL se desactiva solo y **sin avisar** en
+> sistemas de ficheros que no lo soportan (algunas unidades de red, ciertos
+> USB), así que el riesgo depende de dónde tenga el usuario su base de datos.
+
 **Cambiado — Nomenclatura de precios en la interfaz**
 
 - «Costo» pasa a **«Precio de costo»** y «Precio» a **«Precio de venta»**

@@ -408,15 +408,64 @@ def format_currency(amount, decimales=None, simbolo=None, posicion=None,
     return f"{numero} {simbolo}"
 
 
+def codigo_por_nombre(nombre):
+    """Traduce el nombre legible de una moneda a su código ISO.
+
+    Acepta tanto el código ("EUR") como la etiqueta mostrada en Ajustes
+    ("Euro"). Devuelve ``None`` si no hay coincidencia.
+    """
+    if nombre in MONEDAS:
+        return nombre
+    for codigo, datos in MONEDAS.items():
+        if datos["nombre"] == nombre:
+            return codigo
+    return None
+
+
+def locale_por_etiqueta(etiqueta):
+    """Traduce la etiqueta de país de Ajustes a su código de locale.
+
+    Acepta tanto el locale ("es_ES") como la etiqueta mostrada
+    ("España — Euro (EUR)"). Devuelve ``None`` si no hay coincidencia.
+    """
+    if etiqueta in LOCALES:
+        return etiqueta
+    for locale, datos in PAISES.items():
+        if etiqueta in (datos["pais"], _etiqueta_pais(locale)):
+            return locale
+    return None
+
+
+def _etiqueta_pais(locale):
+    """Etiqueta que Ajustes muestra para *locale* (país + moneda legible).
+
+    Debe coincidir exactamente con la que compone
+    ``ui/ajustes.py`` al rellenar ``combo_locale``, porque es la que
+    ``guardar_locale`` recibe al guardar.
+    """
+    datos = PAISES.get(locale)
+    if not datos:
+        return ""
+    return f"{datos['pais']} — {MONEDAS[datos['moneda']]['nombre']}"
+
+
 def guardar_moneda(moneda):
-    """Persiste la moneda elegida en business_profile (no toca la UI)."""
-    if moneda not in MONEDAS:
-        moneda = DEFAULTS["moneda"]
-    bp.guardar(moneda=moneda)
+    """Persiste la moneda elegida en business_profile (no toca la UI).
+
+    Acepta el código ISO ("USD") o el nombre legible ("Dólar estadounidense")
+    que es lo que muestran los desplegables de Ajustes. Guardar la etiqueta
+    sin traducir hacía que el ajuste quedara inerte: ``codigo_moneda()``
+    descarta cualquier valor que no sea clave de :data:`MONEDAS` y volvía
+    al euro por defecto sin avisar.
+    """
+    codigo = codigo_por_nombre(moneda) or DEFAULTS["moneda"]
+    bp.guardar(moneda=codigo)
 
 
 def guardar_locale(locale):
-    """Persiste el locale elegido en business_profile (no toca la UI)."""
-    if locale not in LOCALES:
-        locale = DEFAULTS["locale"]
-    bp.guardar(locale=locale)
+    """Persiste el locale elegido en business_profile (no toca la UI).
+
+    Acepta el código de locale ("en_US") o su etiqueta legible.
+    """
+    codigo = locale_por_etiqueta(locale) or DEFAULTS["locale"]
+    bp.guardar(locale=codigo)

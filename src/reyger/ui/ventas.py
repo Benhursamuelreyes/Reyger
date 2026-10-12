@@ -4,6 +4,7 @@ import tkinter as tk
 import datetime
 import os
 import time
+import uuid
 
 from . import business_profile as bp
 from ..core import db
@@ -27,6 +28,12 @@ from ..hardware.impresion_termica import (
     imprimir_ticket_venta,
 )
 from ..core import correlativos
+
+# Entrada neutra del desplegable de clientes. Constante y no literal
+# repetido: el desplegable y su resolución deben compartir exactamente la
+# misma etiqueta, o la comparación se desincroniza y una venta "sin cliente"
+# acaba con una ficha.
+SIN_CLIENTE = "(Sin cliente)"
 
 
 def _resolver_logo(config):
@@ -67,7 +74,12 @@ class Ventas(tk.Frame):
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ventas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    factura INTEGER NOT NULL,
+                    -- factura almacena el NUMERO de documento ("F-0001",
+                    -- "T-0042"), no un entero. SQLite no lo convertia, asi
+                    -- que se guardaba como TEXT dentro de una columna
+                    -- INTEGER; cualquier ORDER BY numerico sobre ella
+                    -- daria un resultado silenciosamente erroneous.
+                    factura TEXT NOT NULL,
                     nombre_articulo TEXT NOT NULL,
                     valor_articulo REAL NOT NULL,
                     cantidad INTEGER NOT NULL,
@@ -75,6 +87,10 @@ class Ventas(tk.Frame):
                     metodo_pago TEXT DEFAULT 'Efectivo',
                     cantidad_efectivo REAL DEFAULT 0,
                     cantidad_tarjeta REAL DEFAULT 0,
+                    cliente_id INTEGER REFERENCES clientes(id),
+                    tipo_iva REAL DEFAULT 21,
+                    cuota_iva REAL,
+                    base_imponible REAL,
                     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     tipo_documento TEXT DEFAULT 'ticket',
                     estado TEXT DEFAULT 'emitido',
@@ -82,18 +98,17 @@ class Ventas(tk.Frame):
                 )
             """)
             # Asegura las columnas del flujo Ticket/Factura (idempotente)
-            from ..core.migrations import _add_column
+            from ..core.migrations import _add_column, _asegurar_esquema_correlatividad
+            _add_column(conn, "ventas", "cliente_id INTEGER")
             _add_column(conn, "ventas", "tipo_documento TEXT NOT NULL DEFAULT 'ticket'")
             _add_column(conn, "ventas", "estado TEXT NOT NULL DEFAULT 'emitido'")
             _add_column(conn, "ventas", "numero_ticket TEXT")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS contadores_documentos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tipo TEXT NOT NULL UNIQUE,
-                    serie TEXT NOT NULL,
-                    ultimo_numero INTEGER NOT NULL DEFAULT 0
-                )
-            """)
+            # contadores_documentos: la unicidad debe ser COMPUESTA
+            # (tipo, serie) para que ``ON CONFLICT(tipo, serie)`` -que usa
+            # pagos()- funcione. Antes se creaba aqui con UNIQUE(tipo) y
+            # esa sentencia fallaba con "ON CONFLICT clause does not
+            # match any PRIMARY KEY or UNIQUE constraint".
+            _asegurar_esquema_correlatividad(conn)
             conn.commit()
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo crear la tabla ventas: {e}")
@@ -257,18 +272,20 @@ class Ventas(tk.Frame):
     def cargar_productos(self):
         try:
             filas = db.query(
-                "SELECT i.nombre, i.precio, i.tipo_iva, COALESCE(c.nombre, 'General') "
+                "SELECT i.id, i.nombre, i.precio, i.tipo_iva, "
+                "COALESCE(c.nombre, 'General') "
                 "FROM inventario i LEFT JOIN categorias c ON c.id = i.categoria_id"
             )
             nombres = []
             self.productos_info = {}
             self.productos_por_categoria = {}
             for fila in filas:
-                nombre, precio, tipo_iva, categoria = fila["nombre"], fila["precio"], fila["tipo_iva"], fila[3]
+                nombre, precio, tipo_iva, categoria = fila["nombre"], fila["precio"], fila["tipo_iva"], fila[4]
                 nombres.append(nombre)
                 self.productos_info[nombre] = (
                     float(precio),
                     float(tipo_iva) if tipo_iva is not None else IVA_POR_DEFECTO,
+                    fila["id"],
                 )
                 self.productos_por_categoria.setdefault(categoria, []).append(nombre)
             self.entry_nombre["values"] = nombres
@@ -315,18 +332,84 @@ class Ventas(tk.Frame):
             btn.config(bg="#000CFF" if nombre == categoria else "#17A2B8")
 
     def cargar_clientes_venta(self):
+        """Rellena el desplegable de clientes associating each entry with its id.
+
+        El ``Combobox`` de Tkinter solo puede mostrar texto, así que el nombre
+        es la etiqueta y el ``id`` se guarda en una lista paralela
+        (``_ids_cliente_venta``) en el **mismo orden** que las etiquetas. La
+        selección se resuelve luego por posición, que es inequívoca aunque dos
+        clientes tengan el mismo nombre.
+
+        El desempate por ``id`` mantiene el orden estable entre arranques: con
+        nombres repetidos, ``ORDER BY nombre`` a secas deja el orden de las
+        filas a discreción de SQLite.
+        """
         try:
-            filas = db.query("SELECT nombre FROM clientes ORDER BY nombre")
-            nombres = ["(Sin cliente)"] + [fila["nombre"] for fila in filas]
+            filas = db.query("SELECT id, nombre FROM clientes ORDER BY nombre, id")
+            self._ids_cliente_venta = [None] + [fila["id"] for fila in filas]
+            nombres = [SIN_CLIENTE] + [fila["nombre"] for fila in filas]
             self.combo_cliente["values"] = nombres
             self.combo_cliente.current(0)
         except Exception:
-            self.combo_cliente["values"] = ["(Sin cliente)"]
+            self._ids_cliente_venta = [None]
+            self.combo_cliente["values"] = [SIN_CLIENTE]
             self.combo_cliente.current(0)
+
+    def _resolver_cliente_seleccionado(self):
+        """Resuelve el cliente del desplegable a su ``id``, sin ambigüedad.
+
+        El desplegable muestra el nombre, que **no es único**: dos clientes
+        pueden llamarse «Farmacia». Por eso la fuente de verdad es la posición
+        dentro del desplegable (índice -> ``id``) y no una consulta
+        ``WHERE nombre = ?``, que devolvía un ``id`` arbitrario y asignaba el
+        NIF, la dirección, el teléfono y el email equivocados a la factura.
+
+        Solo si el desplegable no es de fiar (nunca se cargó, o el índice
+        queda fuera de rango) se recurre al nombre; y en ese caso se exige que
+        haya **una sola** coincidencia. Si hay varias se devuelve un error
+        para que el usuario lo resuelva, jamás un ``id`` arbitrario.
+
+        Returns:
+            ``(cliente_id, cliente_nombre, error)``. *error* es el mensaje a
+            mostrar al usuario, o ``None`` si la selección es válida.
+        """
+        nombre = self.combo_cliente.get()
+        if not nombre or nombre == SIN_CLIENTE:
+            return None, nombre, None
+
+        ids = getattr(self, "_ids_cliente_venta", None)
+        indice = self.combo_cliente.current()
+        if ids and indice is not None and 0 <= indice < len(ids):
+            cliente_id = ids[indice]
+            if cliente_id is not None:
+                return cliente_id, nombre, None
+
+        # Degradación segura: por nombre, pero solo si es unívoco.
+        filas = db.query(
+            "SELECT id FROM clientes WHERE nombre = ? ORDER BY id", (nombre,)
+        )
+        if len(filas) <= 1:
+            return (filas[0]["id"] if filas else None), nombre, None
+        return None, nombre, (
+            f"Hay {len(filas)} clientes llamados «{nombre}».\n"
+            "No se puede decidir a cuál facturar. Selecciónalo de nuevo en el "
+            "desplegable o exige nombres distintos en la ficha de clientes."
+        )
 
     def _tipo_iva_de(self, producto):
         info = self.productos_info.get(producto)
         return info[1] if info else IVA_POR_DEFECTO
+
+    def _id_de(self, producto):
+        """Id de inventario de *producto*, o ``None`` si no está cacheado.
+
+        El id es la clave real de las líneas del carrito: actualizar el
+        stock por nombre descontaría **todas** las filas homónimas y, si
+        el producto se renombrase tras añadirlo al carrito, no
+        descontaría ninguna.
+        """
+        info = self.productos_info.get(producto)
+        return info[2] if info and len(info) > 2 else None
 
     def actualizar_precio(self, event):
         nombre_producto = self.entry_nombre.get()
@@ -354,7 +437,7 @@ class Ventas(tk.Frame):
             cantidad = int(valores[2])
             tipo_iva = float(str(valores[3]).replace("%", ""))
             subtotal = float(valores[4])
-            lineas.append((producto := valores[0], precio, cantidad, tipo_iva, subtotal))
+            lineas.append((valores[0], precio, cantidad, tipo_iva, subtotal))
         return lineas
 
     def actualizar_total(self):
@@ -380,15 +463,35 @@ class Ventas(tk.Frame):
             cantidad = int(cantidad_str)
             precio = float(precio_str)
 
+            if cantidad <= 0:
+                messagebox.showerror(
+                    "Cantidad inválida",
+                    "La cantidad debe ser un número entero mayor que cero.",
+                )
+                return
+
+            if precio < 0:
+                messagebox.showerror(
+                    "Precio inválido",
+                    "El precio de venta no puede ser negativo.",
+                )
+                return
+
             if not self.validar_stock(producto, cantidad):
                 messagebox.showerror("Error", "Stock insuficiente para el producto seleccionado")
                 return
 
             tipo_iva = self._tipo_iva_de(producto)
             subtotal = round(cantidad * precio, 2)
+            # El sexto valor es invisible (no hay columna) y transporta el
+            # id de inventario para poder descontar el stock por clave
+            # primaria en lugar de por nombre.
             self.tree.insert(
                 "", "end",
-                values=(producto, f"{precio:.2f}", cantidad, f"{tipo_iva:g}%", f"{subtotal:.2f}"),
+                values=(
+                    producto, f"{precio:.2f}", cantidad, f"{tipo_iva:g}%",
+                    f"{subtotal:.2f}", self._id_de(producto),
+                ),
             )
 
             self.entry_nombre.set("")
@@ -494,6 +597,7 @@ class Ventas(tk.Frame):
                 cantidad,
                 f"{tipo_iva:g}%",
                 f"{subtotal:.2f}",
+                producto.get("id"),
             ),
         )
         self.actualizar_total()
@@ -501,12 +605,30 @@ class Ventas(tk.Frame):
         if self.var_escaner.get():
             self.entry_codigo_barras.focus_set()
 
+    def _cantidad_en_carrito(self, nombre_producto):
+        """Suma de unidades de *nombre_producto* ya presente en el carrito."""
+        total = 0
+        for child in self.tree.get_children():
+            valores = self.tree.item(child, "values")
+            if valores[0] == nombre_producto:
+                try:
+                    total += int(valores[2])
+                except (TypeError, ValueError):
+                    continue
+        return total
+
     def validar_stock(self, nombre_producto, cantidad):
+        """Comprueba stock suficiente para *cantidad* **adicionales**.
+
+        Se descuenta lo que ya hay en el carrito: sin esto, añadir el mismo
+        producto tres veces (10+10+10 con stock 15) superaría cada
+        comprobación individual y llevaría el stock a negativo.
+        """
         try:
             fila = db.query_one("SELECT stock FROM inventario WHERE nombre = ?", (nombre_producto,))
-            if fila and fila["stock"] >= cantidad:
-                return True
-            return False
+            if fila is None:
+                return False
+            return fila["stock"] - self._cantidad_en_carrito(nombre_producto) >= cantidad
         except Exception as e:
             messagebox.showerror("Error", f"Error al validar el stock: {e}")
             return False
@@ -549,6 +671,13 @@ class Ventas(tk.Frame):
         ventana_pago.config(bg="#C5D9E3")
         ventana_pago.resizable(True, True)
         ventana_pago.minsize(560, 700)
+        # El cobro debe ser modal: sin esto el usuario puede seguir
+        # añadiendo artículos o escaneando en la ventana de Ventas
+        # mientras el formulario de pago está abierto, con lo que se
+        # cobraría el importe de un carrito y se registraría otro.
+        ventana_pago.transient(self.winfo_toplevel())
+        ventana_pago.grab_set()
+        ventana_pago.protocol("WM_DELETE_WINDOW", ventana_pago.destroy)
 
         # Contenido con scroll vertical (el formulario puede exceder la
         # altura en pantallas pequeñas o con fuentes grandes)
@@ -683,6 +812,30 @@ class Ventas(tk.Frame):
 
     def pagar(self, ventana_pago, entry_efectivo, entry_tarjeta, var_metodo, label_cambio, total):
         try:
+            # El importe se congela al abrir el formulario: si el carrito
+            # cambiase entre medias (otro proceso, un escáner), se cobra y
+            # se registra la MISMA cifra, nunca una distinta.
+            total_congelado = round(float(total), 2)
+            if not self._lineas_carrito():
+                messagebox.showerror(
+                    "Carrito vacío", "No hay artículos para cobrar.", parent=ventana_pago
+                )
+                return
+            total_actual, _, _ = desglose_total(
+                [(p, c, t) for _, p, c, t, _ in self._lineas_carrito()]
+            )
+            if abs(total_actual - total_congelado) > 0.005:
+                messagebox.showerror(
+                    "El carrito ha cambiado",
+                    "El importe a cobrar ya no coincide con el carrito.\n"
+                    f"Cobrar: {mod_moneda.format_currency(total_congelado)}\n"
+                    f"Carrito: {mod_moneda.format_currency(total_actual)}\n\n"
+                    "Cancele y vuelva a abrir el cobro.",
+                    parent=ventana_pago,
+                )
+                return
+            total = total_congelado
+
             metodo_pago = var_metodo.get()
             cantidad_efectivo = 0.0
             cantidad_tarjeta = 0.0
@@ -705,12 +858,16 @@ class Ventas(tk.Frame):
                     return
 
             tipo_documento = self.var_tipo_documento.get()
-            cliente_nombre = self.combo_cliente.get()
-            cliente_id = None
+            cliente_id, cliente_nombre, error_cliente = (
+                self._resolver_cliente_seleccionado()
+            )
+            if error_cliente:
+                messagebox.showerror("Cliente ambiguo", error_cliente)
+                return
 
             # La factura completa SIEMPRE exige un cliente (seleccionado o nuevo)
             if tipo_documento == "factura" and (
-                not cliente_nombre or cliente_nombre == "(Sin cliente)"
+                not cliente_nombre or cliente_nombre == SIN_CLIENTE
             ):
                 messagebox.showerror(
                     "Factura completa",
@@ -718,12 +875,6 @@ class Ventas(tk.Frame):
                     "un cliente o registrar uno nuevo.",
                 )
                 return
-
-            if cliente_nombre and cliente_nombre != "(Sin cliente)":
-                fila_cliente = db.query_one(
-                    "SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,)
-                )
-                cliente_id = fila_cliente["id"] if fila_cliente else None
 
             # Asignación de número correlativo con garantía de NO retroceso.
             # Se calcula el candidato y, dentro de la transacción, se
@@ -735,6 +886,8 @@ class Ventas(tk.Frame):
 
             productos = []
             lineas_fiscales = []
+            numero_doc = f"{prefijo}{numero_asignado:04d}"
+            numero_ticket = numero_doc if tipo_documento == "ticket" else None
 
             with db.transaccion() as conn:
                 for i in self.tree.get_children():
@@ -752,13 +905,6 @@ class Ventas(tk.Frame):
                     ))
                     lineas_fiscales.append((precio, cantidad_vendida, tipo_iva))
 
-                    if tipo_documento == "factura":
-                        numero_doc = f"{prefijo}{numero_asignado:04d}"
-                        numero_ticket = None
-                    else:
-                        numero_doc = f"{prefijo}{numero_asignado:04d}"
-                        numero_ticket = numero_doc
-
                     conn.execute("""
                         INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
                             cantidad, subtotal, metodo_pago, cantidad_efectivo,
@@ -773,10 +919,31 @@ class Ventas(tk.Frame):
                         tipo_documento, "emitido", numero_ticket,
                     ))
 
-                    conn.execute("UPDATE inventario SET stock = stock - ? WHERE nombre = ?", (cantidad_vendida, producto))
+                    # El stock se descuenta por clave primaria. Por nombre
+                    # se descontarían TODAS las filas homónimas, y si el
+                    # producto se hubiera renombrado tras añadirlo al
+                    # carrito no se descontaría ninguna (venta sin stock).
+                    id_producto = item[5] if len(item) > 5 else None
+                    if id_producto is None:
+                        fila = conn.execute(
+                            "SELECT id FROM inventario WHERE nombre = ?", (producto,)
+                        ).fetchone()
+                        id_producto = fila["id"] if fila else None
+                    if id_producto is None:
+                        raise LookupError(
+                            f"El producto «{producto}» ya no existe en el inventario; "
+                            "no se puede emitir la venta."
+                        )
+                    cur = conn.execute(
+                        "UPDATE inventario SET stock = stock - ? WHERE id = ?",
+                        (cantidad_vendida, id_producto),
+                    )
+                    if cur.rowcount != 1:
+                        raise LookupError(
+                            f"No se pudo actualizar el stock de «{producto}»"
+                        )
 
                 total, base_total, cuota_total = desglose_total(lineas_fiscales)
-                messagebox.showinfo("Exito", f"La venta se ha completado\nDocumento: {tipo_documento}\nMetodo de pago: {metodo_pago}")
 
                 # Registrar el número oficial emitido en el contador de
                 # correlatividad (solo asciende: la secuencia nunca retrocede).
@@ -788,54 +955,90 @@ class Ventas(tk.Frame):
                     (tipo_documento, prefijo, numero_asignado),
                 )
 
-                # Fijar el siguiente número evitando tocar el emitido
-                if tipo_documento == "factura":
-                    self.numero_factura_actual = numero_asignado + 1
-                else:
-                    self.numero_ticket_actual = numero_asignado + 1
-                self.mostrar_numero_documento()
+            # A partir de aquí la venta ya está confirmada: la
+            # transacción se ha cerrado. Todo lo que sigue son efectos
+            # secundarios (interfaz, PDF, impresión, VeriFactu) y NO debe
+            # ejecutarse dentro del `with`, porque dejarían la escritura
+            # abierta durante un render de ReportLab y, si fallaran,
+            # harían rollback de una venta ya cobrada.
+            # Fijar el siguiente número evitando tocar el emitido
+            if tipo_documento == "factura":
+                self.numero_factura_actual = numero_asignado + 1
+            else:
+                self.numero_ticket_actual = numero_asignado + 1
+            self.mostrar_numero_documento()
 
-                for i in self.tree.get_children():
-                    self.tree.delete(i)
-                self.label_base.config(text=f"Base imponible: {mod_moneda.format_currency(0)}")
-                self.label_cuota.config(text=f"Cuota IVA: {mod_moneda.format_currency(0)}")
-                self.label_suma_total.config(text=f"Total a pagar: {mod_moneda.format_currency(0)}")
-                self.combo_cliente.current(0)
-                ventana_pago.destroy()
+            for i in self.tree.get_children():
+                self.tree.delete(i)
+            self.label_base.config(text=f"Base imponible: {mod_moneda.format_currency(0)}")
+            self.label_cuota.config(text=f"Cuota IVA: {mod_moneda.format_currency(0)}")
+            self.label_suma_total.config(text=f"Total a pagar: {mod_moneda.format_currency(0)}")
+            self.combo_cliente.current(0)
+            self.cargar_productos()
+            ventana_pago.destroy()
 
-                fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                if tipo_documento == "factura":
-                    self.generar_factura_pdf(
-                        productos, total, numero_doc,
-                        fecha, metodo_pago,
-                        base_imponible=base_total, cuota_iva=cuota_total,
-                        cliente_nombre=cliente_nombre,
-                    )
-                    # VeriFactu: solo facturas emitidas y con integración activa
-                    if self._verifactu_activo():
-                        self._registrar_verifactu(
-                            numero_doc,
-                            fecha, productos, total,
-                            base_total, cuota_total,
-                            nif_receptor=None, nombre_receptor=cliente_nombre,
-                        )
-                else:
-                    self._imprimir_ticket_termico(
-                        numero_ticket,
+            fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            if tipo_documento == "factura":
+                self.generar_factura_pdf(
+                    productos, total, numero_doc,
+                    fecha, metodo_pago,
+                    base_imponible=base_total, cuota_iva=cuota_total,
+                    cliente_nombre=cliente_nombre,
+                    cliente_id=cliente_id,
+                )
+                # VeriFactu: solo facturas emitidas y con integración activa.
+                # El NIF del receptor se toma de la ficha del cliente
+                # seleccionado por id: antes se pasaba None fijo y el registro
+                # se quedaba sin NIF de receptor aunque la factura sí lo
+                # impresa, que es un dato obligatorio del registro.
+                if self._verifactu_activo():
+                    self._registrar_verifactu(
+                        numero_doc,
                         fecha, productos, total,
-                        base_total, cuota_total, metodo_pago,
-                        None if cliente_id is None else cliente_nombre,
-                        tipo_documento="ticket",
+                        base_total, cuota_total,
+                        nif_receptor=(
+                            None if cliente_id is None
+                            else self._datos_facturacion_cliente(cliente_id)[0]
+                        ),
+                        nombre_receptor=cliente_nombre,
                     )
+            else:
+                self._imprimir_ticket_termico(
+                    numero_ticket,
+                    fecha, productos, total,
+                    base_total, cuota_total, metodo_pago,
+                    None if cliente_id is None else cliente_nombre,
+                    tipo_documento="ticket",
+                )
+
+            messagebox.showinfo(
+                "Exito",
+                f"La venta se ha completado\nDocumento: {tipo_documento}\n"
+                f"Numero: {numero_doc}\nMetodo de pago: {metodo_pago}",
+            )
         except ValueError:
             messagebox.showerror("Error", "Valores ingresados no validos")
+        except LookupError as e:
+            messagebox.showerror("Error de inventario", str(e))
 
     def _verifactu_activo(self):
-        """Devuelve si la integración Veri*factu* está activada en ajustes."""
+        """Devuelve si la integración Veri*factu* está activada en ajustes.
+
+        Si el ajuste no se puede leer, falla de forma **cerrada** (no
+        integrado) y avisa una sola vez: dar por buena la integración sin
+        comprobarla produciría facturas fuera de la cadena de hashes.
+        """
         try:
             return bool(bp.obtener_campo("verifactu_activo"))
-        except Exception:
-            return True
+        except Exception as e:
+            if not getattr(self, "_verifactu_aviso", False):
+                self._verifactu_aviso = True
+                messagebox.showwarning(
+                    "VeriFactu",
+                    "No se pudo leer la configuración de Veri*factu*; se "
+                    f"emitirán facturas sin encadenar.\n\nDetalle: {e}",
+                )
+            return False
 
     def guardar_borrador(self):
         """Guarda el carrito como borrador de factura (sin número correlativo).
@@ -848,17 +1051,20 @@ class Ventas(tk.Frame):
             messagebox.showerror("Error", "No hay artículos para guardar")
             return
 
-        cliente_nombre = self.combo_cliente.get()
-        cliente_id = None
-        if cliente_nombre and cliente_nombre != "(Sin cliente)":
-            fila_cliente = db.query_one(
-                "SELECT id FROM clientes WHERE nombre = ?", (cliente_nombre,)
-            )
-            cliente_id = fila_cliente["id"] if fila_cliente else None
+        cliente_id, cliente_nombre, error_cliente = (
+            self._resolver_cliente_seleccionado()
+        )
+        if error_cliente:
+            messagebox.showerror("Cliente ambiguo", error_cliente)
+            return
 
         fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
         productos = []
         lineas_fiscales = []
+        # Clave interna del borrador. ``int(time.time())`` colisionaba
+        # entre dos borradores guardados en el mismo segundo, que entonces
+        # compartían clave y se emitían fusionados como una sola factura.
+        clave_borrador = f"BORRADOR-{uuid.uuid4().hex[:12]}"
 
         with db.transaccion() as conn:
             for i in self.tree.get_children():
@@ -880,14 +1086,14 @@ class Ventas(tk.Frame):
                     INSERT INTO ventas (factura, nombre_articulo, valor_articulo,
                         cantidad, subtotal, metodo_pago, cantidad_efectivo,
                         cantidad_tarjeta, cliente_id, tipo_iva, cuota_iva,
-                        base_imponible, tipo_documento, estado, numero_ticket)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        base_imponible, tipo_documento, estado, numero_ticket, fecha)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    f"BORRADOR-{int(time.time())}", producto, precio,
+                    clave_borrador, producto, precio,
                     cantidad_vendida, subtotal_linea, "Pendiente",
                     0.0, 0.0, cliente_id,
                     tipo_iva, cuota_linea, base_linea,
-                    "factura", "borrador", None,
+                    "factura", "borrador", None, fecha,
                 ))
 
             total, base_total, cuota_total = desglose_total(lineas_fiscales)
@@ -990,23 +1196,85 @@ class Ventas(tk.Frame):
                 total=total,
                 productos=productos_dict,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            # La cadena de hashes de Veri*factu* NO se puede reconstruir a
+            # posteriori: si el registro falla, la factura queda fuera de la
+            # cadena y la incidencia solo es recuperable desde aquí. Por eso
+            # no se silencia: se avisa al usuario y se relanza para que quede
+            # traza en el log.
+            messagebox.showerror(
+                "VeriFactu: registro fallido",
+                f"La factura {numero_factura} se ha emitido PERO no se ha "
+                f"podido registrar en la cadena Veri*factu*.\n\n"
+                f"Detalle: {e}\n\n"
+                "Contacte con su asesor antes de emitir más facturas: la "
+                "cadena de hashes debe repararse.",
+            )
+            raise
+
+    def _datos_facturacion_cliente(self, cliente_id):
+        """Devuelve los datos de facturación de un cliente de la ficha.
+
+        Lee la fila completa de ``clientes`` y la adapta a los campos que
+        consume la plantilla A4: NIF (``documento``), dirección (calle + C.P.
+        + provincia, con el mismo formato que el membrete del emisor), teléfono
+        y email.
+
+        Returns:
+            Tupla ``(nif, direccion, telefono, email)``. Cada elemento es
+            ``None`` cuando el dato no existe, está vacío o el cliente no
+            está dado de alta, de forma que la plantilla omite la fila
+            correspondiente en lugar de imprimir un campo en blanco.
+        """
+        vacio = (None, None, None, None)
+        if not cliente_id:
+            return vacio
+
+        fila = db.query_one(
+            "SELECT documento, direccion, codigo_postal, provincia, "
+            "telefono, email FROM clientes WHERE id = ?",
+            (cliente_id,),
+        )
+        if not fila:
+            return vacio
+
+        direccion = fila["direccion"]
+        if direccion:
+            if fila["codigo_postal"]:
+                direccion += f", {fila['codigo_postal']}"
+            if fila["provincia"]:
+                direccion += f" — {fila['provincia']}"
+        # Sin calle pero con provincia, la provincia sigue siendo el dato
+        # postal disponible y no debe desperdiciarse.
+        direccion = direccion or fila["provincia"] or None
+
+        return fila["documento"], direccion, fila["telefono"], fila["email"]
 
     def generar_factura_pdf(self, productos, total, factura_numero, fecha,
                             metodo_pago="Efectivo", base_imponible=None,
-                            cuota_iva=None, cliente_nombre=None):
+                            cuota_iva=None, cliente_nombre=None,
+                            cliente_id=None):
         """Genera la factura en PDF A4 estandarizado con membrete del negocio.
 
         Las facturas NO se envían a la impresora térmica de tickets: se
         generan en PDF A4 (misma plantilla que albaranes y presupuestos) y
         se abren en el visor del sistema para su impresión estándar.
+
+        Args:
+            cliente_nombre: Nombre que se imprime en la factura.
+            cliente_id: Id en ``clientes`` del cliente facturado. Si se
+                informa, la sección DATOS DEL CLIENTE incluye además NIF,
+                dirección, teléfono y email de su ficha.
         """
         from ..domain.pdf_documento import PdfDocumento
 
         pdf = PdfDocumento(self.config_manager)
         pdf_dir = get_output_path("facturas")
         archivo_pdf = os.path.join(pdf_dir, f"factura_{factura_numero}.pdf")
+
+        cliente_nif, cliente_direccion, cliente_telefono, cliente_email = (
+            self._datos_facturacion_cliente(cliente_id)
+        )
 
         productos_tabla = []
         for p in productos:
@@ -1028,6 +1296,10 @@ class Ventas(tk.Frame):
             numero=str(factura_numero),
             fecha=fecha,
             cliente_nombre=cliente_nombre or "(Consumidor final)",
+            cliente_nif=cliente_nif,
+            cliente_direccion=cliente_direccion,
+            cliente_telefono=cliente_telefono,
+            cliente_email=cliente_email,
             productos=productos_tabla,
             base_imponible=base_imponible,
             tipo_iva=IVA_POR_DEFECTO,
@@ -1222,30 +1494,76 @@ class Ventas(tk.Frame):
         prefijo, numero_final = correlativos.siguiente_numero("factura")
         numero_formateado = f"{prefijo}{numero_final:04d}"
 
-        with db.transaccion() as conn:
-            conn.execute(
-                "UPDATE ventas SET factura = ?, estado = 'emitido' "
-                "WHERE id = ?",
-                (numero_formateado, doc_id),
-            )
-            # Registrar el número oficial emitido en el contador de
-            # correlatividad (solo asciende: la secuencia nunca retrocede).
-            conn.execute(
-                "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) "
-                "VALUES (?, ?, ?) "
-                "ON CONFLICT(tipo, serie) DO UPDATE SET "
-                "ultimo_numero = MAX(ultimo_numero, excluded.ultimo_numero)",
-                ("factura", prefijo, numero_final),
-            )
+        try:
+            with db.transaccion() as conn:
+                # El borrador es el conjunto de filas que comparten el mismo
+                # número interno. Actualizar solo la fila seleccionada emitía
+                # como factura una línea de un pedido de cinco, dejando el
+                # resto en 'borrador' y sin descontar stock de ninguna.
+                lineas = conn.execute(
+                    "SELECT id, nombre_articulo, valor_articulo, cantidad "
+                    "FROM ventas WHERE factura = ? AND estado = 'borrador' "
+                    "ORDER BY id",
+                    (numero_temp,),
+                ).fetchall()
+                if not lineas:
+                    messagebox.showerror(
+                        "Emitir factura",
+                        "El borrador seleccionado ya no tiene líneas pendientes.",
+                    )
+                    return
+
+                conn.execute(
+                    "UPDATE ventas SET factura = ?, numero_ticket = NULL, estado = 'emitido' "
+                    "WHERE factura = ? AND estado = 'borrador'",
+                    (numero_formateado, numero_temp),
+                )
+
+                # El stock se descuenta por clave primaria, igual que en
+                # ``pagar``; por nombre se descontarían todas las filas homónimas.
+                for linea in lineas:
+                    fila = conn.execute(
+                        "SELECT id FROM inventario WHERE nombre = ?",
+                        (linea["nombre_articulo"],),
+                    ).fetchone()
+                    if fila is None:
+                        raise LookupError(
+                            f"El producto «{linea['nombre_articulo']}» ya no existe en "
+                            "el inventario; no se puede emitir la factura."
+                        )
+                    cur = conn.execute(
+                        "UPDATE inventario SET stock = stock - ? WHERE id = ?",
+                        (linea["cantidad"], fila["id"]),
+                    )
+                    if cur.rowcount != 1:
+                        raise LookupError(
+                            f"No se pudo actualizar el stock de «{linea['nombre_articulo']}»"
+                        )
+
+                # Registrar el número oficial emitido en el contador de
+                # correlatividad (solo asciende: la secuencia nunca retrocede).
+                conn.execute(
+                    "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) "
+                    "VALUES (?, ?, ?) "
+                    "ON CONFLICT(tipo, serie) DO UPDATE SET "
+                    "ultulo_numero = MAX(ultimo_numero, excluded.ultimo_numero)",
+                    ("factura", prefijo, numero_final),
+                )
+        except LookupError as e:
+            messagebox.showerror("Error de inventario", str(e))
+            return
 
         self.numero_factura_actual = numero_final + 1
         self.mostrar_numero_documento()
+        self.cargar_productos()
 
-        # Regenera la factura PDF con el número oficial
+        # Regenera la factura PDF con el número oficial y TODAS las líneas
+        # del borrador emitido (no solo la primera fila).
         filas = db.query(
             "SELECT nombre_articulo, valor_articulo, cantidad, subtotal, "
-            "tipo_iva, cuota_iva, base_imponible FROM ventas WHERE id = ?",
-            (doc_id,),
+            "tipo_iva, cuota_iva, base_imponible FROM ventas "
+            "WHERE factura = ? AND estado = 'emitido' ORDER BY id",
+            (numero_formateado,),
         )
         productos = [
             (
@@ -1261,13 +1579,16 @@ class Ventas(tk.Frame):
         fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
         fila_cliente = db.query_one(
-            "SELECT cliente_id FROM ventas WHERE id = ?", (doc_id,)
+            "SELECT cliente_id FROM ventas WHERE factura = ? AND estado = 'emitido' "
+            "ORDER BY id LIMIT 1",
+            (numero_formateado,),
         )
         cliente_nombre = None
-        if fila_cliente and fila_cliente["cliente_id"]:
+        cliente_id = fila_cliente["cliente_id"] if fila_cliente else None
+        if cliente_id:
             fila_c = db.query_one(
                 "SELECT nombre FROM clientes WHERE id = ?",
-                (fila_cliente["cliente_id"],),
+                (cliente_id,),
             )
             cliente_nombre = fila_c["nombre"] if fila_c else None
 
@@ -1275,12 +1596,17 @@ class Ventas(tk.Frame):
             productos, total, numero_formateado, fecha,
             base_imponible=base_total, cuota_iva=cuota_total,
             cliente_nombre=cliente_nombre,
+            cliente_id=cliente_id,
         )
         if self._verifactu_activo():
             self._registrar_verifactu(
                 numero_formateado, fecha, productos, total,
                 base_total, cuota_total,
-                nif_receptor=None, nombre_receptor=cliente_nombre,
+                nif_receptor=(
+                    None if cliente_id is None
+                    else self._datos_facturacion_cliente(cliente_id)[0]
+                ),
+                nombre_receptor=cliente_nombre,
             )
 
         messagebox.showinfo(
@@ -1318,10 +1644,11 @@ class Ventas(tk.Frame):
         metodo = filas[0]["metodo_pago"] if filas else "Efectivo"
 
         cliente_nombre = None
-        if filas and filas[0]["cliente_id"]:
+        cliente_id = filas[0]["cliente_id"] if filas else None
+        if cliente_id:
             fila_c = db.query_one(
                 "SELECT nombre FROM clientes WHERE id = ?",
-                (filas[0]["cliente_id"],),
+                (cliente_id,),
             )
             cliente_nombre = fila_c["nombre"] if fila_c else None
 
@@ -1337,4 +1664,5 @@ class Ventas(tk.Frame):
                 productos, total, numero, fecha,
                 base_imponible=base_total, cuota_iva=cuota_total,
                 cliente_nombre=cliente_nombre,
+                cliente_id=cliente_id,
             )

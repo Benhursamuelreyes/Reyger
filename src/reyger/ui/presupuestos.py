@@ -4,6 +4,7 @@ Permite crear, gestionar y generar presupuestos en formato PDF.
 """
 
 import os
+import uuid
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
@@ -12,6 +13,7 @@ from . import business_profile as bp
 from ..core import db
 from ..core import moneda as mod_moneda
 from ..core.hilos import en_hilo
+from ..domain.fiscal import desglose_total
 from ..resources import get_output_path, open_file
 
 
@@ -339,21 +341,38 @@ class Presupuestos(tk.Frame):
         except ValueError:
             messagebox.showerror("Error", "Valores no validos")
     
+    def _desglose_carrito(self):
+        """Devuelve ``(base, cuota, total)`` del presupuesto con IVA.
+
+        Los precios de catálogo son **con IVA incluido** (mismo criterio que
+        el TPV, ver :mod:`reyger.domain.fiscal`), así que el desglose se
+        delega en ``desglose_total`` en vez de multiplicar el IVA por
+        encima. Con la fórmula anterior, 100 € de productos daban 121 € en
+        el presupuesto y 100 € en el ticket del mismo producto.
+        """
+        tipo_iva = self.var_iva.get()
+        lineas = [
+            (
+                float(self.tree.item(child, "values")[2]),
+                int(float(self.tree.item(child, "values")[1])),
+                tipo_iva,
+            )
+            for child in self.tree.get_children()
+        ]
+        if not lineas:
+            return 0.0, 0.0, 0.0
+        total, base, cuota = desglose_total(lineas)
+        return base, cuota, total
+
     def recalcular_totales(self):
         """Recalcula los totales del presupuesto"""
-        base_imponible = 0.0
-        for child in self.tree.get_children():
-            subtotal = float(self.tree.item(child, "values")[3])
-            base_imponible += subtotal
-        
         tipo_iva = self.var_iva.get()
-        total_iva = base_imponible * (tipo_iva / 100)
-        total = base_imponible + total_iva
-        
+        base_imponible, total_iva, total = self._desglose_carrito()
+
         self.label_base.config(text=f"Base Imponible: {mod_moneda.format_currency(base_imponible)}")
         self.label_iva_total.config(text=f"IVA ({tipo_iva}%): {mod_moneda.format_currency(total_iva)}")
         self.label_total_presupuesto.config(text=f"TOTAL: {mod_moneda.format_currency(total)}")
-        
+
         self.tipo_iva_actual = tipo_iva
     
     def guardar_presupuesto(self):
@@ -368,17 +387,11 @@ class Presupuestos(tk.Frame):
             return
         
         try:
-            base_imponible = 0.0
-            for child in self.tree.get_children():
-                subtotal = float(self.tree.item(child, "values")[3])
-                base_imponible += subtotal
-            
             tipo_iva = self.var_iva.get()
-            total_iva = base_imponible * (tipo_iva / 100)
-            total = base_imponible + total_iva
-            
+            base_imponible, total_iva, total = self._desglose_carrito()
+
             with db.transaccion() as conn:
-                numero_temp = f"PRE-TEMP-{datetime.now().timestamp()}"
+                numero_temp = f"PRE-TEMP-{uuid.uuid4().hex[:12]}"
                 cursor = conn.execute("""
                     INSERT INTO presupuestos
                     (numero_presupuesto, cliente_nombre, cliente_email, base_imponible, 
@@ -434,12 +447,20 @@ class Presupuestos(tk.Frame):
                     "subtotal": float(v[3]),
                 })
 
-            base = sum(float(self.tree.item(c, "values")[3])
-                       for c in self.tree.get_children())
-            iva = base * (self.var_iva.get() / 100)
-            total = base + iva
+            base, iva, total = self._desglose_carrito()
 
-            numero = getattr(self, "numero_presupuesto_actual", None) or ""
+            # ``numero_presupuesto_actual`` nunca se asignaba, así que
+            # todos los PDF salían sin número de documento. Si el
+            # presupuesto ya está guardado se reutiliza el que se le
+            # asignó; si no, se compone uno provisional coherente.
+            numero = getattr(self, "numero_presupuesto_actual", None)
+            if not numero:
+                id_guardado = getattr(self, "presupuesto_id_actual", None)
+                numero = (
+                    f"PRE-{datetime.now().strftime('%Y')}-{id_guardado:05d}"
+                    if id_guardado
+                    else f"PRE-{datetime.now().strftime('%Y')}-BORRADOR"
+                )
 
             pdf.generar(
                 output_path=archivo_pdf,
@@ -497,16 +518,22 @@ class Presupuestos(tk.Frame):
                     "subtotal": float(v[3]),
                 })
 
-            base = sum(float(self.tree.item(c, "values")[3])
-                       for c in self.tree.get_children())
-            iva = base * (self.var_iva.get() / 100)
-            total = base + iva
+            base, iva, total = self._desglose_carrito()
+
+            numero = getattr(self, "numero_presupuesto_actual", None)
+            if not numero:
+                id_guardado = getattr(self, "presupuesto_id_actual", None)
+                numero = (
+                    f"PRE-{datetime.now().strftime('%Y')}-{id_guardado:05d}"
+                    if id_guardado
+                    else f"PRE-{datetime.now().strftime('%Y')}-BORRADOR"
+                )
 
             pdf.generar(
                 output_path=archivo_tmp,
                 titulo_documento=bp.nombre_empresa(),
                 subtitulo_documento="PRESUPUESTO",
-                numero=getattr(self, "numero_presupuesto_actual", None) or "",
+                numero=numero,
                 fecha=datetime.now(),
                 cliente_nombre=cliente,
                 cliente_email=self.entry_email.get().strip(),

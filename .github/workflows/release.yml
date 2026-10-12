@@ -6,7 +6,48 @@ on:
       - "v*"
 
 jobs:
+  # Un tag no debe publicar instaladores con la suite en rojo.
+  tests:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies (tkinter + display virtual)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk-dev xvfb poppler-utils
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+
+      - name: Verify test environment is really usable
+        # Sin esto el CI podría quedar verde sin ejecutar nada útil:
+        # sin display los tests con widgets reales se OMITEN en silencio, y
+        # sin poppler-utils se OMITEN los que leen el PDF. Se falla aquí, y
+        # de forma legible, en vez de depender de leer los skips del informe.
+        run: |
+          xvfb-run -a python -c "
+          import tkinter, shutil, sys
+          raiz = tkinter.Tk(); raiz.destroy()
+          if not shutil.which('pdftotext'):
+              sys.exit('FALTA pdftotext (poppler-utils)')
+          print('entorno de tests OK: Tk + pdftotext')
+          "
+
+      - name: Run pytest
+        run: xvfb-run -a python -m pytest -q
+
   linux:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +132,7 @@ jobs:
           path: dist/Reyger-*.AppImage
 
   windows:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -130,6 +172,7 @@ jobs:
           path: dist/*.msi
 
   macos:
+    needs: tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -167,7 +210,7 @@ jobs:
 
   release:
     name: Publish Pre-release
-    needs: [linux, windows, macos]
+    needs: [tests, linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write

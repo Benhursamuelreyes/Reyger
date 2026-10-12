@@ -8,7 +8,63 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Puerta de calidad: sin esto, los tres buildsucceedían con la suite en
+  # rojo. Los jobs de empaquetado dependen de este, así que un test roto
+  # impide generar instaladores.
+  tests:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies (tkinter + display virtual)
+        # python3-tk/tk-dev: la app es Tkinter.
+        # xvfb: varios tests abren una ventana Tk real (p. ej. el desplegable
+        # de clientes de ventas), y los runners no tienen display. Con
+        # xvfb-run se comportan como en la máquina del desarrollador, en vez
+        # de colgarse o de saltarse en silencio.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk-dev xvfb poppler-utils
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements.txt cubre lo que importa la app y los tests
+          # (reportlab, openpyxl, cryptography, ttkthemes...). pywin32 va
+          # marcado para Windows, así que pip lo omite en Linux.
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+
+      - name: Verify test environment is really usable
+        # Sin esto el CI podría quedar verde sin ejecutar nada útil:
+        # - sin display, los tests con widgets reales se OMITEN en silencio;
+        # - sin poppler-utils, los tests que leen el PDF se OMITEN.
+        # Se falla aquí, y de forma legible, en vez de depender de leer los
+        # skips del informe de pytest.
+        run: |
+          xvfb-run -a python -c "
+          import tkinter, shutil, sys
+          raiz = tkinter.Tk(); raiz.destroy()
+          if not shutil.which('pdftotext'):
+              sys.exit('FALTA pdftotext (poppler-utils)')
+          print('entorno de tests OK: Tk + pdftotext')
+          "
+
+      - name: Run pytest
+        # addopts de pyproject.toml ya excluye el marcador
+        # 'orden_dependiente', que solo tiene sentido en local.
+        # El código de salida != 0 hace fallar el job y, con `needs`, los
+        # builds.
+        run: xvfb-run -a python -m pytest -q
+
   linux:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +107,7 @@ jobs:
           path: dist/Reyger-*.AppImage
 
   windows:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +147,7 @@ jobs:
           path: dist/*.msi
 
   macos:
+    needs: tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

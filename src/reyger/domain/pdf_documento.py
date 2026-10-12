@@ -96,7 +96,8 @@ class PdfDocumento:
 
     def generar(self, output_path, titulo_documento, subtitulo_documento,
                 numero, fecha, cliente_nombre, cliente_direccion=None,
-                cliente_nif=None, cliente_email=None, productos=None,
+                cliente_nif=None, cliente_email=None, cliente_telefono=None,
+                productos=None,
                 base_imponible=None, tipo_iva=None, total_iva=None,
                 total=None, observaciones="", campos_firma=True,
                 codigo_qr=None, pie_legal=None, columnas_productos=None,
@@ -114,6 +115,7 @@ class PdfDocumento:
             cliente_direccion: Dirección del cliente (opcional).
             cliente_nif: NIF del cliente (opcional).
             cliente_email: Email del cliente (opcional).
+            cliente_telefono: Teléfono del cliente (opcional).
             productos: Lista de diccionarios. Si es ``None`` se omite la tabla.
             base_imponible, tipo_iva, total_iva, total: desglose fiscal (opcional).
             observaciones: Texto de observaciones (opcional).
@@ -143,7 +145,8 @@ class PdfDocumento:
         story.extend(self._info_documento(subtitulo_documento, numero, fecha))
         story.append(Spacer(1, 0.3 * cm))
         story.extend(self._datos_cliente(
-            cliente_nombre, cliente_direccion, cliente_nif, cliente_email
+            cliente_nombre, cliente_direccion, cliente_nif, cliente_email,
+            cliente_telefono,
         ))
         story.append(Spacer(1, 0.3 * cm))
 
@@ -283,8 +286,13 @@ class PdfDocumento:
         return elementos
 
     def _datos_cliente(self, cliente_nombre, cliente_direccion,
-                       cliente_nif, cliente_email):
-        """Sección de datos del cliente."""
+                       cliente_nif, cliente_email, cliente_telefono=None):
+        """Sección de datos del cliente.
+
+        Cada fila opcional se omite cuando su valor viene vacío o a ``None``,
+        de modo que un cliente con la ficha incompleta produce un bloque sin
+        etiquetas huérfanas (y sin romper el render).
+        """
         elementos = [Paragraph(
             "<b>DATOS DEL CLIENTE</b>",
             self.estilo_subtitulo,
@@ -295,6 +303,8 @@ class PdfDocumento:
             filas.append(["NIF/VAT ID:", cliente_nif])
         if cliente_direccion:
             filas.append(["Dirección:", cliente_direccion])
+        if cliente_telefono:
+            filas.append(["Tel:", cliente_telefono])
         if cliente_email:
             filas.append(["Email:", cliente_email])
 

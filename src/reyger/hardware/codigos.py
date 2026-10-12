@@ -32,8 +32,25 @@ _STOP = 106
 
 
 def _codigo_b128(texto):
-    """Devuelve la secuencia de códigos (start, datos, checksum, stop)."""
+    """Devuelve la secuencia de códigos (start, datos, checksum, stop).
+
+    El subconjunto B de Code128 solo define los valores 0..94, es decir
+    ASCII 32..126. Sin validarlo, un carácter acentuado (habitual en
+    nombres españoles como «JABÓN» o «ATÚN») producía ``IndexError`` y un
+    carácter de controlaba el valor con un índice NEGATIVO, que Python
+    resolvía por la cola de la lista: se generaba un código de barras de
+    aspecto perfectamente válido pero con **datos equivocados**.
+    """
+    texto = "" if texto is None else str(texto)
+    if not texto:
+        raise ValueError("El código de barras Code128 no puede estar vacío")
     valores = [ord(c) - 32 for c in texto]  # Code128 subset B (ASCII 32-126)
+    fuera = [c for c, v in zip(texto, valores) if not 0 <= v <= 94]
+    if fuera:
+        raise ValueError(
+            "El código Code128-B solo admite caracteres ASCII 32-126; "
+            f"no se pueden codificar: {''.join(dict.fromkeys(fuera))!r}"
+        )
     checksum = _START_B
     for i, v in enumerate(valores, start=1):
         checksum += v * i

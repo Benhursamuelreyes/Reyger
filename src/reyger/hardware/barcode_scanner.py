@@ -4,11 +4,61 @@ Los escáneres USB funcionan como teclados HID, por lo que se capturan
 los códigos escaneados y se buscan automáticamente en el inventario.
 """
 
+import re
 import sqlite3
 import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 from ..core import db
+
+
+def _parsear_importe(texto):
+    """Convierte un importe escrito por el usuario a ``float``.
+
+    Respeta los separadores del locale activo en vez de asumir coma
+    decimal: con la regla fija ``replace(",", ".")``, un cajero que
+    escribe ``1.234`` (mil doscientos treinta y cuatro en es_ES) se
+    guardaba como **1,23** sin ningún aviso, y un importe ya formateado
+    por :func:`reyger.core.moneda.format_currency` (``1.234,56``) era
+    rechazado como no numérico.
+
+    Acepta ambas convenciones de separador (la de es_ES y la de en_US)
+    porque un escáner configurado en inglés, un teclado USDA o un
+    proveedor que exporta el catálogo en_US pueden emitir cualquiera de
+    las dos.
+
+    Lanza ``ValueError`` si el texto no representa un único número.
+    """
+    if isinstance(texto, (int, float)):
+        return float(texto)
+
+    bruto = str(texto).strip()
+    if not bruto:
+        raise ValueError("importe vacío")
+
+    # Se descarta cualquier cosa que no sea dígito, signo o separador
+    # (p. ej. el símbolo de moneda que antepone format_currency).
+    for ch in bruto:
+        if not (ch.isdigit() or ch in ".,-+ \t"):
+            bruto = bruto.replace(ch, "")
+
+    # El separador de la DERECHA es el decimal; todos los anteriores son
+    # de miles. Quitar primero el de miles por locale rompía el caso
+    # inverso al esperado: en es_ES, "1,234.56" (un usuario o proveedor
+    # anglosajón, o un escáner configurado en inglés) quedaba "1,23456"
+    # -> 1.23456, mil veces menor de lo tecleado, y sin aviso alguno.
+    pos = max(bruto.rfind("."), bruto.rfind(","))
+    if pos >= 0:
+        entero = re.sub(r"[.,]", "", bruto[:pos])
+        decimal = re.sub(r"[.,]", "", bruto[pos + 1:])
+        if not decimal:
+            raise ValueError("importe con separador decimal sin cifras")
+        bruto = f"{entero}.{decimal}" if entero else f"0.{decimal}"
+    else:
+        bruto = bruto.replace(" ", "")
+
+    valor = float(bruto.replace(" ", ""))
+    return valor
 
 
 class EscanerCodigoBarras:
@@ -286,19 +336,23 @@ def registrar_producto_rapido(db_path, codigo_barras, nombre, precio_venta,
     if not nombre:
         raise ValueError("El nombre del producto es obligatorio")
     try:
-        precio_venta = float(str(precio_venta).replace(",", "."))
+        precio_venta = _parsear_importe(precio_venta)
     except (TypeError, ValueError):
         raise ValueError("El precio de venta debe ser numérico")
     if precio_costo in (None, ""):
         precio_costo = precio_venta
     try:
-        precio_costo = float(str(precio_costo).replace(",", "."))
+        precio_costo = _parsear_importe(precio_costo)
     except (TypeError, ValueError):
         raise ValueError("El precio de costo debe ser numérico")
+    if precio_venta < 0 or precio_costo < 0:
+        raise ValueError("Los precios no pueden ser negativos")
     try:
         stock = int(stock)
     except (TypeError, ValueError):
         raise ValueError("El stock debe ser un número entero")
+    if stock < 0:
+        raise ValueError("El stock no puede ser negativo")
 
     try:
         if db_path in (None, ""):
@@ -321,7 +375,7 @@ def registrar_producto_rapido(db_path, codigo_barras, nombre, precio_venta,
                 id_producto = cursor.lastrowid
             finally:
                 conn.close()
-    except Exception as e:
+    except sqlite3.IntegrityError as e:
         raise ValueError(
             f"El código {codigo_barras} ya está asignado a otro producto"
         ) from e

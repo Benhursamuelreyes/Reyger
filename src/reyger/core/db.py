@@ -1,8 +1,23 @@
 """Capa de acceso a datos centralizada de Reyger.
 
 Todos los módulos deberían obtener su conexión desde aquí en lugar de
-abrir ``sqlite3.connect`` por su cuenta. La conexión es única (la app es
-mono-hilo) y activa el cumplimiento de claves foráneas.
+abrir ``sqlite3.connect`` por su cuenta. La conexión es única y se
+comparte entre la interfaz y los hilos de trabajo que lanza
+``core.hilos.en_hilo``; por eso se crea con ``check_same_thread=False``.
+El acceso concurrente a la misma conexión no es seguro en SQLite: cada
+transacción debe ser corta y no cruzarse con la de otro hilo. WAL y
+``busy_timeout`` evitan además los bloqueos entre esta conexión y las
+que abren ``datos.py`` y ``backup.py`` sobre el mismo fichero.
+
+AVISO — copia manual de la base: con WAL activo los datos comprometidos
+viven también en ``database.db-wal``, así que copiar solo ``database.db``
+(a mano, por correo o con una nube sincronizada) produce una copia
+**incompleta** que, al restaurarse, aparece con tablas vacías o con errores
+de integridad. El modo WAL se activa solo si el sistema de ficheros lo
+admite y **degrada en silencio** a ``delete`` cuando no (unidades de red,
+determinados USB), de modo que no puede suponerse: consúltalo con
+``db.wal_activo()``. La copia fiable la hace ``core.backup``, que usa
+``sqlite3.Connection.backup()`` e incluye el WAL en el destino.
 """
 
 import sqlite3
@@ -11,6 +26,7 @@ from contextlib import contextmanager
 from ..resources import get_db_path
 
 _conexion = None
+_conexion_configurada = False
 
 
 def get_connection():
@@ -25,7 +41,58 @@ def get_connection():
         _conexion.execute("PRAGMA synchronous = NORMAL")
         _conexion.execute("PRAGMA temp_store = MEMORY")
         _conexion.execute("PRAGMA cache_size = -2000")  # ~2 MB de página caché
+
+        # ``datos.py`` y ``backup.py`` abren su propia conexión al mismo
+        # fichero. Sin este margen, un lector en segundo plano puede dejar
+        # la escritura de la interfaz esperando el bloqueo hasta el límite
+        # por defecto de la compilación de SQLite y fallar con
+        # "database is locked". 5 s es suficiente para el uso real de la app.
+        _conexion.execute("PRAGMA busy_timeout = 5000")
+
+        # WAL permite que los lectores en segundo plano (exportaciones,
+        # respaldos) no bloqueen a la escritura de la interfaz. Necesita
+        # ``shm`` compartido: si el sistema de ficheros no lo soporta
+        # (por ejemplo, algunas unidades de red) se conserva el modo
+        # rollback anterior.
+        try:
+            if _conexion.execute("PRAGMA journal_mode = WAL").fetchone()[0] != "wal":
+                raise sqlite3.OperationalError("WAL no disponible")
+        except sqlite3.Error:
+            pass  # se mantiene el journal_mode por defecto (delete)
     return _conexion
+
+
+def journal_mode(conn=None):
+    """Devuelve el modo de journal real de la base de datos.
+
+    WAL se activa *si el sistema de ficheros lo permite* (necesita ``shm``
+    compartido; fallan algunas unidades de red y determinados USB). Si no,
+    ``get_connection()`` degrada en silencio al modo ``delete``. Por eso el
+    modo activo no puede suponerse: hay que consultarlo.
+
+    Args:
+        conn: Conexión sobre la que consultar. Por defecto, la conexión
+            compartida de la aplicación. Acepta una conexión propia para
+            consultar bases ajenas (``backup.py``, tests).
+    """
+    try:
+        objetivo = conn if conn is not None else get_connection()
+        return (objetivo.execute("PRAGMA journal_mode").fetchone()[0] or "").lower()
+    except sqlite3.Error:
+        return ""
+
+
+def wal_activo(conn=None):
+    """``True`` si la base está en modo WAL.
+
+    Con WAL activo, los datos comprometidos viven también en
+    ``database.db-wal``. Copiar solo ``database.db`` (a mano, por un
+    explorador o una nube sincronizada) se lleva un fichero incompleto, y al
+    restaurarlo aparecen tablas vacías o errores de integridad. La única copia
+    fiable la hace ``core.backup`` con ``Connection.backup()``, que incluye el
+    WAL en el destino.
+    """
+    return journal_mode(conn) == "wal"
 
 
 def query(sql, parametros=()):

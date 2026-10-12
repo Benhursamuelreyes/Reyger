@@ -1618,6 +1618,19 @@ class Ajustes(tk.Frame):
         if not ruta:
             return
 
+        # Con WAL activo, copiar «database.db» a mano produce una copia
+        # incompleta. Esta ventana exporta la base igual que Inventario, así
+        # que muestra el mismo aviso (texto compartido en core.backup): antes
+        # solo lo mostraba Inventario y desde aquí se exportaba sin ninguna
+        # advertencia. En modo delete el aviso sería ruido.
+        from ..core import db as mod_db
+
+        if formato == "db" and mod_db.wal_activo():
+            if not messagebox.askyesno(
+                "Exportar base de datos", mod_backup.AVISO_COPIA_MANUAL
+            ):
+                return
+
         if formato == "db":
             trabajo = lambda: mod_backup.exportar_sqlite(ruta)  # noqa: E731
         elif formato == "excel":
@@ -1722,6 +1735,8 @@ class Ajustes(tk.Frame):
     
     def guardar_cambios(self):
         """Guarda todos los cambios de configuración"""
+        from ..core import moneda as mod_moneda
+
         try:
             # Guardar configuración de UI en config.json
             self.config_manager.config_data.update({
@@ -1762,9 +1777,15 @@ class Ajustes(tk.Frame):
                 numero_serie_ticket=self.bp_entries["numero_serie_ticket"].get(),
                 numero_serie_factura=self.bp_entries["numero_serie_factura"].get(),
                 verifactu_activo=1 if self.verifactu_var.get() else 0,
-                moneda=self.combo_moneda.get(),
-                locale=self.combo_locale.get(),
             )
+            # Moneda y locale se guardan por código ISO / código de locale.
+            # Guardar directamente lo que hay en los desplegables (el
+            # nombre legible "Dólar estadounidense" y la etiqueta "Estados
+            # Unidos — Dólar estadounidense") los dejaba persistidos como
+            # texto no válido: codigo_moneda() los descartaba y todo
+            # volvía al euro, con la sección de moneda inerte.
+            mod_moneda.guardar_moneda(self.combo_moneda.get())
+            mod_moneda.guardar_locale(self.combo_locale.get())
             
             messagebox.showinfo(
                 "Éxito",
