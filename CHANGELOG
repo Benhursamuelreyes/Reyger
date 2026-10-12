@@ -1,5 +1,44 @@
 Changelog content
 
+## v1.1.1 (2026-10-12)
+
+FIX: integridad de datos, correlatividad, respaldos WAL y varias
+correcciones de UI y hardware.
+
+### Integridad y correlatividad
+
+- **Veri*Factu* por serie**: la huella anterior se calcula ahora por serie
+  (por prefijo) y no de forma global, evitando cadenas rotas cuando
+  conviven varias series de facturación.
+- **Migración 13**: la corrección del esquema de `contadores_documentos`
+  preserva los contadores existentes al reconstruir el índice único, y la
+  reconciliación ya no usa `ON CONFLICT(tipo, serie)` ni reduce el último
+  número. Los esquemas antiguos (con `UNIQUE(tipo)`) ya no pierden datos.
+- **Ventas con clientes homónimos**: el cliente se resuelve por identificador
+  y no por nombre; si un nombre es ambiguo se pide elegir explícitamente.
+  El NIF receptor de la factura deja de quedar vacío.
+
+### Respaldos
+
+- **Aviso de copia manual**: al exportar la base de datos con **WAL** activo,
+  Inventario y Ajustes advierten de que copiar `database.db` a mano produce
+  una copia incompleta y remiten al respaldo interno
+  (`sqlite3.Connection.backup()`).
+
+### Otros
+
+- Catálogo regional de moneda con nombres legibles por locale.
+- Impresión térmica y manejo de dispositivos más robustos.
+- Parseo de importes en presupuestos y ajustes del documento PDF.
+- **CI**: los workflows ejecutan `pytest` con `xvfb` y el build falla si la
+  suite no pasa.
+
+### Seguridad
+
+- Se documenta que **CVE-2026-69249** (`cryptography`) no aplica: la
+  aplicación solo usa `Fernet` (AES + HMAC), sin verificación X.509. Se
+  mantiene la cota `<49` por compatibilidad con macOS Intel.
+
 ## v1.1.0 (2026-09-09)
 
 FEATURE: gestión granular de datos (clientes y catálogo por separado).
