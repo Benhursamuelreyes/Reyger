@@ -1,5 +1,16 @@
 Changelog content
 
+## v1.2.1 (2026-10-25)
+
+FIX: la versión mínima de Python pasa a 3.10.
+
+- `reportlab` 5 (la librería de los PDF) ya no carga en Python 3.9, que
+  además está sin soporte desde octubre de 2025. Los instaladores se
+  generan con Python 3.12, así que no afecta a quien los usa.
+- CI prueba con Python 3.10, 3.12 y 3.14.
+- Incluye todos los cambios de la 1.2.0, cuya publicación se detuvo porque
+  los tests de Python 3.9 fallaron por este motivo.
+
 ## v1.2.0 (2026-10-25)
 
 FEATURE: ventas en documentos con importes en céntimos (esquema 14), copia
