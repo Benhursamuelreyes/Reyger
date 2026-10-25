@@ -1,6 +1,16 @@
 Changelog content
 
-## Sin publicar
+## v1.2.0 (2026-10-25)
+
+FEATURE: ventas en documentos con importes en céntimos (esquema 14), copia
+de seguridad automática, aviso de stock bajo, informe de ventas por periodo,
+tema oscuro completo y registro de errores. Corrige la emisión de facturas
+desde borrador, la reimpresión de documentos y la restauración de copias en
+Excel/CSV.
+
+> Al actualizar, la base de datos se migra sola al esquema 14 y se guarda
+> antes una copia `database_antes_v14_<fecha>.bak`. Una base migrada ya no
+> puede abrirse con versiones 1.1.x.
 
 ### Base de datos (esquema 14)
 
