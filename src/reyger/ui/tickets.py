@@ -5,7 +5,6 @@ Módulo para generación de tickets simplificados (tipo rollo de 80mm).
 
 import os
 from datetime import datetime
-from reportlab.lib.pagesizes import landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer

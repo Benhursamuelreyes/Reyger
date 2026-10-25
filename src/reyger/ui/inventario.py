@@ -2,7 +2,10 @@
 import os
 import sqlite3
 from datetime import datetime
-from tkinter import *
+from tkinter import (
+    BOTH, BOTTOM, END, HORIZONTAL, RIGHT, X, Y,
+    Button, Entry, Frame, Label, LabelFrame, Toplevel,
+)
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from ..hardware.barcode_scanner import (
@@ -12,7 +15,7 @@ from ..hardware.barcode_scanner import (
 )
 from ..domain.fiscal import TIPOS_IVA, IVA_POR_DEFECTO, normalizar_tipo_iva
 from . import categorias as gestor_categorias
-from ..core import db
+from ..domain import inventario as dominio
 from ..core import moneda as mod_moneda
 from ..core.db import wal_activo
 from ..core.backup import (
@@ -22,38 +25,40 @@ from ..core.backup import (
     exportar_sqlite,
 )
 from ..core.hilos import en_hilo
+from ..config import ConfigManager
 
 
 class Inventario(tk.Frame):
 
     def __init__(self, padre):
         super().__init__(padre)
+        self.colors = ConfigManager().get_colors()
         self.pack()
         self.escaner = EscanerCodigoBarras()
         self.widgets()
 
     def widgets(self):
-        frame1 = tk.Frame(self, bg="#dddddd", highlightbackground="gray", highlightthickness=3)
+        frame1 = tk.Frame(self, bg=self.colors["bg_cabecera"], highlightbackground="gray", highlightthickness=3)
         frame1.pack(fill="x")
-        titulo = tk.Label(frame1, text="INVENTARIO", bg="#dddddd", font="sans 30 bold", anchor="center")
+        titulo = tk.Label(frame1, text="INVENTARIO", bg=self.colors["bg_cabecera"], font="sans 30 bold", anchor="center")
         titulo.pack(fill="both", expand=True)
 
-        frame2 = tk.Frame(self, bg="#C6D9E3", highlightbackground="gray", highlightthickness=1)
+        frame2 = tk.Frame(self, bg=self.colors["bg_principal"], highlightbackground="gray", highlightthickness=1)
         frame2.pack(fill="both", expand=True)
 
         # Formulario de alta/edición (izquierda)
-        labelFrame = LabelFrame(frame2, text="Productos", font="sans 22 bold", bg="#C6D9E3")
+        labelFrame = LabelFrame(frame2, text="Productos", font="sans 22 bold", bg=self.colors["bg_principal"])
         labelFrame.pack(side="left", fill="y", padx=20, pady=20)
 
-        lblNombre = Label(labelFrame, text="Nombre: ", font="sans 14 bold", bg="#C6D9E3")
-        lblNombre.grid(row=0, column=0, sticky="e", padx=10, pady=10)
+        lblNombre = Label(labelFrame, text="Nombre: ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblNombre.grid(row=0, column=0, sticky="e", padx=10, pady=6)
         self.nombre = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.nombre.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
+        self.nombre.grid(row=0, column=1, sticky="ew", padx=10, pady=6)
 
-        lblProveedor = Label(labelFrame, text="Proveedor: ", font="sans 14 bold", bg="#C6D9E3")
-        lblProveedor.grid(row=1, column=0, sticky="e", padx=10, pady=10)
-        frame_proveedor = tk.Frame(labelFrame, bg="#C6D9E3")
-        frame_proveedor.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
+        lblProveedor = Label(labelFrame, text="Proveedor: ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblProveedor.grid(row=1, column=0, sticky="e", padx=10, pady=6)
+        frame_proveedor = tk.Frame(labelFrame, bg=self.colors["bg_principal"])
+        frame_proveedor.grid(row=1, column=1, sticky="ew", padx=10, pady=6)
         self.proveedor = ttk.Combobox(frame_proveedor, font="sans 14 bold")
         self.proveedor.pack(side="left", fill="x", expand=True)
         btn_nuevo_proveedor = tk.Button(
@@ -63,47 +68,47 @@ class Inventario(tk.Frame):
         btn_nuevo_proveedor.pack(side="left", padx=(6, 0))
         self.cargar_proveedores()
 
-        self.precio_sv = tk.StringVar()
-        self.costo_sv = tk.StringVar()
-        self.margen_sv = tk.StringVar()
+        self.precio_sv = tk.StringVar(self)
+        self.costo_sv = tk.StringVar(self)
+        self.margen_sv = tk.StringVar(self)
         self._calculando = False
 
-        lblCosto = Label(labelFrame, text="Precio de costo (€): ", font="sans 14 bold", bg="#C6D9E3")
-        lblCosto.grid(row=2, column=0, sticky="e", padx=10, pady=10)
+        lblCosto = Label(labelFrame, text="Precio de costo (€): ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblCosto.grid(row=2, column=0, sticky="e", padx=10, pady=6)
         self.costo = ttk.Entry(labelFrame, font="sans 14 bold", textvariable=self.costo_sv)
-        self.costo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
+        self.costo.grid(row=2, column=1, sticky="ew", padx=10, pady=6)
         self.costo_sv.trace_add("write", self._desde_costo_margen)
 
-        lblMargen = Label(labelFrame, text="Margen / ganancia (%): ", font="sans 14 bold", bg="#C6D9E3")
-        lblMargen.grid(row=3, column=0, sticky="e", padx=10, pady=10)
+        lblMargen = Label(labelFrame, text="Margen / ganancia (%): ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblMargen.grid(row=3, column=0, sticky="e", padx=10, pady=6)
         self.margen = ttk.Entry(labelFrame, font="sans 14 bold", textvariable=self.margen_sv)
-        self.margen.grid(row=3, column=1, sticky="ew", padx=10, pady=10)
+        self.margen.grid(row=3, column=1, sticky="ew", padx=10, pady=6)
         self.margen_sv.trace_add("write", self._desde_costo_margen)
 
-        lblPrecio = Label(labelFrame, text="Precio de venta (€): ", font="sans 14 bold", bg="#C6D9E3")
-        lblPrecio.grid(row=4, column=0, sticky="e", padx=10, pady=10)
+        lblPrecio = Label(labelFrame, text="Precio de venta (€): ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblPrecio.grid(row=4, column=0, sticky="e", padx=10, pady=6)
         self.precio = ttk.Entry(labelFrame, font="sans 14 bold", textvariable=self.precio_sv)
-        self.precio.grid(row=4, column=1, sticky="ew", padx=10, pady=10)
+        self.precio.grid(row=4, column=1, sticky="ew", padx=10, pady=6)
         self.precio_sv.trace_add("write", self._desde_venta)
 
-        lblStock = Label(labelFrame, text="Stock: ", font="sans 14 bold", bg="#C6D9E3")
-        lblStock.grid(row=5, column=0, sticky="e", padx=10, pady=10)
+        lblStock = Label(labelFrame, text="Stock: ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblStock.grid(row=5, column=0, sticky="e", padx=10, pady=6)
         self.stock = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.stock.grid(row=5, column=1, sticky="ew", padx=10, pady=10)
+        self.stock.grid(row=5, column=1, sticky="ew", padx=10, pady=6)
 
-        lblIva = Label(labelFrame, text="IVA: ", font="sans 14 bold", bg="#C6D9E3")
-        lblIva.grid(row=6, column=0, sticky="e", padx=10, pady=10)
+        lblIva = Label(labelFrame, text="IVA: ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblIva.grid(row=6, column=0, sticky="e", padx=10, pady=6)
         self.iva = ttk.Combobox(
             labelFrame, font="sans 14 bold",
             values=[f"{tipo:g}%" for tipo in TIPOS_IVA],
         )
         self.iva.set(f"{IVA_POR_DEFECTO:g}%")
-        self.iva.grid(row=6, column=1, sticky="ew", padx=10, pady=10)
+        self.iva.grid(row=6, column=1, sticky="ew", padx=10, pady=6)
 
-        lblCategoria = Label(labelFrame, text="Categoría: ", font="sans 14 bold", bg="#C6D9E3")
-        lblCategoria.grid(row=7, column=0, sticky="e", padx=10, pady=10)
-        frame_categoria = tk.Frame(labelFrame, bg="#C6D9E3")
-        frame_categoria.grid(row=7, column=1, sticky="ew", padx=10, pady=10)
+        lblCategoria = Label(labelFrame, text="Categoría: ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblCategoria.grid(row=7, column=0, sticky="e", padx=10, pady=6)
+        frame_categoria = tk.Frame(labelFrame, bg=self.colors["bg_principal"])
+        frame_categoria.grid(row=7, column=1, sticky="ew", padx=10, pady=6)
         self.categoria = ttk.Combobox(frame_categoria, font="sans 14 bold", state="readonly")
         self.categoria.pack(side="left", fill="x", expand=True)
         btn_nueva_categoria = tk.Button(
@@ -114,26 +119,26 @@ class Inventario(tk.Frame):
         btn_nueva_categoria.pack(side="left", padx=(6, 0))
         self.cargar_categorias()
 
-        lblCodigo = Label(labelFrame, text="Código de barras: ", font="sans 14 bold", bg="#C6D9E3")
-        lblCodigo.grid(row=8, column=0, sticky="e", padx=10, pady=10)
+        lblCodigo = Label(labelFrame, text="Código de barras: ", font="sans 14 bold", bg=self.colors["bg_principal"])
+        lblCodigo.grid(row=8, column=0, sticky="e", padx=10, pady=6)
         self.codigo_barras = ttk.Entry(labelFrame, font="sans 14 bold")
-        self.codigo_barras.grid(row=8, column=1, sticky="ew", padx=10, pady=10)
+        self.codigo_barras.grid(row=8, column=1, sticky="ew", padx=10, pady=6)
 
         labelFrame.columnconfigure(1, weight=1)
 
         boton_agregar = tk.Button(labelFrame, text="➕ Ingresar", font="sans 14 bold", bg="#000CFF", fg="white", command=self.registrar)
-        boton_agregar.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
+        boton_agregar.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(14, 6), ipady=4)
 
         boton_editar = tk.Button(labelFrame, text="✏️ Editar", font="sans 14 bold", bg="#0000FF", fg="white", command=self.editar_producto)
-        boton_editar.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=10, ipady=4)
+        boton_editar.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=6, ipady=4)
 
         # Listado (derecha)
-        frame_derecha = tk.Frame(frame2, bg="#C6D9E3")
+        frame_derecha = tk.Frame(frame2, bg=self.colors["bg_principal"])
         frame_derecha.pack(side="left", fill="both", expand=True, padx=(0, 20), pady=20)
 
-        frame_filtro = tk.Frame(frame_derecha, bg="#C6D9E3")
+        frame_filtro = tk.Frame(frame_derecha, bg=self.colors["bg_principal"])
         frame_filtro.pack(fill="x", pady=(0, 10))
-        lbl_filtro = Label(frame_filtro, text="Filtrar por categoría:", font="sans 13 bold", bg="#C6D9E3")
+        lbl_filtro = Label(frame_filtro, text="Filtrar por categoría:", font="sans 13 bold", bg=self.colors["bg_principal"])
         lbl_filtro.pack(side="left", padx=(0, 8))
         self.filtro_categoria = ttk.Combobox(frame_filtro, font="sans 13 bold", state="readonly")
         self.filtro_categoria.pack(side="left", fill="x", expand=True)
@@ -141,22 +146,31 @@ class Inventario(tk.Frame):
         self.cargar_categorias()
 
         # Barra de entrada manual de códigos de barras
-        frame_codigo = tk.Frame(frame_derecha, bg="#C6D9E3")
+        frame_codigo = tk.Frame(frame_derecha, bg=self.colors["bg_principal"])
         frame_codigo.pack(fill="x", pady=(0, 10))
-        Label(frame_codigo, text="🏷️ Código de barras:", font="sans 13 bold", bg="#C6D9E3").pack(side="left", padx=(0, 8))
-        self.entry_busca_codigo = ttk.Entry(frame_codigo, font="sans 13")
-        self.entry_busca_codigo.pack(side="left", fill="x", expand=True)
-        self.entry_busca_codigo.bind("<Return>", lambda _evento: self.buscar_por_codigo())
+        Label(frame_codigo, text="🏷️ Código de barras:", font="sans 13 bold", bg=self.colors["bg_principal"]).pack(side="left", padx=(0, 8))
+        # Los botones se empaquetan antes que la entrada (por la derecha)
+        # para que sea la entrada la que ceda espacio en ventanas estrechas.
+        Button(
+            frame_codigo, text="🏷️ Asignar", font="sans 12 bold",
+            bg="#17A2B8", fg="white", command=self.asignar_codigo_seleccionado,
+        ).pack(side="right", padx=(8, 0), ipadx=6, ipady=2)
         Button(
             frame_codigo, text="🔍 Buscar", font="sans 12 bold",
             bg="#000CFF", fg="white", command=self.buscar_por_codigo,
-        ).pack(side="left", padx=(8, 0), ipadx=6, ipady=2)
-        Button(
-            frame_codigo, text="🏷️ Asignar al seleccionado", font="sans 12 bold",
-            bg="#17A2B8", fg="white", command=self.asignar_codigo_seleccionado,
-        ).pack(side="left", padx=(8, 0), ipadx=6, ipady=2)
+        ).pack(side="right", padx=(8, 0), ipadx=6, ipady=2)
+        self.entry_busca_codigo = ttk.Entry(frame_codigo, font="sans 13", width=10)
+        self.entry_busca_codigo.pack(side="left", fill="x", expand=True)
+        self.entry_busca_codigo.bind("<Return>", lambda _evento: self.buscar_por_codigo())
 
-        treeFrame = Frame(frame_derecha, bg="white")
+        # Aviso de stock bajo (umbral configurable en Ajustes)
+        self.lbl_stock_bajo = Label(
+            frame_derecha, text="", font="sans 12 bold", anchor="w",
+            bg=self.colors["bg_principal"],
+        )
+        self.lbl_stock_bajo.pack(fill="x", pady=(0, 6))
+
+        treeFrame = Frame(frame_derecha, bg=self.colors["bg_tabla"])
         treeFrame.pack(fill="both", expand=True)
 
         scrol_y = ttk.Scrollbar(treeFrame)
@@ -188,10 +202,13 @@ class Inventario(tk.Frame):
         self.tre.column("IVA", width=70, anchor="center")
         self.tre.column("CATEGORIA", width=120, anchor="center")
 
+        self.tre.tag_configure("bajo", background=self.colors["bg_stock_bajo"])
+        self.tre.tag_configure("agotado", background=self.colors["bg_agotado"])
+
         self.tre.pack(expand=True, fill=BOTH)
         self.mostrar()
 
-        frame_botones = tk.Frame(frame_derecha, bg="#C6D9E3")
+        frame_botones = tk.Frame(frame_derecha, bg=self.colors["bg_principal"])
         frame_botones.pack(fill="x", pady=(15, 0))
         btn_actualizar = Button(frame_botones, text="🔄 Actualizar inventario", bg="#000CFF", fg="white", font="sans 14 bold", command=self.actualizar_inventario)
         btn_actualizar.pack(side="left", expand=True, fill="x", padx=(0, 8), ipady=6)
@@ -199,7 +216,7 @@ class Inventario(tk.Frame):
         boton_eliminar.pack(side="left", expand=True, fill="x", ipady=6)
 
         # Accesos rápidos a respaldo/restauración de la base de datos
-        frame_bd = tk.Frame(frame_derecha, bg="#C6D9E3")
+        frame_bd = tk.Frame(frame_derecha, bg=self.colors["bg_principal"])
         frame_bd.pack(fill="x", pady=(8, 0))
         self.btn_exportar_bd = tk.Button(
             frame_bd, text="📤 Exportar base de datos…",
@@ -315,8 +332,7 @@ class Inventario(tk.Frame):
 
     def cargar_proveedores(self):
         try:
-            result = self.eje_consulta("SELECT nombre FROM proveedores ORDER BY nombre")
-            nombres = [fila[0] for fila in result.fetchall()]
+            nombres = dominio.nombres_proveedores()
         except Exception:
             nombres = []
         self.proveedor["values"] = nombres
@@ -327,7 +343,7 @@ class Inventario(tk.Frame):
         ventana.geometry("480x420")
         ventana.resizable(True, True)
         ventana.minsize(440, 380)
-        ventana.config(bg="#C6D9E3")
+        ventana.config(bg=self.colors["bg_principal"])
         ventana.transient(self.winfo_toplevel())
         ventana.grab_set()
 
@@ -337,7 +353,7 @@ class Inventario(tk.Frame):
             ("contacto", "Contacto:"), ("telefono", "Teléfono:"),
             ("email", "Email:"),
         ]):
-            Label(ventana, text=etiqueta, font="sans 13 bold", bg="#C6D9E3").grid(
+            Label(ventana, text=etiqueta, font="sans 13 bold", bg=self.colors["bg_principal"]).grid(
                 row=fila, column=0, sticky="e", padx=10, pady=8)
             entry = ttk.Entry(ventana, font="sans 13")
             entry.grid(row=fila, column=1, sticky="ew", padx=10, pady=8)
@@ -350,16 +366,12 @@ class Inventario(tk.Frame):
                 messagebox.showwarning("Nuevo proveedor", "El nombre es obligatorio")
                 return
             try:
-                self.eje_consulta(
-                    "INSERT INTO proveedores (nombre, cif, contacto, telefono, email)"
-                    " VALUES (?,?,?,?,?)",
-                    (
-                        nombre,
-                        campos["cif"].get().strip(),
-                        campos["contacto"].get().strip(),
-                        campos["telefono"].get().strip(),
-                        campos["email"].get().strip(),
-                    ),
+                dominio.crear_proveedor(
+                    nombre,
+                    campos["cif"].get().strip(),
+                    campos["contacto"].get().strip(),
+                    campos["telefono"].get().strip(),
+                    campos["email"].get().strip(),
                 )
             except sqlite3.Error as e:
                 messagebox.showerror("Error", f"No se pudo guardar el proveedor: {e}")
@@ -373,63 +385,12 @@ class Inventario(tk.Frame):
             bg="#27AE60", fg="white", command=guardar_proveedor,
         ).grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(25, 10), ipady=4)
     
-    def eje_consulta(self, consulta, parametros=()):
-        conn = db.get_connection()
-        # Solo se commitea si la sentencia ESCRIBIÓ de verdad. Antes
-        # cualquier SELECT cerraba la transacción que hubiera abierto
-        # otro hilo sobre la conexión compartida, ajustando un pago a medio
-        # confirmar o el registro de una factura VeriFACTu.
-        antes = conn.total_changes
-        cursor = conn.execute(consulta, parametros)
-        if conn.total_changes != antes:
-            conn.commit()
-        return cursor
-    
     def validacion(self, nombre, prov, precio, costo, stock):
-        """Valida los campos del producto.
+        return dominio.validar_producto(nombre, prov, precio, costo, stock)
 
-        Devuelve ``(ok, mensaje)``. Antes solo comprobaba que los campos
-        fueran truthy y convertibles, de modo que un precio, un coste o un
-        stock negativos se guardaban: el coste negativo inflaba el margen y
-        el precio negativo llegaba a :func:`fiscal.desglose_linea` como
-        base imponible negativa en una venta.
-        """
-        if not (nombre and prov and precio and costo and stock):
-            return False, "Rellene todos los campos correctamente"
-        try:
-            precio_num = float(precio)
-            costo_num = float(costo)
-            stock_num = int(stock)
-        except (TypeError, ValueError):
-            return False, "Precio, coste y stock deben ser numéricos"
-        if precio_num < 0:
-            return False, "El precio de venta no puede ser negativo"
-        if costo_num < 0:
-            return False, "El coste no puede ser negativo"
-        if stock_num < 0:
-            return False, "El stock no puede ser negativo"
-        return True, ""
-
-    @staticmethod
-    def _calcular_precio_venta(costo, margen):
-        """Precio de venta a partir del coste y el margen (%):
-        ``costo * (1 + margen / 100)``."""
-        return costo * (1 + margen / 100)
-
-    @staticmethod
-    def _calcular_margen(costo, precio_venta):
-        """Margen (%) a partir del coste y el precio de venta:
-        ``((venta - costo) / costo) * 100``."""
-        if not costo:
-            return 0.0
-        return ((precio_venta - costo) / costo) * 100
-
-    @staticmethod
-    def _parse_float(texto):
-        try:
-            return float(str(texto).strip().replace(",", "."))
-        except (TypeError, ValueError):
-            return None
+    _calcular_precio_venta = staticmethod(dominio.calcular_precio_venta)
+    _calcular_margen = staticmethod(dominio.calcular_margen)
+    _parse_float = staticmethod(dominio.parse_float)
 
     def _desde_costo_margen(self, *_):
         """Al cambiar coste o margen, recalcula el precio de venta."""
@@ -474,10 +435,7 @@ class Inventario(tk.Frame):
 
     def cargar_categorias(self):
         try:
-            filas = self.eje_consulta(
-                "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
-            ).fetchall()
-            nombres = [fila[0] for fila in filas]
+            nombres = gestor_categorias.nombres()
         except Exception:
             nombres = ["General"]
         if not nombres:
@@ -498,13 +456,13 @@ class Inventario(tk.Frame):
         dialogo.title("Crear nueva categoría")
         dialogo.geometry("380x180")
         dialogo.resizable(False, False)
-        dialogo.config(bg="#C6D9E3")
+        dialogo.config(bg=self.colors["bg_principal"])
         dialogo.transient(self.winfo_toplevel())
         dialogo.grab_set()
 
         Label(
             dialogo, text="Nombre de la categoría:",
-            font="sans 13 bold", bg="#C6D9E3",
+            font="sans 13 bold", bg=self.colors["bg_principal"],
         ).pack(pady=(20, 6))
         entry_nombre = Entry(dialogo, font="sans 14 bold")
         entry_nombre.pack(ipadx=30, ipady=3)
@@ -604,10 +562,7 @@ class Inventario(tk.Frame):
 
     def _categorias_disponibles_nombres(self):
         try:
-            filas = self.eje_consulta(
-                "SELECT nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
-            ).fetchall()
-            return [fila[0] for fila in filas]
+            return gestor_categorias.nombres()
         except Exception:
             return ["General"]
 
@@ -624,20 +579,9 @@ class Inventario(tk.Frame):
         DialogoAsignarCodigoBarras(self, item_id, valores[1], self.escaner)
 
     def mostrar(self, filtro_categoria=None):
-        # Columnas explícitas: i.* es frágil porque ALTER TABLE añade
-        # las columnas nuevas al final y desplaza los índices posicionales.
-        base = (
-            "SELECT i.id, i.nombre, i.proveedor, i.precio, i.costo,"
-            " i.stock, i.tipo_iva, c.nombre FROM inventario i "
-            "LEFT JOIN categorias c ON c.id = i.categoria_id "
-        )
-        if filtro_categoria:
-            consulta = base + "WHERE c.nombre = ? ORDER BY i.id DESC"
-            result = self.eje_consulta(consulta, (filtro_categoria,))
-        else:
-            consulta = base + "ORDER BY i.id DESC"
-            result = self.eje_consulta(consulta)
-        for elem in result:
+        umbral = int(ConfigManager().get("umbral_stock_bajo", 5))
+        avisos = {"bajo": 0, "agotado": 0}
+        for elem in dominio.listar_productos(filtro_categoria):
             try:
                 precio_eur = mod_moneda.format_currency(float(elem[3]), decimales=0) if elem[3] else ""
                 costo_eur = mod_moneda.format_currency(float(elem[4]), decimales=0) if elem[4] else ""
@@ -646,7 +590,29 @@ class Inventario(tk.Frame):
                 costo_eur = elem[4]
             iva_txt = f"{elem[6]:g}%" if elem[6] is not None else ""
             categoria_txt = elem[7] if len(elem) > 7 and elem[7] else ""
-            self.tre.insert("", 0, text=elem[0], values=(elem[0], elem[1], elem[2], precio_eur, costo_eur, elem[5], iva_txt, categoria_txt))
+            estado = dominio.estado_stock(elem[5], umbral)
+            if estado:
+                avisos[estado] += 1
+            self.tre.insert(
+                "", 0, text=elem[0],
+                values=(elem[0], elem[1], elem[2], precio_eur, costo_eur, elem[5], iva_txt, categoria_txt),
+                tags=(estado,) if estado else (),
+            )
+        self._mostrar_aviso_stock(avisos, umbral)
+
+    def _mostrar_aviso_stock(self, avisos, umbral):
+        if not hasattr(self, "lbl_stock_bajo"):
+            return
+        total = avisos["bajo"] + avisos["agotado"]
+        if not total:
+            self.lbl_stock_bajo.config(text="")
+            return
+        partes = []
+        if avisos["agotado"]:
+            partes.append(f"{avisos['agotado']} agotado{'s' if avisos['agotado'] != 1 else ''}")
+        if avisos["bajo"]:
+            partes.append(f"{avisos['bajo']} con {umbral} unidades o menos")
+        self.lbl_stock_bajo.config(text="⚠️ Stock bajo: " + ", ".join(partes))
     
     def actualizar_inventario(self):
         for item in self.tre.get_children():
@@ -670,36 +636,16 @@ class Inventario(tk.Frame):
             return
         if tipo_iva is not None:
             try:
-                if codigo:
-                    duplicado = self.eje_consulta(
-                        "SELECT id FROM inventario WHERE codigo_barras = ?", (codigo,)
-                    ).fetchone()
-                    if duplicado:
-                        messagebox.showwarning(
-                            title="Código duplicado",
-                            message=f"El código «{codigo}» ya está asignado a otro producto.",
-                        )
-                        return
-                fila_proveedor = self.eje_consulta(
-                    "SELECT id FROM proveedores WHERE nombre = ?", (prov,)
-                ).fetchone()
-                proveedor_id = fila_proveedor[0] if fila_proveedor else None
-                fila_categoria = self.eje_consulta(
-                    "SELECT id FROM categorias WHERE nombre = ?",
-                    (self.categoria.get() or "General",),
-                ).fetchone()
-                categoria_id = fila_categoria[0] if fila_categoria else None
-                consulta = (
-                    "INSERT INTO inventario (nombre, proveedor, precio, costo,"
-                    " stock, proveedor_id, tipo_iva, categoria_id, codigo_barras,"
-                    " margen_porcentaje) VALUES(?,?,?,?,?,?,?,?,?,?)"
+                if codigo and dominio.codigo_en_uso(codigo):
+                    messagebox.showwarning(
+                        title="Código duplicado",
+                        message=f"El código «{codigo}» ya está asignado a otro producto.",
+                    )
+                    return
+                dominio.crear_producto(
+                    nombre, prov, precio, costo, stock, tipo_iva,
+                    self.categoria.get(), codigo, self._margen_actual(),
                 )
-                parametros = (
-                    nombre, prov, precio, costo, stock,
-                    proveedor_id, tipo_iva, categoria_id, codigo or None,
-                    self._margen_actual(),
-                )
-                self.eje_consulta(consulta, parametros)
                 self.actualizar_inventario()
                 self.nombre.delete(0, END)
                 self.proveedor.delete(0, END)
@@ -724,11 +670,7 @@ class Inventario(tk.Frame):
         item_id = self.tre.item(seleccion)["text"]
         item_values = self.tre.item(seleccion)["values"]
         
-        db_row = self.eje_consulta(
-            "SELECT precio, costo, tipo_iva, categoria_id, codigo_barras,"
-            " margen_porcentaje FROM inventario WHERE id = ?",
-            (item_id,),
-        ).fetchone()
+        db_row = dominio.obtener_producto(item_id)
         if db_row is None:
             messagebox.showwarning("Editar producto", "Producto no encontrado")
             return
@@ -749,24 +691,24 @@ class Inventario(tk.Frame):
         ventana_editar.geometry("520x620")
         ventana_editar.resizable(True, True)
         ventana_editar.minsize(480, 580)
-        ventana_editar.config(bg="#C6D9E3")
+        ventana_editar.config(bg=self.colors["bg_principal"])
 
         # Contenido con scroll vertical (el formulario de 10 filas puede
         # exceder la altura en pantallas pequeñas o con fuentes grandes)
-        contenedor = tk.Frame(ventana_editar, bg="#C6D9E3")
+        contenedor = tk.Frame(ventana_editar, bg=self.colors["bg_principal"])
         contenedor.pack(fill="both", expand=True, padx=10, pady=10)
 
         barra = ttk.Scrollbar(contenedor, orient="vertical")
         barra.pack(side="right", fill="y")
 
         lienzo = tk.Canvas(
-            contenedor, bg="#C6D9E3", highlightthickness=0,
+            contenedor, bg=self.colors["bg_principal"], highlightthickness=0,
             yscrollcommand=barra.set,
         )
         lienzo.pack(side="left", fill="both", expand=True)
         barra.config(command=lienzo.yview)
 
-        main_frame = tk.Frame(lienzo, bg="#C6D9E3")
+        main_frame = tk.Frame(lienzo, bg=self.colors["bg_principal"])
         ventana_contenido = lienzo.create_window((0, 0), window=main_frame, anchor="nw")
 
         main_frame.bind(
@@ -790,21 +732,21 @@ class Inventario(tk.Frame):
         for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             ventana_editar.bind(secuencia, _rueda)
         
-        lbl_nombre = Label(main_frame, text="Nombre:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_nombre = Label(main_frame, text="Nombre:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_nombre.grid(row=0, column=0, padx=10, pady=10)
         entry_nombre = Entry(main_frame, font="sans 14 bold")
         entry_nombre.grid(row=0, column=1, padx=10, pady=10)
         entry_nombre.insert(0, item_values[1])
         
-        lbl_proveedor = Label(main_frame, text="Proveedor:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_proveedor = Label(main_frame, text="Proveedor:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_proveedor.grid(row=1, column=0, padx=10, pady=10)
         entry_proveedor = Entry(main_frame, font="sans 14 bold")
         entry_proveedor.grid(row=1, column=1, padx=10, pady=10)
         entry_proveedor.insert(0, item_values[2])
         
-        precio_sv = tk.StringVar()
-        costo_sv = tk.StringVar()
-        margen_sv = tk.StringVar()
+        precio_sv = tk.StringVar(self)
+        costo_sv = tk.StringVar(self)
+        margen_sv = tk.StringVar(self)
         _calculando_edit = {"on": False}
 
         def _desde_costo_margen_edit(*_):
@@ -833,34 +775,34 @@ class Inventario(tk.Frame):
             finally:
                 _calculando_edit["on"] = False
 
-        lbl_precio = Label(main_frame, text="Precio de venta:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_precio = Label(main_frame, text="Precio de venta:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_precio.grid(row=2, column=0, padx=10, pady=10)
         entry_precio = Entry(main_frame, font="sans 14 bold", textvariable=precio_sv)
         entry_precio.grid(row=2, column=1, padx=10, pady=10)
         precio_sv.set(f"{precio_original}" if precio_original is not None else "")
         precio_sv.trace_add("write", _desde_venta_edit)
 
-        lbl_margen = Label(main_frame, text="Margen / ganancia (%):", font="sans 14 bold", bg="#C6D9E3")
+        lbl_margen = Label(main_frame, text="Margen / ganancia (%):", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_margen.grid(row=3, column=0, padx=10, pady=10)
         entry_margen = Entry(main_frame, font="sans 14 bold", textvariable=margen_sv)
         entry_margen.grid(row=3, column=1, padx=10, pady=10)
         margen_sv.set(f"{margen_original}")
         margen_sv.trace_add("write", _desde_costo_margen_edit)
 
-        lbl_costo = Label(main_frame, text="Precio de costo:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_costo = Label(main_frame, text="Precio de costo:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_costo.grid(row=4, column=0, padx=10, pady=10)
         entry_costo = Entry(main_frame, font="sans 14 bold", textvariable=costo_sv)
         entry_costo.grid(row=4, column=1, padx=10, pady=10)
         costo_sv.set(f"{costo_original}" if costo_original is not None else "")
         costo_sv.trace_add("write", _desde_costo_margen_edit)
         
-        lbl_stock = Label(main_frame, text="Stock:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_stock = Label(main_frame, text="Stock:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_stock.grid(row=5, column=0, padx=10, pady=10)
         entry_stock = Entry(main_frame, font="sans 14 bold")
         entry_stock.grid(row=5, column=1, padx=10, pady=10)
         entry_stock.insert(0, item_values[5])
 
-        lbl_iva = Label(main_frame, text="IVA:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_iva = Label(main_frame, text="IVA:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_iva.grid(row=6, column=0, padx=10, pady=10)
         combo_iva = ttk.Combobox(
             main_frame, font="sans 14 bold",
@@ -869,18 +811,15 @@ class Inventario(tk.Frame):
         combo_iva.set(iva_original)
         combo_iva.grid(row=6, column=1, padx=10, pady=10)
 
-        lbl_categoria = Label(main_frame, text="Categoría:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_categoria = Label(main_frame, text="Categoría:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_categoria.grid(row=7, column=0, padx=10, pady=10)
-        frame_cat = tk.Frame(main_frame, bg="#C6D9E3")
+        frame_cat = tk.Frame(main_frame, bg=self.colors["bg_principal"])
         frame_cat.grid(row=7, column=1, padx=10, pady=10)
         combo_categoria = ttk.Combobox(
             frame_cat, font="sans 14 bold", state="readonly",
             values=[n for _, n in self._categorias_disponibles()],
         )
-        fila_cat = self.eje_consulta(
-            "SELECT nombre FROM categorias WHERE id = ?", (categoria_actual,)
-        ).fetchone() if categoria_actual else None
-        combo_categoria.set(fila_cat[0] if fila_cat else "General")
+        combo_categoria.set(dominio.nombre_categoria(categoria_actual) or "General")
         combo_categoria.pack(side="left", fill="x", expand=True)
         btn_nueva_cat = tk.Button(
             frame_cat, text="➕", font="sans 13 bold",
@@ -889,7 +828,7 @@ class Inventario(tk.Frame):
         )
         btn_nueva_cat.pack(side="left", padx=(6, 0))
 
-        lbl_codigo = Label(main_frame, text="Código de barras:", font="sans 14 bold", bg="#C6D9E3")
+        lbl_codigo = Label(main_frame, text="Código de barras:", font="sans 14 bold", bg=self.colors["bg_principal"])
         lbl_codigo.grid(row=8, column=0, padx=10, pady=10)
         entry_codigo = Entry(main_frame, font="sans 14 bold")
         entry_codigo.grid(row=8, column=1, padx=10, pady=10)
@@ -938,39 +877,22 @@ class Inventario(tk.Frame):
                 )
                 return
 
-            if codigo_nuevo:
-                duplicado = self.eje_consulta(
-                    "SELECT id FROM inventario WHERE codigo_barras = ? AND id != ?",
-                    (codigo_nuevo, item_id),
-                ).fetchone()
-                if duplicado:
-                    messagebox.showwarning(
-                        "Guardar cambios",
-                        f"El código «{codigo_nuevo}» ya está asignado a otro producto.",
-                    )
-                    return
-
-            fila_cat_nueva = self.eje_consulta(
-                "SELECT id FROM categorias WHERE nombre = ?",
-                (categoria_elegida or "General",),
-            ).fetchone()
-            categoria_id_nueva = fila_cat_nueva[0] if fila_cat_nueva else None
+            if codigo_nuevo and dominio.codigo_en_uso(codigo_nuevo, excluir_id=item_id):
+                messagebox.showwarning(
+                    "Guardar cambios",
+                    f"El código «{codigo_nuevo}» ya está asignado a otro producto.",
+                )
+                return
 
             sum_margen = self._parse_float(margen_sv.get())
             if sum_margen is None and costo:
                 sum_margen = self._calcular_margen(costo, precio)
 
-            consulta = (
-                "UPDATE inventario SET nombre=?, proveedor=?, precio=?, costo=?,"
-                " stock=?, tipo_iva=?, categoria_id=?, codigo_barras=?,"
-                " margen_porcentaje=? WHERE id=?"
+            dominio.actualizar_producto(
+                item_id, nombre, proveedor, precio, costo, stock, tipo_iva,
+                categoria_elegida, codigo_nuevo,
+                round(sum_margen, 2) if sum_margen is not None else 0.0,
             )
-            parametros = (
-                nombre, proveedor, precio, costo, stock,
-                tipo_iva, categoria_id_nueva, codigo_nuevo or None,
-                round(sum_margen, 2) if sum_margen is not None else 0.0, item_id,
-            )
-            self.eje_consulta(consulta, parametros)
             self.actualizar_inventario()
             ventana_editar.destroy()
 
@@ -979,10 +901,7 @@ class Inventario(tk.Frame):
 
     def _categorias_disponibles(self):
         try:
-            filas = self.eje_consulta(
-                "SELECT id, nombre FROM categorias ORDER BY CASE WHEN nombre = 'General' THEN 0 ELSE 1 END, nombre"
-            ).fetchall()
-            return [(fila[0], fila[1]) for fila in filas]
+            return gestor_categorias.listar()
         except sqlite3.Error:
             return []
     
@@ -997,8 +916,7 @@ class Inventario(tk.Frame):
         
         if messagebox.askyesno("Confirmar eliminación", f"¿Está seguro de eliminar '{nombre_producto}'?"):
             try:
-                consulta = "DELETE FROM inventario WHERE id = ?"
-                self.eje_consulta(consulta, (item_id,))
+                dominio.eliminar_producto(item_id)
                 self.actualizar_inventario()
                 messagebox.showinfo("Éxito", "Producto eliminado correctamente")
             except Exception as e:

@@ -53,7 +53,6 @@ import sqlite3
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote
 
 try:
     from openpyxl import Workbook, load_workbook
@@ -62,10 +61,16 @@ try:
 except ImportError:  # pragma: no cover - depende del entorno
     EXCEL_DISPONIBLE = False
 
-from .db import close as cerrar_conexion_compartida
+from .db import close as cerrar_conexion_compartida, conectar
 from ..resources import get_db_path
 
 MAX_RESPALDOS = 5
+
+#: Subcarpeta (junto a la base) de las copias automáticas diarias, separadas
+#: de los respaldos previos a importar para que una rotación no purgue la otra.
+CARPETA_RESPALDOS_AUTOMATICOS = "respaldos"
+#: Copias automáticas que se conservan: una por día.
+DIAS_RESPALDO_AUTOMATICO = 7
 
 EXTENSIONES_SQLITE = (".db", ".sqlite", ".sqlite3")
 
@@ -76,6 +81,8 @@ FORMATOS_EXPORTACION = {
     "csv": ("CSV comprimido", ".zip"),
 }
 
+#: Objetos que identifican una base de Reyger. ``ventas`` es una tabla hasta
+#: el esquema 13 y una vista desde el 14: vale cualquiera de los dos.
 TABLAS_NUCLEO = {"ventas", "inventario"}
 
 #: Aviso canónico para la interfaz: no copiar ``database.db`` a mano.
@@ -109,14 +116,13 @@ class BackupError(Exception):
 
 
 def _conectar(db_path=None):
-    return sqlite3.connect(str(db_path or get_db_path()))
+    return conectar(db_path or get_db_path())
 
 
 def _conectar_solo_lectura(ruta):
     """Abre una base en modo lectura pura vía URI (no crea ni recupera)."""
-    uri = "file:" + quote(os.path.abspath(str(ruta))) + "?mode=ro"
     try:
-        return sqlite3.connect(uri, uri=True)
+        return conectar(ruta, solo_lectura=True)
     except sqlite3.Error as e:
         raise BackupError(f"No se pudo abrir «{ruta}»: {e}") from e
 
@@ -300,7 +306,13 @@ def respaldar_bd_actual(db_path=None):
         return None
     sello = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     destino = origen.parent / f"database_respaldo_{sello}.bak"
+    _volcar(origen, destino)
+    _purgar_respaldos(origen.parent)
+    return str(destino)
 
+
+def _volcar(origen, destino):
+    """Vuelca la base *origen* en el fichero *destino* (incluido el WAL)."""
     # Se reaprovecha la conexión ya viva si existe: es la que ve los
     # datos recién committeados y no fuerza un checkpoint en el WAL.
     from . import db as _db
@@ -313,16 +325,72 @@ def respaldar_bd_actual(db_path=None):
         finally:
             destino_con.close()
     else:
-        fuente = sqlite3.connect(str(origen))
+        fuente = conectar(origen)
         destino_con = sqlite3.connect(str(destino))
         try:
             fuente.backup(destino_con)
         finally:
             fuente.close()
             destino_con.close()
-
     shutil.copystat(origen, destino)
-    _purgar_respaldos(origen.parent)
+
+
+def comprobar_integridad(ruta):
+    """Devuelve los problemas que encuentra ``PRAGMA integrity_check`` y las
+    claves foráneas rotas en la base *ruta* (lista vacía si está bien)."""
+    conn = sqlite3.connect(str(ruta))
+    try:
+        problemas = [
+            fila[0] for fila in conn.execute("PRAGMA integrity_check") if fila[0] != "ok"
+        ]
+        problemas += [
+            f"clave foránea rota en {fila[0]} (fila {fila[1]})"
+            for fila in conn.execute("PRAGMA foreign_key_check")
+        ]
+        return problemas
+    finally:
+        conn.close()
+
+
+def respaldo_automatico(db_path=None, hoy=None):
+    """Guarda la copia automática del día y devuelve su ruta.
+
+    Hay una copia por día (``respaldos/automatico_AAAAMMDD.db``): si se
+    llama varias veces el mismo día se sobrescribe, de modo que la última
+    incluye todas las ventas de la jornada. Se escribe en un temporal y se
+    renombra al final: si el proceso se corta a medias, la copia anterior del
+    día sigue intacta. Conserva las :data:`DIAS_RESPALDO_AUTOMATICO` más
+    recientes. Devuelve ``None`` si la base aún no existe.
+
+    La copia se verifica con ``PRAGMA integrity_check`` antes de sustituir a
+    la anterior: si está dañada (es decir, la base lo está) se conserva la
+    copia buena previa y se lanza :class:`BackupError`.
+    """
+    origen = Path(str(db_path or get_db_path()))
+    if not origen.exists():
+        return None
+    carpeta = origen.parent / CARPETA_RESPALDOS_AUTOMATICOS
+    carpeta.mkdir(exist_ok=True)
+    dia = (hoy or datetime.now()).strftime("%Y%m%d")
+    destino = carpeta / f"automatico_{dia}.db"
+    temporal = destino.with_name(destino.name + ".tmp")
+    try:
+        _volcar(origen, temporal)
+        problemas = comprobar_integridad(temporal)
+        if problemas:
+            raise BackupError(
+                "La base de datos tiene errores de integridad; no se ha "
+                "sustituido la copia anterior. Detalle: " + "; ".join(problemas[:5])
+            )
+        os.replace(temporal, destino)
+    finally:
+        if temporal.exists():
+            temporal.unlink()
+    for viejo in sorted(carpeta.glob("automatico_*.db"))[:-DIAS_RESPALDO_AUTOMATICO]:
+        try:
+            viejo.unlink()
+        except OSError:
+            pass
     return str(destino)
 
 
@@ -351,7 +419,11 @@ def _validar_bd_origen(ruta):
             raise BackupError(
                 f"La base de datos está corrupta (integrity_check: {resultado})."
             )
-        presentes = set(_tablas(conn))
+        presentes = {
+            fila[0] for fila in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+            )
+        }
         faltantes = TABLAS_NUCLEO - presentes
         if faltantes:
             raise BackupError(
@@ -509,9 +581,18 @@ def _importar_tabla(conn, tabla, filas, existentes, ignoradas, resumen):
             "fila. Escribe en la primera fila el nombre de cada columna y "
             "vuelve a intentarlo."
         )
-    columnas_reales = [
-        fila[1] for fila in conn.execute(f'PRAGMA table_info("{tabla}")')
-    ]
+    info = conn.execute(f'PRAGMA table_info("{tabla}")').fetchall()
+    columnas_reales = [fila[1] for fila in info]
+    # Excel y CSV no distinguen un texto vacío de una celda vacía: un
+    # proveedor '' (los productos del registro rápido) volvía como NULL e
+    # impedía restaurar la copia entera. En las columnas de texto NOT NULL
+    # sin valor por defecto, la celda vacía se restaura como ''.
+    # PRAGMA table_info: (cid, nombre, tipo, notnull, valor_por_defecto, pk)
+    texto_obligatorio = {
+        nombre for _, nombre, tipo, notnull, defecto, _ in info
+        if notnull and defecto is None
+        and any(t in (tipo or "").upper() for t in ("TEXT", "CHAR", "CLOB"))
+    }
     mapa = [
         (indice, nombre)
         for indice, nombre in enumerate(cabecera)
@@ -528,6 +609,10 @@ def _importar_tabla(conn, tabla, filas, existentes, ignoradas, resumen):
         valores = [
             _celda_segura(fila, indice, nombre) for indice, nombre in mapa
         ]
+        valores = [
+            "" if v is None and nombre in texto_obligatorio else v
+            for v, (_, nombre) in zip(valores, mapa)
+        ]
         conn.execute(
             f'INSERT INTO "{tabla}" ({columnas_sql}) '
             f"VALUES ({marcadores})",
@@ -535,6 +620,44 @@ def _importar_tabla(conn, tabla, filas, existentes, ignoradas, resumen):
         )
         insertada += 1
     resumen[tabla] = insertada
+
+
+def _importar_ventas_legado(conn, filas, resumen):
+    """Convierte una hoja «ventas» del formato antiguo a documentos/líneas.
+
+    Se hace después de importar el resto de hojas, para que los clientes y
+    productos de la misma copia ya existan al enlazarlos.
+    """
+    from .documentos import convertir_ventas_legado
+
+    if len(filas) < 2:
+        return
+    # (índice en la hoja, nombre): las columnas sin cabecera se descartan
+    # sin desplazar las demás.
+    cabecera = [
+        (i, str(c).strip()) for i, c in enumerate(filas[0])
+        if c is not None and str(c).strip()
+    ]
+    if not cabecera:
+        return
+    columnas = ", ".join(f'"{nombre}"' for _, nombre in cabecera)
+    conn.execute(f"CREATE TEMP TABLE ventas_legado ({columnas})")
+    try:
+        conn.executemany(
+            f"INSERT INTO ventas_legado VALUES ({', '.join('?' * len(cabecera))})",
+            [
+                [_celda_segura(fila, i, nombre) for i, nombre in cabecera]
+                for fila in filas[1:]
+                if not _es_fila_vacia(fila)
+            ],
+        )
+        conn.execute("DELETE FROM lineas_documento")
+        conn.execute("DELETE FROM documentos")
+        convertido = convertir_ventas_legado(conn, "ventas_legado")
+    finally:
+        conn.execute("DROP TABLE temp.ventas_legado")
+    resumen["documentos"] = convertido["documentos"]
+    resumen["lineas_documento"] = convertido["lineas"]
 
 
 def importar_tablas(datos, db_path=None):
@@ -547,14 +670,16 @@ def importar_tablas(datos, db_path=None):
     """
     destino = str(db_path or get_db_path())
     respaldo = respaldar_bd_actual(destino)
-    conn = sqlite3.connect(destino)
+    conn = conectar(destino)
     resumen = {}
     ignoradas = []
+    # Copias anteriores al esquema 14 traen una hoja «ventas» (una fila por
+    # línea). Hoy ``ventas`` es una vista: se convierte a documentos/líneas
+    # en vez de ignorarla, salvo que la copia ya traiga «documentos».
+    ventas_legado = datos.get("ventas") if "documentos" not in datos else None
+    datos = {tabla: filas for tabla, filas in datos.items() if tabla != "ventas"}
     try:
         existentes = set(_tablas(conn))
-        for tabla in datos:
-            if tabla not in existentes:
-                ignoradas.append(tabla)
 
         conn.execute("PRAGMA foreign_keys = OFF")
         try:
@@ -564,6 +689,9 @@ def importar_tablas(datos, db_path=None):
                 _importar_tabla(
                     conn, tabla, filas, existentes, ignoradas, resumen
                 )
+            if ventas_legado:
+                tabla_actual = "ventas"
+                _importar_ventas_legado(conn, ventas_legado, resumen)
             conn.commit()
         except (IndexError, KeyError) as e:
             conn.rollback()

@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 
 from .resources import get_user_data_path
+
+log = logging.getLogger(__name__)
 
 
 class ConfigManager:
@@ -27,14 +30,16 @@ class ConfigManager:
             "alineacion_encabezado": "centro",
             "alineacion_datos": "izquierda",
             "alineacion_pie": "centro",
+            "respaldo_automatico": True,
+            "umbral_stock_bajo": 5,
         }
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, "r", encoding="utf-8") as f:
                     config = json.load(f)
                     return {**default_config, **config}
-            except Exception as e:
-                print(f"Error cargando configuración: {e}")
+            except Exception:
+                log.exception("Error cargando configuración")
                 return default_config
         return default_config
 
@@ -43,8 +48,8 @@ class ConfigManager:
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(self.config_data, f, indent=4, ensure_ascii=False)
             return True
-        except Exception as e:
-            print(f"Error guardando configuración: {e}")
+        except Exception:
+            log.exception("Error guardando configuración")
             return False
 
     def get(self, key, default=None):
@@ -65,6 +70,12 @@ class ConfigManager:
                 "frame_bg": "#242424",
                 "entry_bg": "#3C3C3C",
                 "entry_fg": "#FFFFFF",
+                "bg_cabecera": "#2D2D2D",
+                "separador": "#3C3C3C",
+                "bg_tabla": "#242424",
+                "borde_foco": "#1E1E1E",
+                "bg_stock_bajo": "#5C4A12",
+                "bg_agotado": "#5C1F24",
             }
         else:
             return {
@@ -76,6 +87,12 @@ class ConfigManager:
                 "frame_bg": "#C6D9E3",
                 "entry_bg": "#FFFFFF",
                 "entry_fg": "#000000",
+                "bg_cabecera": "#dddddd",
+                "separador": "#CCCCCC",
+                "bg_tabla": "#FFFFFF",
+                "borde_foco": "#d9d9d9",
+                "bg_stock_bajo": "#FFF3CD",
+                "bg_agotado": "#F8D7DA",
             }
 
     def get_tamaño_fuente(self, tipo="default"):

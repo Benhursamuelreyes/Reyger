@@ -18,7 +18,6 @@ import os
 import shutil
 import sqlite3
 import sys
-from unittest.mock import patch
 
 import pytest
 

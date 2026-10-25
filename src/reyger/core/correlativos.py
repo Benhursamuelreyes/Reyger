@@ -56,28 +56,20 @@ def _ultimo_registrado(tipo, prefijo):
 
 
 def _maximo_en_ventas(tipo, prefijo):
-    """Máximo número ya usado en la tabla de ventas para este tipo/serie.
+    """Máximo número ya emitido en ``documentos`` para este tipo/serie.
 
     Se usa como red de seguridad adicional (p. ej. instalaciones migradas
     donde la tabla de contadores aún no refleja datos manuales).
     """
     try:
-        if tipo == "ticket":
-            fila = db.query_one(
-                "SELECT MAX(CAST(REPLACE(numero_ticket, ?, '') AS INTEGER)) AS maximo "
-                "FROM ventas WHERE numero_ticket LIKE ? AND estado = 'emitido'",
-                (prefijo, prefijo + "%"),
-            )
-        else:
-            fila = db.query_one(
-                "SELECT MAX(CAST(REPLACE(factura, ?, '') AS INTEGER)) AS maximo "
-                "FROM ventas WHERE factura LIKE ? AND estado = 'emitido' "
-                "AND factura NOT LIKE 'BORRADOR%'",
-                (prefijo, prefijo + "%"),
-            )
+        fila = db.query_one(
+            "SELECT MAX(CAST(REPLACE(numero, ?, '') AS INTEGER)) AS maximo "
+            "FROM documentos WHERE tipo = ? AND estado = 'emitido' AND numero LIKE ?",
+            (prefijo, tipo, prefijo + "%"),
+        )
         return int(fila["maximo"]) if fila and fila["maximo"] is not None else 0
     except Exception:
-        # Columna/estado no existentes en bases antiguas.
+        # Base sin migrar todavía (sin tabla documentos).
         return 0
 
 
@@ -100,18 +92,26 @@ def siguiente_numero(tipo):
     return prefijo, siguiente
 
 
-def reservar_numero(tipo, numero, prefijo):
+_SQL_RESERVAR = (
+    "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) VALUES (?, ?, ?) "
+    "ON CONFLICT(tipo, serie) DO UPDATE SET "
+    "ultimo_numero = MAX(ultimo_numero, excluded.ultimo_numero)"
+)
+
+
+def reservar_numero(tipo, numero, prefijo, conn=None):
     """Registra *numero* como el último oficial emitido del *tipo*.
 
     Solo asciende: si la tabla ya guarda un número mayor (por ejemplo un
     reintento fuera de orden), no se deja bajar.
+
+    Con *conn* se ejecuta dentro de la transacción del llamador (sin
+    commit), para que el número y el documento se confirmen juntos.
     """
-    db.execute(
-        "INSERT INTO contadores_documentos (tipo, serie, ultimo_numero) VALUES (?, ?, ?) "
-        "ON CONFLICT(tipo, serie) DO UPDATE SET "
-        "ultimo_numero = MAX(ultimo_numero, excluded.ultimo_numero)",
-        (tipo, prefijo, numero),
-    )
+    if conn is not None:
+        conn.execute(_SQL_RESERVAR, (tipo, prefijo, numero))
+    else:
+        db.execute(_SQL_RESERVAR, (tipo, prefijo, numero))
 
 
 def formatear(tipo, numero):

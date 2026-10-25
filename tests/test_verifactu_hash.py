@@ -5,9 +5,7 @@ Valida contra los vectores oficiales de la AEAT (doc v0.1.2, 27/08/2024).
 
 import os
 import shutil
-import sqlite3
 import sys
-import tempfile
 
 import pytest
 
@@ -238,7 +236,7 @@ def test_verificar_cadena_integra():
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ("A-1", "01-01-2024", "B12345678", "Y0000000A", "Cliente 1",
          100.0, 21, 21.0, 121.0, h1, "", 1, "F1",
-         f"IDEmisorFactura=B12345678&NumSerieFactura=A-1&FechaExpedicionFactura=01-01-2024&TipoFactura=F1&CuotaTotal=21.00&ImporteTotal=121.00&Huella=&FechaHoraHusoGenRegistro=2024-01-01T10:00:00+01:00",
+         "IDEmisorFactura=B12345678&NumSerieFactura=A-1&FechaExpedicionFactura=01-01-2024&TipoFactura=F1&CuotaTotal=21.00&ImporteTotal=121.00&Huella=&FechaHoraHusoGenRegistro=2024-01-01T10:00:00+01:00",
          "2024-01-01T10:00:00+01:00"),
     )
 
@@ -292,7 +290,7 @@ def test_verificar_cadena_rota():
 
     conn = modulo_db.get_connection()
 
-    h1 = calcular_huella(
+    calcular_huella(
         nif="B12345678", num_serie="B-1", fecha="01-01-2024",
         tipo_comprobante="F1", cuota_total=0.0, importe_total=100.0,
         huella_anterior="", fecha_hora_gen="2024-01-01T10:00:00+01:00",

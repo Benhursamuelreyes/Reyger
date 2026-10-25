@@ -24,7 +24,6 @@ sys.path.insert(0, SRC_DIR)
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
 import reyger.core.db as modulo_db
-import reyger.ui.categorias as modulo_categorias
 import reyger.core.migrations as modulo_migrations
 import reyger.ui.ajustes as modulo_ajustes
 import reyger.ui.inventario as modulo_inventario
@@ -32,11 +31,9 @@ import reyger.ui.ventas as modulo_ventas
 from reyger.ui.categorias import (
     GENERAL,
     categoria_de_producto,
-    crear,
     crear as crear_categoria,
     eliminar,
     id_general,
-    listar,
     nombres,
     productos_por_categoria,
     renombrar,

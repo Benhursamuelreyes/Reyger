@@ -135,7 +135,7 @@ def test_la_migracion_13_avanza_el_version_tras_reconciliar(bd_temporal):
     conn = db.get_connection()
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
 
-    run_migrations(conn)
+    run_migrations(conn, hasta=13)
 
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
 

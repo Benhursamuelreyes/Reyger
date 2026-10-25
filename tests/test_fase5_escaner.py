@@ -144,7 +144,10 @@ def test_captura_escanero(root):
     # Con foco en un Entry las teclas no se consideran del escáner
     entrada = tk.Entry(root)
     entrada.pack()
-    entrada.focus_set()
+    # focus_force: focus_set() solo mueve el foco si la ventana ya tiene el
+    # del sistema, y bajo Xvfb (sin gestor de ventanas, como en CI) o con
+    # otras ventanas abiertas no lo tiene.
+    entrada.focus_force()
     root.update()  # materializa el foco antes de simular teclas
     chequear("El Entry tiene el foco", root.focus_get() is entrada)
     antes = len(recibidos)

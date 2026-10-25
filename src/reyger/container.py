@@ -1,8 +1,8 @@
 import gc
 import os
-from tkinter import *
+from tkinter import Button
 import tkinter as tk
-from PIL import Image, ImageTk
+from PIL import Image, ImageChops, ImageTk
 
 from .ui.ventas import Ventas
 from .ui.inventario import Inventario
@@ -120,6 +120,10 @@ class Container(tk.Frame):
                 self.logo_original = Image.open(ruta).convert("RGBA")
             except Exception:
                 self.logo_original = None
+            if self.logo_original is not None and self.config_manager.get("tema") == "oscuro":
+                self.logo_original = self._aclarar_trazos_oscuros(
+                    self.logo_original, self.colors["fg_texto"]
+                )
             if self.logo_original is not None:
                 # Tamaño inicial acotado a 760x200 sin copiar el original
                 escala0 = min(
@@ -165,6 +169,19 @@ class Container(tk.Frame):
                 command=comando,
             )
             boton.pack(side="left", expand=True, fill="x", padx=8, ipady=18)
+
+    @staticmethod
+    def _aclarar_trazos_oscuros(imagen, color):
+        """Pinta de *color* los píxeles casi negros (el texto «REYGER»),
+        conservando su alfa, para que el logotipo se lea sobre fondo oscuro."""
+        r, g, b, a = imagen.split()
+        maximo = ImageChops.lighter(ImageChops.lighter(r, g), b)
+        mascara = maximo.point(lambda v: 255 if v < 80 else 0)
+        resultado = imagen.copy()
+        relleno = Image.new("RGBA", imagen.size, color)
+        relleno.putalpha(a)
+        resultado.paste(relleno, mask=mascara)
+        return resultado
 
     def _render_logo(self, tamano):
         """Genera el PhotoImage al tamaño pedido con consumo mínimo de RAM.

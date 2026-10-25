@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import sys
@@ -7,6 +8,8 @@ try:
     from platformdirs import AppDirs
 except ImportError:
     AppDirs = None
+
+log = logging.getLogger(__name__)
 
 
 def _get_dirs():
@@ -43,7 +46,7 @@ def get_db_path():
             try:
                 shutil.copyfile(bundled, path)
             except Exception:
-                pass
+                log.exception("No se pudo copiar la base de datos plantilla %s", bundled)
     return str(path)
 
 

@@ -7,7 +7,10 @@ entrega el resultado de vuelta mediante un sondeo con ``after``, de modo
 que el hilo secundario jamás toca Tcl.
 """
 
+import logging
 import threading
+
+log = logging.getLogger(__name__)
 
 
 def en_hilo(widget, trabajo, al_terminar):
@@ -27,6 +30,7 @@ def en_hilo(widget, trabajo, al_terminar):
             contenedor["resultado"] = trabajo()
             contenedor["error"] = None
         except Exception as e:  # el fallo viaja a la UI, no revienta aquí
+            log.warning("Fallo en tarea en segundo plano", exc_info=True)
             contenedor["resultado"] = None
             contenedor["error"] = e
         contenedor["listo"] = True

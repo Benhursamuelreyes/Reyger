@@ -1,13 +1,12 @@
 #!/usr/bin/env python
-"""Regenera las plantillas database.db aplicando todas las migraciones.
+"""Regenera la plantilla database.db aplicando todas las migraciones.
 
-Genera dos copias idénticas del esquema final (con ``PRAGMA user_version``
-al día y el usuario admin sembrado por las migraciones):
+Genera ``src/reyger/assets/database.db`` (la plantilla empaquetada con la
+app, que se copia en el primer arranque) con ``PRAGMA user_version`` al día.
+Hay que ejecutarlo tras añadir una migración; ``tests/test_fase1_db.py``
+falla si la plantilla queda atrasada.
 
-  * ``database.db``            (raíz del repositorio, usada en desarrollo/tests)
-  * ``src/reyger/assets/database.db``  (plantilla empaquetada con la app)
-
-Uso:  python scripts/build_template_db.py
+Uso:  python scripts/build_template_db.py [ruta_destino]
 """
 
 import os
@@ -17,7 +16,7 @@ import sys
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
-from reyger.migrations import LATEST_VERSION, run_migrations  # noqa: E402
+from reyger.core.migrations import LATEST_VERSION, run_migrations  # noqa: E402
 
 
 def construir(ruta):
@@ -38,5 +37,7 @@ def construir(ruta):
 
 
 if __name__ == "__main__":
-    construir(os.path.join(PROJECT_ROOT, "database.db"))
-    construir(os.path.join(PROJECT_ROOT, "src", "reyger", "assets", "database.db"))
+    construir(
+        sys.argv[1] if len(sys.argv) > 1
+        else os.path.join(PROJECT_ROOT, "src", "reyger", "assets", "database.db")
+    )

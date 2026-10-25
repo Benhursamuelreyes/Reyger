@@ -8,12 +8,12 @@ No requiere firma electrónica: los sistemas VERI*FACTU están exentos
 de firma digital según la normativa vigente.
 """
 
+import csv
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from typing import Optional
 
 from ..core import db
-from ..ui import business_profile as bp
 
 
 def _texto(valor) -> str:
@@ -243,3 +243,36 @@ def exportar_facturas_xml(ruta_salida: str, solo_pendientes: bool = True) -> int
         f.write(xml_content)
 
     return len(facturas_xml)
+
+
+#: Columnas de la tabla y su cabecera en el CSV de verificación.
+_COLUMNAS_CSV = (
+    ("numero_factura", "numero_factura"),
+    ("fecha", "fecha"),
+    ("nif_emisor", "nif_emisor"),
+    ("total_iva", "cuota_iva"),
+    ("total", "importe_total"),
+    ("huella", "huella"),
+    ("huella_anterior", "huella_anterior"),
+    ("numero_ord", "numero_ord"),
+    ("tipo_comprobante", "tipo_comprobante"),
+    ("estado_envio", "estado_envio"),
+    ("fecha_generacion", "fecha_generacion"),
+)
+
+
+def exportar_csv_verificacion(ruta_salida: str) -> int:
+    """Exporta a CSV las huellas y la cadena de todas las facturas, en orden.
+
+    Devuelve el número de facturas exportadas.
+    """
+    filas = db.query(
+        "SELECT " + ", ".join(col for col, _ in _COLUMNAS_CSV)
+        + " FROM facturas_verifactu ORDER BY numero_ord ASC, id ASC"
+    )
+    with open(ruta_salida, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([cabecera for _, cabecera in _COLUMNAS_CSV])
+        for fila in filas:
+            writer.writerow([fila[col] for col, _ in _COLUMNAS_CSV])
+    return len(filas)

@@ -1,5 +1,115 @@
 Changelog content
 
+## Sin publicar
+
+### Base de datos (esquema 14)
+
+- **Documentos y líneas**: las ventas pasan de una fila por línea en
+  `ventas` (con número, pago, cliente y fecha repetidos en cada línea) a
+  `documentos` (uno por ticket, factura o borrador, con **número único**) y
+  `lineas_documento` (con `producto_id` y copia del nombre). El efectivo
+  entregado ya no se multiplica por el número de líneas al sumarlo.
+- **Importes en céntimos enteros** con redondeo comercial: los totales se
+  suman de forma exacta. Hacia fuera todo sigue en euros.
+- **Restricciones en la base**: tipo y estado válidos, cantidades distintas
+  de cero, precios e importes no negativos, IVA entre 0 y 100, y clave
+  foránea de cliente (antes faltaba en ventas).
+- **Fechas en hora local ISO**: antes convivían UTC (`AAAA-MM-DD`) y texto
+  local (`dd/mm/aaaa`).
+- `ventas` sigue existiendo como **vista de solo lectura** con las columnas
+  de siempre.
+- La migración guarda antes una copia (`database_antes_v14_<fecha>.bak`),
+  es atómica y no bloquea el arranque por filas inválidas: las omite y las
+  registra en `reyger.log`. Verificada con 3.000 documentos generados con la
+  1.1.1: totales por documento, día, producto y método de pago idénticos al
+  céntimo.
+- Se eliminan las tablas `facturas_borradores*`, que nada usaba (solo si
+  están vacías).
+- Las copias en Excel/CSV anteriores convierten su hoja `ventas` al
+  importarse, y las copias `.db` del esquema 14 se aceptan al importar.
+- **Mantenimiento**: `PRAGMA optimize` al cerrar y comprobación de
+  integridad de la copia automática; si la base está dañada se avisa y se
+  conserva la copia buena anterior.
+
+### Nuevas funciones
+
+- **Copia de seguridad automática** al cerrar la aplicación: una copia por
+  día en `respaldos/automatico_AAAAMMDD.db` (junto a `database.db`), que se
+  sobrescribe si se cierra varias veces y conserva los últimos 7 días. Es
+  independiente de los respaldos previos a importar. Se desactiva en
+  Ajustes → Opciones adicionales.
+- **Aviso de stock bajo** en Inventario: los productos agotados se marcan en
+  rojo y los que están en el umbral o por debajo, en ámbar, con un resumen
+  sobre la tabla. El umbral (5 por defecto) se configura en Ajustes.
+- **Informe de ventas por periodo** (Ventas → Ver Facturas → Informe de
+  ventas): totales, desglose por día, producto, tipo de documento y método
+  de pago, exportable a Excel.
+
+### Correcciones
+
+- **Emitir factura desde borrador** fallaba siempre con
+  `no such column: ultulo_numero` (errata en el registro del contador,
+  introducida en 1.1.1). El UPSERT del contador vive ahora en un único sitio
+  (`correlativos.reservar_numero`), compartido por el cobro y la emisión.
+- **Reimprimir documento** imprimía solo la línea seleccionada del
+  historial (con el total de esa línea); ahora reimprime el documento
+  completo.
+
+- **Inventario**: el botón «Editar» quedaba fuera de la ventana a su tamaño
+  por defecto (sobre todo con el tema claro).
+- Las facturas emitidas desde un borrador guardan como fecha la de emisión
+  (la que figura en el PDF), no la del borrador.
+- Texto de Ajustes con caracteres invisibles (espacio de ancho cero).
+
+- **Copias en Excel/CSV**: no se podían restaurar si algún producto se había
+  creado con el registro rápido del escáner (proveedor vacío). Venía de antes.
+- Ventas ya no crea ni altera tablas al abrirse (lo hacen las migraciones).
+
+### Tests y CI
+
+- Los `chequear()` de los tests antiguos solo se revisaban al ejecutarlos
+  como script: bajo pytest una comprobación fallida **no** hacía fallar el
+  test. Ahora sí, y afloraron 6 tests desactualizados (códec del ticket,
+  series, formato regional, firmas), corregidos.
+- La suite ya no escribe en la carpeta de datos del usuario (antes
+  modificaba su `config.json`) y no depende del orden de ejecución.
+- CI prueba con Python 3.9, 3.12 y 3.14 y pasa `ruff` (errores de pyflakes).
+- `scripts/build_template_db.py` vuelve a funcionar y la plantilla incluida
+  pasa a la versión 13 del esquema.
+- `database.db` y `facturas/` de la raíz dejan de versionarse.
+
+### Estructura
+
+- La lógica de cobro, borradores y documentos pasa de `ui/ventas.py` a
+  `domain/ventas.py`; la de productos y proveedores, de `ui/inventario.py` a
+  `domain/inventario.py`; y las consultas VeriFactu de Ajustes, a
+  `domain/facturas_verifactu.py` y `domain/verifactu_xml.py`. Se pueden
+  probar sin abrir ventanas.
+- Las conexiones propias a la base de la app (exportar, importar,
+  respaldar) se abren con `db.conectar()`, que aplica el mismo
+  `busy_timeout` y claves foráneas que la conexión compartida. Las
+  importaciones desde Excel/CSV respetan ahora las claves foráneas.
+- Se eliminan los `from tkinter import *`.
+
+### Interfaz
+
+- **Tema oscuro completo**: Ventas, Inventario, Albaranes, los diálogos del
+  escáner y los separadores de Ajustes usan los colores del tema en lugar de
+  colores fijos. Los textos, casillas y campos sin color propio toman el del
+  tema activo, y el logotipo aclara su texto sobre fondo oscuro.
+- **Albaranes** se abre al tamaño estándar de los módulos (1280×800); los
+  botones laterales ya no aparecen recortados.
+- **Inventario**: los botones de código de barras dejan de recortarse en
+  ventanas estrechas.
+
+### Diagnóstico
+
+- **Registro en fichero** (`reyger.log`, rotativo): sustituye a los `print`
+  que se perdían en la app empaquetada. Se registran los errores de eventos
+  de la interfaz (que además se avisan al usuario), los de tareas en
+  segundo plano y hilos, y fallos antes silenciados (VeriFactu, logotipo del
+  PDF, detección de impresoras, presupuestos).
+
 ## v1.1.1 (2026-10-12)
 
 FIX: integridad de datos, correlatividad, respaldos WAL y varias

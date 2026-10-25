@@ -175,6 +175,9 @@ def test_crear_categoria_en_caliente():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+GS_V_0 = b"\x1dv0"
+
+
 def test_ticket_logo_y_tamanos():
     print(f"\n{BOLD}{AZUL}[TEST 3] Ticket térmico: tamaños y logo rasterizado{RESET}")
     from reyger.hardware.impresion_termica import (
@@ -189,11 +192,13 @@ def test_ticket_logo_y_tamanos():
     )
     chequear("Encabezado más grande que el cuerpo", b"\x1d!\x22" in datos)
     chequear("Cuerpo por defecto «muy grande»", b"\x1d!\x11" in datos)
-    idx = datos.find(b"\x1dv\x00")
+    # GS v 0 m xL xH yL yH: «v» va seguido del carácter '0' (0x30) y del
+    # modo m; el ancho (en bytes) y el alto empiezan 4 bytes después.
+    idx = datos.find(GS_V_0)
     chequear("El ticket incluye el logo rasterizado (GS v 0)", idx != -1)
     if idx != -1:
-        ancho_bytes = datos[idx + 3] | (datos[idx + 4] << 8)
-        alto = datos[idx + 5] | (datos[idx + 6] << 8)
+        ancho_bytes = datos[idx + 4] | (datos[idx + 5] << 8)
+        alto = datos[idx + 6] | (datos[idx + 7] << 8)
         chequear("El raster cabe en el cabezal de 576 puntos",
                  ancho_bytes * 8 <= 576 and alto <= 192,
                  f"{ancho_bytes * 8}x{alto}")
@@ -202,9 +207,13 @@ def test_ticket_logo_y_tamanos():
         "F-2", "hoy", [("X", 1, 1, 1)], 1, ancho=32,
         logo=os.path.join(SCRIPT_DIR, "assets", "img", "logo.png"),
     )
-    i58 = datos58.find(b"\x1dv\x00")
-    ancho58 = datos58[i58 + 3] | (datos58[i58 + 4] << 8)
-    chequear("En papel de 58 mm el logo cabe en 384 puntos", ancho58 * 8 <= 384)
+    i58 = datos58.find(GS_V_0)
+    ancho58 = datos58[i58 + 4] | (datos58[i58 + 5] << 8) if i58 != -1 else None
+    chequear(
+        "En papel de 58 mm el logo cabe en 384 puntos",
+        ancho58 is not None and ancho58 * 8 <= 384,
+        f"ancho={ancho58 and ancho58 * 8}",
+    )
 
     raster = _rasterizar_logo(
         os.path.join(SCRIPT_DIR, "assets", "img", "logo.png"), 576
@@ -312,8 +321,10 @@ def test_exportar_bd_desde_inventario():
     mod_db._conexion = None
     mod_inventario.Inventario.db_name = bd
 
+    # askyesno: con WAL activo se pide confirmar el aviso de copia manual.
     with patch.object(messagebox, "showinfo"), \
          patch.object(messagebox, "showwarning"), \
+         patch.object(messagebox, "askyesno", return_value=True), \
          patch.object(mod_inventario.filedialog, "asksaveasfilename",
                       return_value=destino), \
          patch.object(messagebox, "showerror") as mock_error:
@@ -327,7 +338,7 @@ def test_exportar_bd_desde_inventario():
                  and hasattr(marco, "btn_importar_bd"))
 
         marco.exportar_bd_rapido()
-        listo = bombear_hasta(
+        bombear_hasta(
             root,
             lambda: os.path.exists(destino)
             and str(marco.btn_exportar_bd["state"]) == "normal",

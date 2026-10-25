@@ -3,7 +3,6 @@
 import os
 import shutil
 import sys
-import tempfile
 
 import pytest
 
@@ -137,7 +136,6 @@ def test_existe_clave():
 
 def test_backup_exportar_encriptado(tmp_path):
     """exportar_datos con encriptado=True genera un .db.enc."""
-    import reyger.core.db as modulo_db
     import reyger.core.backup as mod_backup
 
     ruta_salida = str(tmp_path / "backup_test.db")
@@ -148,7 +146,6 @@ def test_backup_exportar_encriptado(tmp_path):
 
 def test_backup_importar_encriptado(tmp_path):
     """importar_datos descifra un .db.enc antes de importar."""
-    import reyger.core.db as modulo_db
     import reyger.core.backup as mod_backup
 
     # Exportar encriptado

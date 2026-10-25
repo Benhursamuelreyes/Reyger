@@ -17,6 +17,7 @@ from ..config import ConfigManager
 from ..core import db
 from ..core.hilos import en_hilo
 from ..resources import open_file
+from .ui import GEOMETRIA_MODULO, MINIMO_MODULO
 
 ESTADOS_ALBARAN = ("Abierto", "Entregado", "Rechazado")
 
@@ -27,13 +28,14 @@ class VentanaAlbaranes(Toplevel):
     def __init__(self, padre, config_manager=None):
         super().__init__(padre)
         self.config_manager = config_manager or ConfigManager()
+        self.colors = self.config_manager.get_colors()
         self.generador = AlbaranEntrega(self.config_manager)
         self.lineas = []
 
         self.title("Albaranes de entrega")
-        self.geometry("960x640")
-        self.minsize(860, 560)
-        self.configure(bg="#C6D9E3")
+        self.geometry(GEOMETRIA_MODULO)
+        self.minsize(*MINIMO_MODULO)
+        self.configure(bg=self.colors["bg_principal"])
         self.transient(padre)
 
         self.widgets()
@@ -46,20 +48,20 @@ class VentanaAlbaranes(Toplevel):
     def widgets(self):
         # Contenido con scroll vertical (listado + formulario pueden
         # exceder la altura en pantallas pequeñas o con fuentes grandes)
-        contenedor = tk.Frame(self, bg="#C6D9E3")
+        contenedor = tk.Frame(self, bg=self.colors["bg_principal"])
         contenedor.pack(fill="both", expand=True, padx=10, pady=10)
 
         barra = ttk.Scrollbar(contenedor, orient="vertical")
         barra.pack(side="right", fill="y")
 
         lienzo = tk.Canvas(
-            contenedor, bg="#C6D9E3", highlightthickness=0,
+            contenedor, bg=self.colors["bg_principal"], highlightthickness=0,
             yscrollcommand=barra.set,
         )
         lienzo.pack(side="left", fill="both", expand=True)
         barra.config(command=lienzo.yview)
 
-        main_frame = tk.Frame(lienzo, bg="#C6D9E3")
+        main_frame = tk.Frame(lienzo, bg=self.colors["bg_principal"])
         ventana_contenido = lienzo.create_window((0, 0), window=main_frame, anchor="nw")
 
         main_frame.bind(
@@ -86,7 +88,7 @@ class VentanaAlbaranes(Toplevel):
         # Listado existente
         frame_listado = LabelFrame(
             main_frame, text="Albaranes registrados",
-            font="sans 14 bold", bg="#C6D9E3",
+            font="sans 14 bold", bg=self.colors["bg_principal"],
         )
         frame_listado.pack(fill="both", expand=True, padx=15, pady=(15, 10))
 
@@ -106,7 +108,7 @@ class VentanaAlbaranes(Toplevel):
         self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side="left", fill="y", pady=10)
 
-        frame_estados = tk.Frame(frame_listado, bg="#C6D9E3")
+        frame_estados = tk.Frame(frame_listado, bg=self.colors["bg_principal"])
         frame_estados.pack(side="left", fill="y", padx=(0, 10))
         Button(
             frame_estados, text="✔ Entregado", font="sans 12 bold",
@@ -127,44 +129,44 @@ class VentanaAlbaranes(Toplevel):
 
         # Formulario de creación
         frame_nuevo = LabelFrame(
-            main_frame, text="Nuevo albarán", font="sans 14 bold", bg="#C6D9E3",
+            main_frame, text="Nuevo albarán", font="sans 14 bold", bg=self.colors["bg_principal"],
         )
         frame_nuevo.pack(fill="x", padx=15, pady=(0, 15))
 
-        fila1 = tk.Frame(frame_nuevo, bg="#C6D9E3")
+        fila1 = tk.Frame(frame_nuevo, bg=self.colors["bg_principal"])
         fila1.pack(fill="x", padx=10, pady=(10, 0))
-        Label(fila1, text="Número:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila1, text="Número:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_numero = Entry(fila1, font="sans 12", width=14)
         self.entry_numero.pack(side="left", padx=(6, 20))
-        Label(fila1, text="Fecha:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila1, text="Fecha:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_fecha = Entry(fila1, font="sans 12", width=14)
         self.entry_fecha.pack(side="left", padx=6)
 
-        fila2 = tk.Frame(frame_nuevo, bg="#C6D9E3")
+        fila2 = tk.Frame(frame_nuevo, bg=self.colors["bg_principal"])
         fila2.pack(fill="x", padx=10, pady=8)
-        Label(fila2, text="Cliente:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila2, text="Cliente:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.combo_cliente = ttk.Combobox(fila2, font="sans 12", state="readonly", width=28)
         self.combo_cliente.pack(side="left", padx=(6, 20))
         self.combo_cliente.bind("<<ComboboxSelected>>", self._cliente_elegido)
-        Label(fila2, text="Dirección:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila2, text="Dirección:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_direccion = Entry(fila2, font="sans 12")
         self.entry_direccion.pack(side="left", fill="x", expand=True, padx=6)
 
-        fila3 = tk.Frame(frame_nuevo, bg="#C6D9E3")
+        fila3 = tk.Frame(frame_nuevo, bg=self.colors["bg_principal"])
         fila3.pack(fill="x", padx=10)
-        Label(fila3, text="Observaciones:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila3, text="Observaciones:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_observaciones = Entry(fila3, font="sans 12")
         self.entry_observaciones.pack(side="left", fill="x", expand=True, padx=6, pady=(0, 8))
 
-        fila4 = tk.Frame(frame_nuevo, bg="#C6D9E3")
+        fila4 = tk.Frame(frame_nuevo, bg=self.colors["bg_principal"])
         fila4.pack(fill="x", padx=10, pady=(0, 8))
-        Label(fila4, text="Producto:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila4, text="Producto:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_producto = Entry(fila4, font="sans 12", width=26)
         self.entry_producto.pack(side="left", padx=(6, 12))
-        Label(fila4, text="Cant.:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila4, text="Cant.:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_cantidad = Entry(fila4, font="sans 12", width=5)
         self.entry_cantidad.pack(side="left", padx=6)
-        Label(fila4, text="Descripción:", font="sans 12 bold", bg="#C6D9E3").pack(side="left")
+        Label(fila4, text="Descripción:", font="sans 12 bold", bg=self.colors["bg_principal"]).pack(side="left")
         self.entry_descripcion = Entry(fila4, font="sans 12", width=22)
         self.entry_descripcion.pack(side="left", padx=6)
         Button(
@@ -172,7 +174,7 @@ class VentanaAlbaranes(Toplevel):
             bg="#17A2B8", fg="white", command=self.agregar_linea,
         ).pack(side="left", padx=(8, 0))
 
-        fila5 = tk.Frame(frame_nuevo, bg="#C6D9E3")
+        fila5 = tk.Frame(frame_nuevo, bg=self.colors["bg_principal"])
         fila5.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self.listbox_lineas = Listbox(fila5, font="sans 11", height=4)
         self.listbox_lineas.pack(side="left", fill="both", expand=True)
@@ -182,7 +184,7 @@ class VentanaAlbaranes(Toplevel):
         self.listbox_lineas.configure(yscrollcommand=scroll_lineas.set)
         scroll_lineas.pack(side="left", fill="y")
 
-        frame_acciones = tk.Frame(frame_nuevo, bg="#C6D9E3")
+        frame_acciones = tk.Frame(frame_nuevo, bg=self.colors["bg_principal"])
         frame_acciones.pack(fill="x", padx=10, pady=(0, 10))
         Button(
             frame_acciones, text="🗑 Quitar línea", font="sans 11 bold",

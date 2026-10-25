@@ -11,9 +11,12 @@ El texto se codifica en CP858 (incluye € y caracteres españoles) con
 retroceso a CP437 si la impresora no lo soporta.
 """
 
+import logging
 import os
 import platform
 import subprocess
+
+log = logging.getLogger(__name__)
 
 ANCHO_80MM = 42
 ANCHO_58MM = 32
@@ -448,7 +451,7 @@ def listar_impresoras_termicas():
             if salida.returncode == 0:
                 nombres += [l.strip() for l in salida.stdout.splitlines() if l.strip()]
         except Exception:
-            pass
+            log.warning("No se pudieron listar las impresoras con lpstat", exc_info=True)
     return nombres
 
 
@@ -498,7 +501,7 @@ def _listar_windows():
                 if nombre and nombre.strip():
                     nombres.append(nombre.strip())
     except Exception:
-        pass
+        log.warning("No se pudieron listar las impresoras de Windows", exc_info=True)
     return nombres
 
 
@@ -600,8 +603,8 @@ def _enviar_posix(datos, impresora):
         # degrada a otra impresora porque el documento es fiscal.
         try:
             return _escritura_dispositivo(impresora, datos)
-        except OSError as e:
-            print(f"No se pudo escribir en {impresora}: {e}")
+        except OSError:
+            log.exception(f"No se pudo escribir en {impresora}")
             return False
 
     # Cola CUPS: siempre se indica la elegida, nunca la de por defecto.
@@ -611,7 +614,7 @@ def _enviar_posix(datos, impresora):
     else:
         # Sin impresora configurada no se envía nada: imprimir un ticket
         # fiscal en la impresora por defecto es peor que no imprimirlo.
-        print("No hay impresora térmica configurada")
+        log.warning("No hay impresora térmica configurada")
         return False
 
     try:
@@ -619,13 +622,13 @@ def _enviar_posix(datos, impresora):
             comando, input=datos, capture_output=True, timeout=10
         )
         if resultado.returncode != 0:
-            print(
+            log.warning(
                 f"lp devolvió {resultado.returncode}: "
                 f"{resultado.stderr.decode(errors='replace').strip()}"
             )
         return resultado.returncode == 0
-    except Exception as e:
-        print(f"Error enviando a la impresora {impresora}: {e}")
+    except Exception:
+        log.exception(f"Error enviando a la impresora {impresora}")
         return False
 
 

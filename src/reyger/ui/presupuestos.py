@@ -3,18 +3,20 @@ Módulo de presupuestos para la aplicación de caja registradora.
 Permite crear, gestionar y generar presupuestos en formato PDF.
 """
 
+import logging
 import os
 import uuid
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 from datetime import datetime
 from ..config import ConfigManager
 from . import business_profile as bp
 from ..core import db
 from ..core import moneda as mod_moneda
-from ..core.hilos import en_hilo
 from ..domain.fiscal import desglose_total
 from ..resources import get_output_path, open_file
+
+log = logging.getLogger(__name__)
 
 
 class Presupuestos(tk.Frame):
@@ -101,7 +103,7 @@ class Presupuestos(tk.Frame):
             text="Datos del Cliente",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
-            font=f"sans 12 bold",
+            font="sans 12 bold",
             padx=10,
             pady=10
         )
@@ -121,7 +123,7 @@ class Presupuestos(tk.Frame):
             text="Agregar Productos",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
-            font=f"sans 12 bold",
+            font="sans 12 bold",
             padx=10,
             pady=10
         )
@@ -157,13 +159,13 @@ class Presupuestos(tk.Frame):
             text="IVA",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
-            font=f"sans 12 bold",
+            font="sans 12 bold",
             padx=10,
             pady=10
         )
         frame_iva.pack(fill="x", pady=10)
         
-        self.var_iva = tk.IntVar(value=21)
+        self.var_iva = tk.IntVar(self, value=21)
         for iva in [4, 10, 21]:
             tk.Radiobutton(
                 frame_iva,
@@ -218,7 +220,7 @@ class Presupuestos(tk.Frame):
             text="Totales",
             bg=self.colors["bg_principal"],
             fg=self.colors["fg_texto"],
-            font=f"sans 12 bold",
+            font="sans 12 bold",
             padx=10,
             pady=10
         )
@@ -289,7 +291,7 @@ class Presupuestos(tk.Frame):
             productos = [fila["nombre"] for fila in filas]
             self.combo_productos["values"] = productos
         except Exception:
-            pass
+            log.exception("No se pudieron cargar los productos")
     
     def actualizar_precio_producto(self):
         """Actualiza el precio cuando se selecciona un producto"""
@@ -306,7 +308,7 @@ class Presupuestos(tk.Frame):
                 self.entry_precio.insert(0, str(fila["precio"]))
                 self.entry_precio.config(state="readonly")
         except Exception:
-            pass
+            log.exception("No se pudo cargar el precio del producto")
     
     def agregar_producto_presupuesto(self):
         """Agrega un producto al presupuesto"""
@@ -482,7 +484,7 @@ class Presupuestos(tk.Frame):
             try:
                 open_file(os.path.abspath(archivo_pdf))
             except Exception:
-                pass
+                log.warning("No se pudo abrir el PDF %s", archivo_pdf, exc_info=True)
         except Exception as e:
             messagebox.showerror("Error", f"Error generando PDF: {e}")
 

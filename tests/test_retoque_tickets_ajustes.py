@@ -6,6 +6,7 @@ scrollbar vertical de la ventana de ajustes.
 """
 
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -45,14 +46,22 @@ def bombear(root, segundos):
         time.sleep(0.01)
 
 
+#: Comandos ESC/POS que emite el ticket (init, justificado, negrita,
+#: avance, tamaño ``GS ! n``, tabla ``GS t n`` y corte ``GS V m n``).
+_COMANDO_ESCPOS = re.compile(rb"\x1b@|\x1b[aEd].|\x1d[!t].|\x1dV..", re.DOTALL)
+
+
 def lineas_de_texto(datos):
-    """Decodifica las líneas imprimibles del ticket (ignora comandos)."""
-    texto = datos.decode("cp858", errors="ignore")
-    return [
-        linea for linea in
-        (parte.strip() for parte in texto.split("\n"))
-        if linea and not linea.startswith("\x1b") and not linea.startswith("\x1d")
-    ]
+    """Decodifica las líneas imprimibles del ticket, sin comandos.
+
+    Los comandos se quitan antes de medir: ``str.strip()`` trata el byte
+    GS (``\x1d``) como espacio en blanco, así que filtrar por «empieza por
+    GS» tras ``strip()`` dejaba líneas con códigos de control dentro.
+    """
+    from reyger.hardware.impresion_termica import CODEC_IMPRESORA
+
+    texto = _COMANDO_ESCPOS.sub(b"", datos).decode(CODEC_IMPRESORA, errors="ignore")
+    return [linea for linea in (parte.strip() for parte in texto.split("\n")) if linea]
 
 
 def test_escalas_ticket():
@@ -203,7 +212,8 @@ def test_scroll_ajustes():
             chequear("Tres tamaños ofrecidos",
                      list(combo["values"]) == ["Pequeña", "Grande", "Muy grande"],
                      str(list(combo["values"])))
-            chequear("Valor por defecto «Grande»", combo.get() == "Grande")
+            chequear("Valor por defecto «Muy grande»", combo.get() == "Muy grande",
+                     combo.get())
         panel.destroy()
     finally:
         toplevel.destroy()

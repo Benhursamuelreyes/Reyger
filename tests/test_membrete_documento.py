@@ -3,7 +3,6 @@
 import os
 import shutil
 import sys
-import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -152,7 +151,7 @@ class TestPresupuestosMembrete:
         modulo_db.close()
 
         from reyger.ui.presupuestos import Presupuestos
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         vp = object.__new__(Presupuestos)
         vp.colors = {
@@ -199,7 +198,7 @@ class TestPresupuestosMembrete:
     def test_imprimir_sin_datos_muestra_error(self):
         """_imprimir_presupuesto muestra error si no hay datos."""
         from reyger.ui.presupuestos import Presupuestos
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         vp = object.__new__(Presupuestos)
         vp.entry_cliente = MagicMock()
@@ -215,7 +214,6 @@ class TestPresupuestosMembrete:
 
     def test_botones_en_ui(self):
         """Verifica que los botones 'Generar PDF' y 'Abrir PDF para imprimir' están declarados."""
-        import ast
 
         src_path = os.path.join(
             os.path.dirname(__file__), "..", "src", "reyger", "ui", "presupuestos.py"
@@ -241,7 +239,7 @@ class TestPresupuestosMembrete:
         modulo_db.close()
 
         from reyger.ui.presupuestos import Presupuestos
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         vp = object.__new__(Presupuestos)
         vp.colors = {

@@ -581,6 +581,31 @@ no se inyectaba en la ruta correcta); corregido en **v2.0.0-beta.6**.
 - **macOS**: el módulo de detección y configuración de impresoras solo está
   disponible en Windows; en macOS y Linux se usa la impresora del sistema.
 
+### Diagnóstico de errores
+
+Reyger guarda un registro en la carpeta de datos del usuario, junto a
+`database.db`:
+
+- `reyger.log` — eventos y errores (impresión, exportaciones, VeriFactu,
+  errores de la interfaz). Rota a 1 MB y conserva 3 copias antiguas.
+- `crash.log` — trazas de cierres inesperados.
+
+| Sistema | Carpeta |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Reyger\Reyger` |
+| macOS | `~/Library/Application Support/Reyger` |
+| Linux | `~/.local/share/Reyger` |
+
+Adjunte ambos ficheros al reportar un problema.
+
+En esa misma carpeta, `respaldos/` guarda la copia automática que se hace
+al cerrar la aplicación (una por día, se conservan 7). Para recuperar una,
+use **Ajustes → Importar base de datos** y elija el fichero
+`automatico_AAAAMMDD.db`.
+
+Al actualizar a una versión que reorganiza las ventas (esquema 14), se guarda
+además `database_antes_v14_<fecha>.bak` con la base tal como estaba.
+
 ---
 
 ## Estructura del proyecto

@@ -15,7 +15,7 @@ Para añadir un cambio de esquema:
 
 from ..domain.fiscal import IVA_POR_DEFECTO
 
-LATEST_VERSION = 13
+LATEST_VERSION = 14
 
 MIGRACIONES = []
 
@@ -837,11 +837,95 @@ def _migracion_13(conn):
     _reconciliar_contadores_documentos(conn)
 
 
-def run_migrations(conn):
-    """Aplica sobre *conn* todas las migraciones pendientes, en orden."""
+#: Tablas que ninguna parte de la app lee ni escribe (los borradores viven en
+#: ``documentos``). Solo se eliminan si están vacías.
+TABLAS_SIN_USO_V14 = ("facturas_borradores_productos", "facturas_borradores")
+
+
+def _respaldo_previo(conn, version):
+    """Copia la base antes de una migración que reescribe datos.
+
+    Solo si es un fichero (no ``:memory:``) y hay ventas que convertir. Se
+    guarda junto a la base como ``database_antes_v<N>_<fecha>.bak``.
+    """
+    import os
+    from datetime import datetime
+
+    fichero = next(
+        (fila[2] for fila in conn.execute("PRAGMA database_list") if fila[1] == "main"),
+        "",
+    )
+    if not fichero or conn.in_transaction:
+        return None
+    destino = os.path.join(
+        os.path.dirname(fichero),
+        f"database_antes_v{version}_{datetime.now():%Y%m%d_%H%M%S}.bak",
+    )
+    import sqlite3
+
+    copia = sqlite3.connect(destino)
+    try:
+        conn.backup(copia)
+    finally:
+        copia.close()
+    return destino
+
+
+@migracion(14)
+def _migracion_14(conn):
+    """Documentos con número único y líneas en céntimos (ver ``core.documentos``).
+
+    - Crea ``documentos`` y ``lineas_documento`` con restricciones ``CHECK``
+      y claves foráneas (también la de ``cliente_id``, que faltaba).
+    - Convierte las filas de la tabla ``ventas`` y la sustituye por una vista
+      de solo lectura con las mismas columnas.
+    - Elimina las tablas de borradores sin uso, si están vacías.
+
+    Reescribe datos fiscales, así que antes guarda una copia de la base y lo
+    hace todo en una única transacción explícita: el módulo ``sqlite3`` no
+    abre transacción antes de un ``CREATE``/``DROP``, y sin el ``BEGIN`` un
+    fallo a medias dejaría tablas creadas y otras borradas.
+    """
+    from . import documentos
+    import logging
+
+    log = logging.getLogger(__name__)
+    tipo_ventas = conn.execute(
+        "SELECT type FROM sqlite_master WHERE name = 'ventas'"
+    ).fetchone()
+    es_tabla = tipo_ventas is not None and tipo_ventas[0] == "table"
+    if es_tabla and conn.execute("SELECT COUNT(*) FROM ventas").fetchone()[0]:
+        respaldo = _respaldo_previo(conn, 14)
+        if respaldo:
+            log.info("Copia previa a la migración 14: %s", respaldo)
+
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    documentos.crear_esquema(conn)
+    if es_tabla:
+        documentos.convertir_ventas_legado(conn, "ventas")
+        conn.execute("DROP TABLE ventas")
+    elif tipo_ventas is not None:
+        conn.execute("DROP VIEW ventas")
+    documentos.crear_vista_ventas(conn)
+
+    for tabla in TABLAS_SIN_USO_V14:
+        existe = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (tabla,)
+        ).fetchone()
+        if existe and not conn.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]:
+            conn.execute(f"DROP TABLE {tabla}")
+
+
+def run_migrations(conn, hasta=None):
+    """Aplica sobre *conn* las migraciones pendientes, en orden.
+
+    *hasta* limita la versión final (por defecto, :data:`LATEST_VERSION`);
+    sirve para construir bases de versiones anteriores en las pruebas.
+    """
     version_actual = conn.execute("PRAGMA user_version").fetchone()[0]
     for version, fn in sorted(MIGRACIONES):
-        if version <= version_actual:
+        if version <= version_actual or (hasta is not None and version > hasta):
             continue
         try:
             fn(conn)

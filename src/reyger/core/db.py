@@ -9,6 +9,12 @@ transacción debe ser corta y no cruzarse con la de otro hilo. WAL y
 ``busy_timeout`` evitan además los bloqueos entre esta conexión y las
 que abren ``datos.py`` y ``backup.py`` sobre el mismo fichero.
 
+Las operaciones que necesitan una conexión propia sobre la base de la app
+(exportaciones, importaciones, respaldos) la abren con :func:`conectar`, que
+aplica el mismo ``busy_timeout`` y las mismas claves foráneas. Solo los
+ficheros auxiliares (destinos de respaldo, copias temporales) se abren con
+``sqlite3.connect`` directamente.
+
 AVISO — copia manual de la base: con WAL activo los datos comprometidos
 viven también en ``database.db-wal``, así que copiar solo ``database.db``
 (a mano, por correo o con una nube sincronizada) produce una copia
@@ -20,13 +26,18 @@ determinados USB), de modo que no puede suponerse: consúltalo con
 ``sqlite3.Connection.backup()`` e incluye el WAL en el destino.
 """
 
+import os
 import sqlite3
 from contextlib import contextmanager
+from urllib.parse import quote
 
 from ..resources import get_db_path
 
 _conexion = None
 _conexion_configurada = False
+
+#: Espera máxima (ms) ante un bloqueo de otra conexión al mismo fichero.
+BUSY_TIMEOUT_MS = 5000
 
 
 def get_connection():
@@ -47,7 +58,7 @@ def get_connection():
         # la escritura de la interfaz esperando el bloqueo hasta el límite
         # por defecto de la compilación de SQLite y fallar con
         # "database is locked". 5 s es suficiente para el uso real de la app.
-        _conexion.execute("PRAGMA busy_timeout = 5000")
+        _conexion.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
 
         # WAL permite que los lectores en segundo plano (exportaciones,
         # respaldos) no bloqueen a la escritura de la interfaz. Necesita
@@ -60,6 +71,31 @@ def get_connection():
         except sqlite3.Error:
             pass  # se mantiene el journal_mode por defecto (delete)
     return _conexion
+
+
+def conectar(ruta=None, solo_lectura=False):
+    """Abre una conexión **independiente** (no la compartida).
+
+    Para trabajos que necesitan su propia transacción sobre la base de la
+    app: exportar, importar o respaldar. Aplica ``busy_timeout`` (espera en
+    vez de fallar con "database is locked" si la interfaz está escribiendo)
+    y activa las claves foráneas, igual que :func:`get_connection`. El
+    llamador es dueño de la conexión y debe cerrarla.
+
+    Args:
+        ruta: Fichero de base de datos. Por defecto, la base de la app.
+        solo_lectura: Abre en modo ``ro`` vía URI: no crea el fichero si no
+            existe ni lo modifica.
+    """
+    ruta = str(ruta or get_db_path())
+    if solo_lectura:
+        uri = "file:" + quote(os.path.abspath(ruta)) + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+    else:
+        conn = sqlite3.connect(ruta)
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
 
 def journal_mode(conn=None):
@@ -134,6 +170,16 @@ def transaccion():
     except Exception:
         conn.rollback()
         raise
+
+
+def optimizar():
+    """``PRAGMA optimize`` sobre la conexión compartida (si está abierta).
+
+    Actualiza las estadísticas que usa el planificador de consultas; SQLite
+    recomienda ejecutarlo al cerrar conexiones de larga duración.
+    """
+    if _conexion is not None:
+        _conexion.execute("PRAGMA optimize")
 
 
 def close():

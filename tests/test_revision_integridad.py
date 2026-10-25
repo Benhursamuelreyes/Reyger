@@ -534,7 +534,7 @@ class TestEnvioPosix:
 
         llamado = []
         monkeypatch.setattr(
-            mod.subprocess, "run", lambda *a, **k: called.append(1)
+            mod.subprocess, "run", lambda *a, **k: llamado.append(1)
         )
         assert mod._enviar_posix(b"\x1b@", None) is False
         assert not llamado, "No debe llamar a lp sin impresora configurada"

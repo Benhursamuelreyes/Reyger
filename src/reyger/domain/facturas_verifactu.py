@@ -7,6 +7,7 @@ Requisitos:
 - pip install reportlab
 """
 
+import logging
 import os
 from datetime import datetime
 from reportlab.lib.units import cm
@@ -17,6 +18,8 @@ from ..ui import business_profile as bp
 from ..core import db
 from ..resources import get_output_path
 from .pdf_documento import PdfDocumento
+
+log = logging.getLogger(__name__)
 
 
 class FacturaVeriFACTU:
@@ -160,7 +163,6 @@ class FacturaVeriFACTU:
             nif = nif_emisor or bp.nif() or ""
             num_serie = numero_factura
             tipo_comp = "F1"
-            numero_series = bp.obtener_campo("numero_series") or "A"
 
             huella, cadena, huella_ant, fecha_gen = calcular_huella_para_factura(
                 nif=nif, num_serie=num_serie, fecha=fecha,
@@ -206,6 +208,7 @@ class FacturaVeriFACTU:
             conn.commit()
             return True
         except Exception:
+            log.exception("No se pudo registrar la factura VeriFactu %s", numero_factura)
             # Sin rollback explícito, la escritura parcial (fila de
             # facturas_verifactu ya insertada) queda pendiente en la
             # conexión compartida y el siguiente ``db.execute()`` de
@@ -215,5 +218,18 @@ class FacturaVeriFACTU:
                 if conn is not None:
                     conn.rollback()
             except Exception:
-                pass
+                log.warning("Falló el rollback tras el error de VeriFactu", exc_info=True)
             return False
+
+
+#: Estados de envío a la AEAT que se muestran en Ajustes.
+ESTADOS_ENVIO = ("pendiente", "enviado", "error")
+
+
+def contar_por_estado():
+    """Devuelve ``{estado: número de facturas}`` para :data:`ESTADOS_ENVIO`."""
+    filas = db.query(
+        "SELECT estado_envio, COUNT(*) AS n FROM facturas_verifactu GROUP BY estado_envio"
+    )
+    cuentas = {fila["estado_envio"]: fila["n"] for fila in filas}
+    return {estado: cuentas.get(estado, 0) for estado in ESTADOS_ENVIO}

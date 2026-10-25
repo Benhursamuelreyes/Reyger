@@ -28,9 +28,7 @@ import reyger.core.migrations as modulo_migrations
 import reyger.ui.clientes as modulo_clientes
 import reyger.ui.inventario as modulo_inventario
 import reyger.ui.ventas as modulo_ventas
-from reyger.ui.clientes import Clientes
 from reyger.domain.fiscal import desglose_linea, desglose_total, normalizar_tipo_iva
-from reyger.ui.inventario import Inventario
 from reyger.ui.ventas import Ventas
 
 VERDE = "\033[92m"
@@ -148,7 +146,7 @@ def test_venta_iva_auditoria():
     tmp_dir, ruta, anterior = preparar_db()
     salida_original = modulo_ventas.get_output_path
     abrir_original = modulo_ventas.open_file
-    db_original = Ventas.db_name
+    db_original = getattr(Ventas, "db_name", None)
     try:
         Ventas.db_name = ruta
         conn = sqlite3.connect(ruta)
@@ -175,47 +173,53 @@ def test_venta_iva_auditoria():
         hijos = ventas.tree.get_children()
         chequear("Línea añadida al carrito", len(hijos) == 1)
         valores = ventas.tree.item(hijos[0], "values")
+        # La 6.ª columna (oculta) es el id del producto: el stock se
+        # descuenta por id y no por nombre.
         chequear(
             "Línea con columna IVA del producto",
-            tuple(valores) == ("Vino Tinto", "11.00", "2", "10%", "22.00"),
+            tuple(valores[:5]) == ("Vino Tinto", "11.00", "2", "10%", "22.00"),
             f"valores={valores}",
         )
 
         ventas.actualizar_total()
         chequear(
             "Base imponible mostrada",
-            ventas.label_base.cget("text") == "Base imponible: 20.00 €",
+            ventas.label_base.cget("text") == "Base imponible: 20,00 €",
             ventas.label_base.cget("text"),
         )
         chequear(
             "Cuota de IVA mostrada",
-            ventas.label_cuota.cget("text") == "Cuota IVA: 2.00 €",
+            ventas.label_cuota.cget("text") == "Cuota IVA: 2,00 €",
             ventas.label_cuota.cget("text"),
         )
         chequear(
             "Total mostrado",
-            ventas.label_suma_total.cget("text") == "Total a pagar: 22.00 €",
+            ventas.label_suma_total.cget("text") == "Total a pagar: 22,00 €",
             ventas.label_suma_total.cget("text"),
         )
 
-        def pagar_carrito():
+        def pagar_carrito(total):
+            # ``pagar`` rechaza el cobro si *total* no coincide con el
+            # carrito, así que cada venta pasa su propio importe.
             ventas.pagar(
                 SimpleNamespace(destroy=lambda: None),
                 SimpleNamespace(get=lambda: "30"),
                 SimpleNamespace(get=lambda: "0"),
                 SimpleNamespace(get=lambda: "Efectivo"),
                 SimpleNamespace(config=lambda **k: None),
-                22.0,
+                total,
             )
 
-        pagar_carrito()
+        pagar_carrito(22.0)
 
+        # Sin elegir tipo se emite un ticket; su número lleva la serie
+        # («T-0001»), así que se busca la primera venta por id.
         conn = sqlite3.connect(ruta)
         fila = conn.execute(
             """
             SELECT tipo_iva, cuota_iva, base_imponible,
                    cliente_id, metodo_pago
-            FROM ventas WHERE factura = 1
+            FROM ventas ORDER BY id LIMIT 1
             """
         ).fetchone()
         stock = conn.execute(
@@ -237,8 +241,9 @@ def test_venta_iva_auditoria():
         chequear("Venta sin cliente → NULL", fila is not None and fila[3] is None)
         chequear("Stock decrementado", stock == 8, f"stock={stock}")
         chequear(
-            "Número de factura avanza",
-            ventas.numero_factura_actual == 2,
+            "Número de ticket avanza",
+            ventas.numero_ticket_actual == 2,
+            f"numero_ticket_actual={ventas.numero_ticket_actual}",
         )
 
         # Segunda venta asociada a un cliente
@@ -250,11 +255,11 @@ def test_venta_iva_auditoria():
         ventas.actualizar_precio(None)
         ventas.entry_cantidad.insert(0, "1")
         ventas.registrar()
-        pagar_carrito()
+        pagar_carrito(11.0)
 
         conn = sqlite3.connect(ruta)
         fila2 = conn.execute(
-            "SELECT cliente_id FROM ventas WHERE factura = 2"
+            "SELECT cliente_id FROM ventas ORDER BY id DESC LIMIT 1"
         ).fetchone()
         conn.close()
         id_ana = modulo_db.query_one(

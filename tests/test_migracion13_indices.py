@@ -23,7 +23,6 @@ from reyger.core.migrations import (
     LATEST_VERSION,
     run_migrations,
 )
-from reyger.resources import get_db_path as _get_db_path_pristino
 
 PLANTILLA = os.path.join(SRC_DIR, "reyger", "assets", "database.db")
 
@@ -33,14 +32,29 @@ PLANTILLA = os.path.join(SRC_DIR, "reyger", "assets", "database.db")
 # ---------------------------------------------------------------------------
 
 
+#: Estos tests prueban la migración 13 sobre el esquema de entonces (con la
+#: tabla ``ventas``); la 14 la sustituye por ``documentos``.
+HASTA = 13
+
+
 @pytest.fixture
 def bd_temporal(tmp_path, monkeypatch):
-    """Copia de la plantilla con las migraciones aplicadas."""
+    """Base nueva migrada hasta el esquema 13."""
+    ruta = str(tmp_path / "database.db")
+    monkeypatch.setattr(db, "get_db_path", lambda: ruta)
+    conn = db.get_connection()
+    run_migrations(conn, hasta=HASTA)
+    yield ruta
+    db._conexion = None
+
+
+@pytest.fixture
+def bd_actual(tmp_path, monkeypatch):
+    """Copia de la plantilla con todas las migraciones aplicadas."""
     ruta = str(tmp_path / "database.db")
     shutil.copy2(PLANTILLA, ruta)
     monkeypatch.setattr(db, "get_db_path", lambda: ruta)
-    conn = db.get_connection()
-    run_migrations(conn)
+    run_migrations(db.get_connection())
     yield ruta
     db._conexion = None
 
@@ -56,8 +70,11 @@ def _plan(conn, sql, parametros=()):
 # ---------------------------------------------------------------------------
 
 
-def test_latest_version_es_13():
-    assert LATEST_VERSION == 13
+def test_migracion_13_registrada():
+    from reyger.core.migrations import MIGRACIONES
+
+    assert 13 in {version for version, _ in MIGRACIONES}
+    assert LATEST_VERSION >= 13
 
 
 def test_migracion_13_crea_todos_sus_indices(bd_temporal):
@@ -103,7 +120,7 @@ def test_migracion_13_no_reescribe_una_sola_fila(bd_temporal):
 
     conn.execute("PRAGMA user_version = 12")
     conn.commit()
-    run_migrations(conn)
+    run_migrations(conn, hasta=HASTA)
 
     despues = {
         t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
@@ -120,18 +137,18 @@ def test_migracion_13_es_idempotente(bd_temporal):
     conn = db.get_connection()
     conn.execute("PRAGMA user_version = 12")
     conn.commit()
-    run_migrations(conn)
+    run_migrations(conn, hasta=HASTA)
     primera = conn.execute(
         "SELECT tipo, serie, ultimo_numero FROM contadores_documentos "
         "ORDER BY tipo, serie"
     ).fetchall()
-    run_migrations(conn)
-    run_migrations(conn)
+    run_migrations(conn, hasta=HASTA)
+    run_migrations(conn, hasta=HASTA)
     assert primera == conn.execute(
         "SELECT tipo, serie, ultimo_numero FROM contadores_documentos "
         "ORDER BY tipo, serie"
     ).fetchall()
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == HASTA
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +243,7 @@ def test_reconcilia_serie_real_de_una_siembra_rota(bd_temporal):
     conn.execute("PRAGMA user_version = 12")
     conn.commit()
 
-    run_migrations(conn)
+    run_migrations(conn, hasta=HASTA)
 
     assert conn.execute(
         "SELECT ultimo_numero FROM contadores_documentos "
@@ -252,7 +269,7 @@ def test_reconciliacion_nunca_decrementa_el_contador(bd_temporal):
     conn.execute("PRAGMA user_version = 12")
     conn.commit()
 
-    run_migrations(conn)
+    run_migrations(conn, hasta=HASTA)
 
     assert conn.execute(
         "SELECT ultimo_numero FROM contadores_documentos "
@@ -271,7 +288,7 @@ def test_reconciliacion_no_toca_la_fila_heredada(bd_temporal):
     conn.execute("PRAGMA user_version = 12")
     conn.commit()
 
-    run_migrations(conn)
+    run_migrations(conn, hasta=HASTA)
 
     assert conn.execute(
         "SELECT ultimo_numero FROM contadores_documentos "
@@ -324,16 +341,19 @@ def test_respaldo_incluye_lo_ultimo_committeado_en_wal(tmp_path, monkeypatch):
         db._conexion = None
 
 
-def test_eje_consulta_no_confirma_en_una_lectura(bd_temporal):
-    """Antes, un SELECT cerraba la transacción abierta por otro hilo."""
-    from reyger.ui.inventario import Inventario
+def test_lecturas_de_inventario_no_confirman(bd_temporal):
+    """Antes, un SELECT de Inventario cerraba la transacción abierta por
+    otro hilo sobre la conexión compartida."""
+    from reyger.domain import inventario as dominio
 
     conn = db.get_connection()
     conn.execute("BEGIN")
     conn.execute(
         "INSERT INTO clientes (nombre) VALUES ('Pendiente de otro hilo')"
     )
-    Inventario.eje_consulta(None, "SELECT COUNT(*) FROM clientes")
+    dominio.listar_productos()
+    dominio.nombres_proveedores()
+    dominio.codigo_en_uso("123")
     assert conn.in_transaction is True
     conn.rollback()
     assert conn.execute("SELECT COUNT(*) FROM clientes").fetchone()[0] == 0
@@ -422,15 +442,16 @@ def test_borrar_cliente_con_documentos_no_lanza_integrity_error(bd_temporal):
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
-def test_conteo_de_documentos_detecta_los_bloqueos(bd_temporal):
+def test_conteo_de_documentos_detecta_los_bloqueos(bd_actual):
+    """La misma consulta que ``ui.clientes`` antes de borrar un cliente."""
     conn = db.get_connection()
     conn.execute("INSERT INTO clientes (nombre) VALUES ('Con ventas')")
     cliente_id = conn.execute(
         "SELECT id FROM clientes WHERE nombre = 'Con ventas'"
     ).fetchone()[0]
     conn.execute(
-        "INSERT INTO ventas (factura, nombre_articulo, valor_articulo, "
-        "cantidad, subtotal, cliente_id) VALUES ('F-1','X',1,1,1,?)",
+        "INSERT INTO documentos (numero, tipo, estado, cliente_id) "
+        "VALUES ('F-1', 'factura', 'emitido', ?)",
         (cliente_id,),
     )
     conn.commit()
@@ -440,7 +461,7 @@ def test_conteo_de_documentos_detecta_los_bloqueos(bd_temporal):
         "(SELECT COUNT(*) FROM facturas_verifactu WHERE cliente_id = ?) + "
         "(SELECT COUNT(*) FROM albaranes WHERE cliente_id = ?) + "
         "(SELECT COUNT(*) FROM presupuestos WHERE cliente_id = ?) + "
-        "(SELECT COUNT(*) FROM ventas WHERE cliente_id = ?) AS total",
+        "(SELECT COUNT(*) FROM documentos WHERE cliente_id = ?) AS total",
         (cliente_id,) * 4,
     )["total"]
     assert total == 1

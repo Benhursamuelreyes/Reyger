@@ -21,7 +21,8 @@ sys.path.insert(0, SRC_DIR)
 # Recursos y módulos del paquete (assets incluidos) para las pruebas
 SCRIPT_DIR = os.path.join(SRC_DIR, "reyger")
 
-DB_PATH = os.path.join(PROJECT_ROOT, "database.db")
+# Plantilla incluida con la app (la que se copia en el primer arranque).
+DB_PATH = os.path.join(SCRIPT_DIR, "assets", "database.db")
 
 # Colores para output
 VERDE = '\033[92m'
@@ -45,7 +46,7 @@ def print_resultado(test_nombre, success, mensaje=""):
 def test_imports():
     """Test 1: Verificar que todos los módulos nuevos se importan"""
     print(f"\n{BOLD}{AZUL}[TEST 1] Importación de módulos{RESET}")
-    
+
     tests = [
         ("reyger.domain.facturas_verifactu.FacturaVeriFACTU", "Factura VeriFACTU"),
         ("reyger.ui.tickets.TicketSimplificado", "Tickets"),
@@ -55,133 +56,107 @@ def test_imports():
         ("reyger.hardware.barcode_scanner.EscanerCodigoBarras", "Escáner de Código de Barras"),
         ("reyger.ui.clientes.Clientes", "Clientes"),
     ]
-    
-    resultados = []
+
+    fallidos = []
     for ruta, nombre in tests:
         try:
             partes = ruta.split('.')
             modulo = __import__('.'.join(partes[:-1]), fromlist=[partes[-1]])
             getattr(modulo, partes[-1])
             print_resultado(f"Importar {nombre}", True)
-            resultados.append(True)
         except Exception as e:
             print_resultado(f"Importar {nombre}", False, str(e))
-            resultados.append(False)
-    
-    return all(resultados)
+            fallidos.append(nombre)
+
+    assert not fallidos, f"No se pudieron importar: {fallidos}"
 
 
 def test_dependencias():
     """Test 2: Verificar librerías externas instaladas"""
     print(f"\n{BOLD}{AZUL}[TEST 2] Dependencias externas{RESET}")
-    
+
     dependencias = [
         ("qrcode", "qrcode"),
         ("reportlab", "reportlab"),
         ("PIL", "Pillow"),
     ]
-    
-    resultados = []
+
+    faltan = []
     for lib, nombre in dependencias:
         try:
             __import__(lib)
             print_resultado(f"Librería {nombre}", True)
-            resultados.append(True)
-        except ImportError as e:
+        except ImportError:
             print_resultado(f"Librería {nombre}", False, "Instala con: pip install" + " " + nombre.lower())
-            resultados.append(False)
-    
-    # Test pywin32 con advertencia
+            faltan.append(nombre)
+
+    # pywin32 es opcional (solo para impresoras en Windows): no bloquea.
     try:
-        import win32print
+        import win32print  # noqa: F401
         print_resultado("Librería pywin32 (Windows)", True)
-        resultados.append(True)
     except ImportError:
         print_resultado("Librería pywin32 (Windows)", False, "Opcional - Instalada solo si necesitas impresoras")
-        resultados.append(True)  # No es bloqueante
-    
-    return all(resultados)
+
+    assert not faltan, f"Faltan dependencias: {faltan}"
 
 
 def test_base_datos():
-    """Test 3: Verificar acceso a base de datos"""
+    """Test 3: La plantilla de base de datos incluida tiene las tablas clave"""
     print(f"\n{BOLD}{AZUL}[TEST 3] Base de Datos{RESET}")
-    
+    import sqlite3
+
+    assert os.path.exists(DB_PATH), f"No existe la plantilla {DB_PATH}"
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     try:
-        import sqlite3
-        
-        if os.path.exists(DB_PATH):
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Verificar tablas existentes
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tablas = [row[0] for row in cursor.fetchall()]
-            
-            print_resultado("Conexión a database.db", True, f"{len(tablas)} tablas encontradas")
-            
-            # Listar tablas
-            tablas_importantes = ['inventario', 'ventas', 'presupuestos', 'albaranes']
-            for tabla in tablas_importantes:
-                if tabla in tablas:
-                    print(f"  {VERDE}✓{RESET} Tabla '{tabla}' existe")
-                else:
-                    print(f"  {AMARILLO}~{RESET} Tabla '{tabla}' no existe (se creará al usar)")
-            
-            conn.close()
-            return True
-        else:
-            print_resultado("Base de datos database.db", False, "Archivo no encontrado")
-            return False
-    
-    except Exception as e:
-        print_resultado("Acceso a base de datos", False, str(e))
-        return False
+        tablas = {fila[0] for fila in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+    finally:
+        conn.close()
+    print_resultado("Conexión a la plantilla", True, f"{len(tablas)} tablas encontradas")
+
+    clave = ("inventario", "documentos", "lineas_documento", "presupuestos", "albaranes")
+    faltan = [t for t in clave if t not in tablas]
+    for tabla in clave:
+        print_resultado(f"Tabla '{tabla}'", tabla not in faltan)
+    assert not faltan, f"Faltan tablas en la plantilla: {faltan}"
 
 
 def test_estructura_proyecto():
     """Test 4: Verificar estructura de archivos"""
     print(f"\n{BOLD}{AZUL}[TEST 4] Estructura de archivos{RESET}")
-    
+
     archivos_esperados = [
         "app.py",
-        "manager.py",
         "container.py",
-        "ventas.py",
-        "inventario.py",
-        "clientes.py",
-        "ajustes.py",
         "config.py",
-        "db.py",
-        "migrations.py",
-        "ui.py",
-        "facturas_verifactu.py",
-        "tickets.py",
-        "albaranes.py",
-        "presupuestos.py",
-        "impresoras.py",
-        "barcode_scanner.py",
+        "ui/manager.py",
+        "ui/ventas.py",
+        "ui/inventario.py",
+        "ui/clientes.py",
+        "ui/ajustes.py",
+        "ui/ui.py",
+        "ui/tickets.py",
+        "ui/albaranes.py",
+        "ui/presupuestos.py",
+        "core/db.py",
+        "core/migrations.py",
+        "domain/facturas_verifactu.py",
+        "domain/ventas.py",
+        "domain/inventario.py",
+        "hardware/impresoras.py",
+        "hardware/barcode_scanner.py",
+        "assets/database.db",
     ]
-    
-    resultados = []
+
+    faltan = []
     for archivo in archivos_esperados:
-        ruta = os.path.join(SCRIPT_DIR, archivo)
-        existe = os.path.exists(ruta)
-        if existe:
-            print_resultado(f"Archivo {archivo}", True)
-            resultados.append(True)
-        else:
-            print_resultado(f"Archivo {archivo}", False, "Descárgalo o créalo")
-            resultados.append(False)
-    
-    if os.path.exists(DB_PATH):
-        print_resultado("Base de datos database.db", True)
-        resultados.append(True)
-    else:
-        print_resultado("Base de datos database.db", False, "Se crea al usar la aplicación")
-        resultados.append(False)
-    
-    return all(resultados)
+        existe = os.path.exists(os.path.join(SCRIPT_DIR, archivo))
+        print_resultado(f"Archivo {archivo}", existe, "" if existe else "No encontrado")
+        if not existe:
+            faltan.append(archivo)
+
+    assert not faltan, f"Faltan archivos: {faltan}"
 
 
 @pytest.mark.orden_dependiente
@@ -194,7 +169,7 @@ def test_funcionalidad_basica():
     # Test FacturaVeriFACTU
     try:
         from reyger.domain.facturas_verifactu import FacturaVeriFACTU
-        factura = FacturaVeriFACTU()
+        FacturaVeriFACTU()
         print_resultado("Instanciar FacturaVeriFACTU", True)
         resultados.append(True)
     except Exception as e:
@@ -204,7 +179,7 @@ def test_funcionalidad_basica():
     # Test TicketSimplificado
     try:
         from reyger.ui.tickets import TicketSimplificado
-        ticket = TicketSimplificado()
+        TicketSimplificado()
         print_resultado("Instanciar TicketSimplificado", True)
         resultados.append(True)
     except Exception as e:
@@ -214,7 +189,7 @@ def test_funcionalidad_basica():
     # Test AlbaranEntrega
     try:
         from reyger.ui.albaranes import AlbaranEntrega
-        albaran = AlbaranEntrega()
+        AlbaranEntrega()
         print_resultado("Instanciar AlbaranEntrega", True)
         resultados.append(True)
     except Exception as e:
@@ -226,7 +201,7 @@ def test_funcionalidad_basica():
         from reyger.ui.presupuestos import Presupuestos
         root = tk.Tk()
         root.withdraw()
-        presupuestos = Presupuestos(root)
+        Presupuestos(root)
         root.destroy()
         print_resultado("Instanciar Presupuestos", True)
         resultados.append(True)
@@ -237,7 +212,7 @@ def test_funcionalidad_basica():
     # Test EscanerCodigoBarras
     try:
         from reyger.hardware.barcode_scanner import EscanerCodigoBarras
-        escaner = EscanerCodigoBarras()
+        EscanerCodigoBarras()
         print_resultado("Instanciar EscanerCodigoBarras", True)
         resultados.append(True)
     except Exception as e:
@@ -247,20 +222,24 @@ def test_funcionalidad_basica():
     # Test GestorImpresoras
     try:
         from reyger.hardware.impresoras import GestorImpresoras
-        gestor = GestorImpresoras()
+        GestorImpresoras()
         print_resultado("Instanciar GestorImpresoras", True)
         resultados.append(True)
     except Exception as e:
         print_resultado("Instanciar GestorImpresoras", False, str(e))
         resultados.append(False)
-    
-    return all(resultados)
+
+    assert all(resultados), "Algún componente no se pudo instanciar (ver arriba)"
 
 
 def test_directorios_salida():
-    """Test 6: Verificar directorios de salida"""
+    """Test 6: get_output_path crea los directorios de salida en los datos del usuario"""
     print(f"\n{BOLD}{AZUL}[TEST 6] Directorios de salida{RESET}")
-    
+    import tempfile
+    from pathlib import Path
+
+    import reyger.resources as resources
+
     directorios = [
         ("facturas", "Facturas ordinarias"),
         ("facturas_verifactu", "Facturas VeriFACTU"),
@@ -268,17 +247,28 @@ def test_directorios_salida():
         ("albaranes", "Albaranes"),
         ("presupuestos_pdf", "Presupuestos PDF"),
     ]
-    
-    resultados = []
-    for directorio, descripcion in directorios:
-        if os.path.exists(os.path.join(PROJECT_ROOT, directorio)):
-            print_resultado(f"Directorio {descripcion} (/{directorio})", True)
-            resultados.append(True)
-        else:
-            print(f"  {AMARILLO}→ Se creará automáticamente al generar{RESET}")
-            resultados.append(True)  # No es bloqueante
-    
-    return True
+
+    original = resources.get_user_data_path
+    with tempfile.TemporaryDirectory() as tmp:
+        resources.get_user_data_path = lambda: Path(tmp)
+        try:
+            for directorio, descripcion in directorios:
+                ruta = resources.get_output_path(directorio)
+                creado = os.path.isdir(ruta) and ruta.startswith(tmp)
+                print_resultado(f"Directorio {descripcion} (/{directorio})", creado)
+                assert creado, f"No se creó {ruta}"
+        finally:
+            resources.get_user_data_path = original
+
+
+def _superado(test):
+    """Ejecuta *test* fuera de pytest: ``True`` si no falla ningún assert."""
+    try:
+        test()
+        return True
+    except AssertionError as e:
+        print(f"  {ROJO}✗ {e}{RESET}")
+        return False
 
 
 def mostrar_resumen(tests):
@@ -314,12 +304,12 @@ def main():
     
     # Ejecutar tests
     tests = [
-        test_imports(),
-        test_dependencias(),
-        test_base_datos(),
-        test_estructura_proyecto(),
-        test_funcionalidad_basica(),
-        test_directorios_salida(),
+        _superado(test_imports),
+        _superado(test_dependencias),
+        _superado(test_base_datos),
+        _superado(test_estructura_proyecto),
+        _superado(test_funcionalidad_basica),
+        _superado(test_directorios_salida),
     ]
     
     # Mostrar resumen
@@ -328,9 +318,9 @@ def main():
     # Información adicional
     print(f"{BOLD}Próximos pasos:{RESET}")
     print(f"  1. Ejecuta: {AMARILLO}python -m reyger{RESET}")
-    print(f"  2. Abre menú Presupuestos (nuevo botón púrpura)")
-    print(f"  3. Prueba los métodos de pago en Ventas")
-    print(f"  4. Genera facturas y tickets\n")
+    print("  2. Abre menú Presupuestos (nuevo botón púrpura)")
+    print("  3. Prueba los métodos de pago en Ventas")
+    print("  4. Genera facturas y tickets\n")
     
     return 0 if exito else 1
 

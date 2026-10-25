@@ -8,6 +8,7 @@ Ejecuta:  python src/reyger/test_fase4_impresion.py
 """
 
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -31,6 +32,8 @@ import reyger.ui.ventas as modulo_ventas
 from reyger.hardware.impresion_termica import (
     ANCHO_58MM,
     ANCHO_80MM,
+    CODEC_IMPRESORA,
+    CODEPAGE_WPC1252,
     CORTE_PARCIAL,
     INICIO,
     TicketTermico,
@@ -94,12 +97,18 @@ _COMANDOS = (
 
 
 def decodificar_lineas(datos):
-    """Decodifica el ticket a líneas de texto legibles."""
-    limpio = datos
+    """Decodifica el ticket a líneas de texto legibles.
+
+    Quita los comandos ESC/POS (incluidos ``GS t`` y cualquier tamaño
+    ``GS ! n``), decodifica con el mismo codec que usa la impresora y
+    descarta el CR de los finales de línea CR+LF.
+    """
+    limpio = datos.replace(CODEPAGE_WPC1252, b"")
     for comando in _COMANDOS:
         limpio = limpio.replace(comando, b"")
-    texto = limpio.decode("cp858", errors="replace")
-    return [l for l in texto.split("\n")]
+    limpio = re.sub(rb"\x1d!.", b"", limpio, flags=re.DOTALL)
+    texto = limpio.decode(CODEC_IMPRESORA, errors="replace")
+    return [l.rstrip("\r") for l in texto.split("\n")]
 
 
 def test_constructor_ticket():
@@ -145,9 +154,10 @@ def test_constructor_ticket():
     chequear("Número de recibo presente", "Recibo: 7" in texto)
     chequear("Cliente presente", "Cliente: Ana García" in texto)
     chequear("Productos listados", "Vino Tinto" in texto and "Pan" in texto)
-    chequear("Total presente", "TOTAL" in texto and "23.50" in texto)
-    chequear("Desglose de base presente", "Base imponible" in texto and "21.20" in texto)
-    chequear("Cuota de IVA presente", "Cuota IVA" in texto and "2.30" in texto)
+    # Importes con el formato regional por defecto (es_ES: coma decimal).
+    chequear("Total presente", "TOTAL" in texto and "23,50" in texto)
+    chequear("Desglose de base presente", "Base imponible" in texto and "21,20" in texto)
+    chequear("Cuota de IVA presente", "Cuota IVA" in texto and "2,30" in texto)
     chequear("Método de pago presente", "Pago: Mixto" in texto)
 
     # Todas las líneas de texto caben en el ancho del papel
@@ -187,8 +197,11 @@ def test_constructor_ticket():
         numero_factura=2, fecha="hoy",
         productos=[("Caña Ñoño €", 2.00, 1, 2.00)], total=2.00,
     )
-    texto_es = datos_es.decode("cp858")
-    chequear("Codificación CP858 conserva ñ y €", "Ñoño" in texto_es)
+    texto_es = datos_es.decode(CODEC_IMPRESORA)
+    chequear(
+        f"Codificación {CODEC_IMPRESORA} conserva ñ y €",
+        "Caña Ñoño €" in texto_es,
+    )
 
     # Encadenado manual del builder
     t = TicketTermico(empresa="X")
@@ -228,7 +241,7 @@ def test_integracion_ventas():
     abrir_original = modulo_ventas.open_file
     config_original = modulo_ventas.ConfigManager
     ticket_original = modulo_ventas.imprimir_ticket_venta
-    db_original = Ventas.db_name
+    db_original = getattr(Ventas, "db_name", None)
     try:
         Ventas.db_name = ruta
         conn = sqlite3.connect(ruta)
@@ -252,12 +265,16 @@ def test_integracion_ventas():
             def get(self, clave, defecto=None):
                 return configuracion.get(clave, defecto)
 
+            def get_colors(self):
+                return {"bg_principal": "#C6D9E3", "bg_cabecera": "#dddddd"}
+
         capturas = {}
 
         def ticket_falso(numero_factura, fecha, productos, total, base=None,
                          cuota=None, metodo_pago="Efectivo", cliente=None,
                          empresa="Mi Empresa", ancho=ANCHO_80MM,
-                         letra="muy_grande", impresora=None, logo=None):
+                         letra="muy_grande", impresora=None, logo=None,
+                         **opciones):
             capturas.update({
                 "numero": numero_factura, "total": total, "base": base,
                 "cuota": cuota, "metodo": metodo_pago, "cliente": cliente,
@@ -296,12 +313,23 @@ def test_integracion_ventas():
 
         chequear("Ticket enviado al cobrar", bool(capturas))
         if capturas:
-            chequear("Número de factura correcto", capturas["numero"] == 1)
+            # El número lleva la serie del ticket (p. ej. «T-0001»).
+            chequear(
+                "Número de factura correcto",
+                str(capturas["numero"]).endswith("0001"),
+                f"numero={capturas['numero']}",
+            )
             chequear("Total correcto", abs(capturas["total"] - 4.40) < 0.01)
             chequear("Base correcta", abs(capturas["base"] - 4.00) < 0.01)
             chequear("Cuota correcta", abs(capturas["cuota"] - 0.40) < 0.01)
             chequear("Impresora configurada usada", capturas["impresora"] == "Termica-Test")
-            chequear("Empresa del ticket correcta", capturas["empresa"] == "Bar Los Robles")
+            # La empresa sale del perfil de negocio (BD), no de config.json.
+            from reyger.ui import business_profile as bp
+            chequear(
+                "Empresa del ticket correcta",
+                capturas["empresa"] == bp.nombre_empresa(),
+                f"empresa={capturas['empresa']}",
+            )
             chequear(
                 "Logo resuelto para el ticket",
                 bool(capturas["logo"]) and capturas["logo"].endswith("logo.png"),

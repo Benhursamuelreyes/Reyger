@@ -18,7 +18,6 @@ import os
 import sys
 from unittest.mock import patch
 
-import pytest
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(TESTS_DIR)
@@ -243,7 +242,6 @@ class TestLaCopiaInternaEsSegura:
         import sqlite3
 
         from reyger.core import backup as mod_backup
-        import reyger.core.db as mod_db
 
         origen = tmp_path / "origen.db"
         conexion = sqlite3.connect(origen)

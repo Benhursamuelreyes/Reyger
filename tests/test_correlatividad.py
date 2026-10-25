@@ -78,13 +78,6 @@ def test_no_retrocede_tras_borrar_venta_maxima():
 
     tmp, ruta, anterior = bd_migrada_a_v10()
 
-    cifras = {
-        "id": 1, "nombre_articulo": "A", "valor_articulo": 1.0,
-        "cantidad": 1, "subtotal": 1.0, "metodo_pago": "Efectivo",
-        "cantidad_efectivo": 1.0, "cantidad_tarjeta": 0.0,
-        "tipo_iva": 21.0, "cuota_iva": 0.21, "base_imponible": 1.0,
-    }
-
     conn = db.get_connection()
     # Emitir tickets 1..3 de forma manual (como haría la app) y reservarlos.
     for n in range(1, 4):
@@ -92,24 +85,14 @@ def test_no_retrocede_tras_borrar_venta_maxima():
         assert numero == n
         correlativos.reservar_numero("ticket", numero, prefijo)
         conn.execute(
-            "INSERT INTO ventas (factura, nombre_articulo, valor_articulo, "
-            "cantidad, subtotal, metodo_pago, cantidad_efectivo, "
-            "cantidad_tarjeta, tipo_iva, cuota_iva, base_imponible, "
-            "tipo_documento, estado, numero_ticket) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ticket', 'emitido', ?)",
-            (
-                prefijo + f"{numero:04d}", cifras["nombre_articulo"],
-                cifras["valor_articulo"], cifras["cantidad"], cifras["subtotal"],
-                cifras["metodo_pago"], cifras["cantidad_efectivo"],
-                cifras["cantidad_tarjeta"], cifras["tipo_iva"],
-                cifras["cuota_iva"], cifras["base_imponible"],
-                prefijo + f"{numero:04d}",
-            ),
+            "INSERT INTO documentos (numero, tipo, estado, metodo_pago, efectivo_cent)"
+            " VALUES (?, 'ticket', 'emitido', 'Efectivo', 100)",
+            (prefijo + f"{numero:04d}",),
         )
     conn.commit()
 
     # Borrar físicamente la venta más alta (T-3).
-    conn.execute("DELETE FROM ventas WHERE numero_ticket = 'T-0003'")
+    conn.execute("DELETE FROM documentos WHERE numero = 'T-0003'")
     conn.commit()
 
     # Aun borrado el máximo en ventas, el contador persistente evita el retroceso.
@@ -118,7 +101,6 @@ def test_no_retrocede_tras_borrar_venta_maxima():
 
     db.close()
     db.get_db_path = anterior
-    return 0
 
 
 def test_serie_configurable_arranca_desde_inicio():
@@ -140,7 +122,6 @@ def test_serie_configurable_arranca_desde_inicio():
 
     db.close()
     db.get_db_path = anterior
-    return 0
 
 
 def main():

@@ -40,13 +40,19 @@ def chequear(nombre, condicion, detalle=""):
         FALLOS.append(nombre)
 
 
+# Desde el esquema 14 las ventas viven en documentos/lineas_documento y
+# «ventas» es una vista (ver VISTAS_ESPERADAS).
 TABLAS_ESPERADAS = {
-    "ventas", "inventario", "clientes", "proveedores",
-    "facturas_borradores", "facturas_borradores_productos",
+    "documentos", "lineas_documento", "inventario", "clientes", "proveedores",
     "presupuestos", "presupuestos_productos",
     "albaranes", "albaranes_productos",
     "facturas_verifactu", "facturas_verifactu_productos",
 }
+VISTAS_ESPERADAS = {"ventas"}
+
+
+def vistas(conn):
+    return {f[0] for f in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
 
 
 def columnas(conn, tabla):
@@ -66,6 +72,7 @@ def test_plantilla():
     }
     faltan = TABLAS_ESPERADAS - tablas
     chequear("Tablas completas", not faltan, f"faltan: {sorted(faltan)}")
+    chequear("Vista de compatibilidad «ventas»", VISTAS_ESPERADAS <= vistas(conn))
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     chequear(
         f"user_version == {LATEST_VERSION}", version == LATEST_VERSION,
@@ -146,6 +153,7 @@ def test_migracion_desde_vieja():
     }
     faltan = TABLAS_ESPERADAS - tablas
     chequear("Tablas nuevas creadas sobre la vieja", not faltan, f"faltan: {sorted(faltan)}")
+    chequear("Vista «ventas» creada sobre la vieja", VISTAS_ESPERADAS <= vistas(conn))
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     chequear(f"user_version actualizada a {LATEST_VERSION}", version == LATEST_VERSION)
     chequear(

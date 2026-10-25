@@ -12,15 +12,22 @@ jobs:
   # rojo. Los jobs de empaquetado dependen de este, así que un test roto
   # impide generar instaladores.
   tests:
-    name: Tests (pytest)
+    name: Tests (pytest, Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      # Extremos del rango soportado (requires-python >= 3.9) y la versión
+      # con la que se empaquetan los instaladores. Sin fail-fast, un fallo
+      # en una versión no oculta el resultado de las demás.
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install system dependencies (tkinter + display virtual)
         # python3-tk/tk-dev: la app es Tkinter.
@@ -39,7 +46,12 @@ jobs:
           # (reportlab, openpyxl, cryptography, ttkthemes...). pywin32 va
           # marcado para Windows, así que pip lo omite en Linux.
           python -m pip install -r requirements.txt
-          python -m pip install pytest
+          python -m pip install pytest ruff==0.17.2
+
+      - name: Lint (ruff)
+        # Errores de sintaxis y de pyflakes (nombres sin definir, imports
+        # sin usar...). Reglas y versión objetivo en pyproject.toml.
+        run: ruff check src tests
 
       - name: Verify test environment is really usable
         # Sin esto el CI podría quedar verde sin ejecutar nada útil:

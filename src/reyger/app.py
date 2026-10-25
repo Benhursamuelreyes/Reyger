@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import traceback
@@ -67,6 +68,9 @@ def _show_native_error(message):
 def _install_crash_handler():
     def handler(exc_type, exc_value, exc_tb):
         _write_crash(exc_type, exc_value, exc_tb)
+        logging.getLogger("reyger").critical(
+            "Excepción no controlada", exc_info=(exc_type, exc_value, exc_tb)
+        )
         try:
             _show_native_error(f"Ocurrió un error inesperado.\n\n{exc_value}\n\nDetalle guardado en crash.log")
         except Exception:
@@ -78,7 +82,11 @@ def _install_crash_handler():
 
 
 def main():
+    from .core.registro import configurar_registro
+
+    log = configurar_registro()
     _install_crash_handler()
+    log.info("Inicio de Reyger")
     from .core.migrations import ensure_database
 
     ensure_database()

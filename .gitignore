@@ -7,3 +7,11 @@ config.json
 *.pkg.tar.*
 .venv/
 .idea/
+
+# Datos locales de desarrollo (la plantilla vive en src/reyger/assets/)
+/database.db
+/database.db-wal
+/database.db-shm
+/facturas/
+/crash.log
+/reyger.log*

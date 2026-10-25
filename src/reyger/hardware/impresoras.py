@@ -8,6 +8,7 @@ Permite seleccionar y imprimir documentos a cualquier impresora disponible.
   plataformas; si las herramientas CUPS no existen, devuelve lista vacía.
 """
 
+import logging
 import os
 import platform
 import shutil
@@ -15,6 +16,8 @@ import subprocess
 import tkinter as tk
 from tkinter import messagebox, ttk
 from ..config import ConfigManager
+
+log = logging.getLogger(__name__)
 
 SISTEMA = platform.system()
 
@@ -25,7 +28,7 @@ try:
 except ImportError:
     WINDOWS_PRINTING_AVAILABLE = False
     if SISTEMA == "Windows":
-        print("Advertencia: pywin32 no está instalado. La funcionalidad de impresoras estará limitada.")
+        log.warning("pywin32 no está instalado. La funcionalidad de impresoras estará limitada.")
 
 
 class GestorImpresoras:
@@ -80,8 +83,8 @@ class GestorImpresoras:
                 if printer_info[2] and printer_info[2].strip():
                     impresoras.append(printer_info[2])
 
-        except Exception as e:
-            print(f"Error obteniendo impresoras: {e}")
+        except Exception:
+            log.exception("Error obteniendo impresoras")
 
         return impresoras
 
@@ -111,8 +114,8 @@ class GestorImpresoras:
                     for linea in salida.stdout.splitlines()
                     if linea.strip()
                 ]
-        except Exception as e:
-            print(f"Error listando impresoras CUPS: {e}")
+        except Exception:
+            log.exception("Error listando impresoras CUPS")
 
         try:
             salida = subprocess.run(
@@ -144,7 +147,7 @@ class GestorImpresoras:
                 capture_output=True, timeout=10,
             )
             if salida.returncode != 0:
-                print(
+                log.warning(
                     "wmic no disponible; no se pudieron listar las impresoras "
                     f"({salida.returncode})"
                 )
@@ -157,13 +160,13 @@ class GestorImpresoras:
                 if linea.strip() and (partes := linea.split())
             ]
         except FileNotFoundError:
-            print(
+            log.warning(
                 "wmic no está instalado; instale pywin32 para listar y usar "
                 "las impresoras de Windows."
             )
             return []
-        except Exception as e:
-            print(f"Error listando impresoras con wmic: {e}")
+        except Exception:
+            log.exception("Error listando impresoras con wmic")
             return []
     
     def imprimir_archivo(self, ruta_archivo, nombre_impresora=None):
@@ -178,14 +181,14 @@ class GestorImpresoras:
             Boolean indicando éxito
         """
         if not os.path.exists(ruta_archivo):
-            print(f"Error: El archivo {ruta_archivo} no existe")
+            log.warning(f"El archivo {ruta_archivo} no existe")
             return False
         
         if nombre_impresora is None:
             nombre_impresora = self.impresora_predeterminada
         
         if nombre_impresora is None:
-            print("Error: No hay impresora especificada")
+            log.warning("No hay impresora especificada")
             return False
         
         try:
@@ -197,14 +200,14 @@ class GestorImpresoras:
                 return self._imprimir_fallback(ruta_archivo, nombre_impresora)
             # Linux y macOS: CUPS
             return self._imprimir_con_cups(ruta_archivo, nombre_impresora)
-        except Exception as e:
-            print(f"Error imprimiendo: {e}")
+        except Exception:
+            log.exception("Error imprimiendo")
             return False
 
     def _imprimir_con_cups(self, ruta_archivo, nombre_impresora):
         """Imprime un archivo con ``lp`` (Linux/macOS) en la impresora dada."""
         if shutil.which("lp") is None:
-            print("Error: CUPS (lp) no está disponible en este sistema")
+            log.warning("CUPS (lp) no está disponible en este sistema")
             return False
 
         comando = ["lp"]
@@ -216,8 +219,8 @@ class GestorImpresoras:
                 comando, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60
             )
             return resultado.returncode == 0
-        except Exception as e:
-            print(f"Error imprimiendo con CUPS: {e}")
+        except Exception:
+            log.exception("Error imprimiendo con CUPS")
             return False
     
     def _imprimir_con_win32(self, ruta_archivo, nombre_impresora):
@@ -244,8 +247,8 @@ class GestorImpresoras:
                 )
                 return True
             return self._imprimir_fallback(ruta_archivo, nombre_impresora)
-        except Exception as e:
-            print(f"Error imprimiendo con win32print: {e}")
+        except Exception:
+            log.exception("Error imprimiendo con win32print")
             return False
 
     def _imprimir_fallback(self, ruta_archivo, nombre_impresora):
@@ -270,7 +273,7 @@ class GestorImpresoras:
                 comando, capture_output=True, timeout=120
             )
             if proceso.returncode != 0:
-                print(
+                log.warning(
                     "Error imprimiendo con PowerShell "
                     f"({proceso.returncode}): "
                     f"{proceso.stderr.decode(errors='replace').strip()}"
@@ -278,13 +281,13 @@ class GestorImpresoras:
                 return False
             return True
         except FileNotFoundError:
-            print(
+            log.warning(
                 "No se encontró PowerShell ni pywin32: no se puede imprimir "
                 "en Windows."
             )
             return False
-        except Exception as e:
-            print(f"Error imprimiendo: {e}")
+        except Exception:
+            log.exception("Error imprimiendo")
             return False
     
     def obtener_impresora_predeterminada(self):
@@ -377,7 +380,7 @@ class DialogoSeleccionImpresora(tk.Toplevel):
         frame_opciones = tk.Frame(self, bg=self.colors["bg_principal"])
         frame_opciones.pack(fill="x", padx=20, pady=10)
         
-        self.var_color = tk.BooleanVar(value=False)
+        self.var_color = tk.BooleanVar(self, value=False)
         check_color = tk.Checkbutton(
             frame_opciones,
             text="Impresión a color",
@@ -389,7 +392,7 @@ class DialogoSeleccionImpresora(tk.Toplevel):
         )
         check_color.pack(anchor="w")
         
-        self.var_dos_lados = tk.BooleanVar(value=False)
+        self.var_dos_lados = tk.BooleanVar(self, value=False)
         check_dos_lados = tk.Checkbutton(
             frame_opciones,
             text="Impresion a doble cara",

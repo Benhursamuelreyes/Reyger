@@ -1,6 +1,7 @@
+import logging
 import os
 
-from tkinter import Tk, Frame, PhotoImage, ttk
+from tkinter import Tk, Frame, PhotoImage, messagebox, ttk
 
 try:
     from ttkthemes import ThemedStyle
@@ -10,7 +11,10 @@ except ImportError:
 from ..container import Container
 from ..config import ConfigManager
 from ..resources import get_bundled_path
-from .ui import GEOMETRIA_PRINCIPAL, MINIMO_PRINCIPAL
+from .ui import GEOMETRIA_PRINCIPAL, MINIMO_PRINCIPAL, aplicar_colores_por_defecto
+
+
+log = logging.getLogger(__name__)
 
 
 class Manager(Tk):
@@ -18,6 +22,7 @@ class Manager(Tk):
         super().__init__(*args, **kwargs)
         self.config_manager = ConfigManager()
         self.colors = self.config_manager.get_colors()
+        aplicar_colores_por_defecto(self, self.colors)
 
         self.title("Reyger versión BETA")
         self.resizable(True, True)
@@ -29,6 +34,36 @@ class Manager(Tk):
 
         self.Container = None
         self.construir_container()
+        self.protocol("WM_DELETE_WINDOW", self._al_cerrar)
+
+    def _al_cerrar(self):
+        """Hace la copia automática del día y cierra la aplicación.
+
+        Un fallo en la copia se registra pero nunca impide cerrar.
+        """
+        from ..core import db
+        from ..core.backup import BackupError
+
+        try:
+            db.optimizar()
+        except Exception:
+            log.warning("PRAGMA optimize falló al cerrar", exc_info=True)
+        if ConfigManager().get("respaldo_automatico", True):
+            try:
+                from ..core.backup import respaldo_automatico
+
+                ruta = respaldo_automatico()
+                log.info("Copia automática guardada en %s", ruta)
+            except BackupError as e:
+                # Base dañada: es lo único que el usuario debe saber al cerrar.
+                log.error("Copia automática no válida: %s", e)
+                try:
+                    messagebox.showwarning("Copia de seguridad", str(e), parent=self)
+                except Exception:
+                    pass
+            except Exception:
+                log.exception("No se pudo hacer la copia automática al cerrar")
+        self.destroy()
 
     def _set_icon(self):
         # PNG pequeño para iconphoto (evita cargar el master 1024×1024).
@@ -48,6 +83,20 @@ class Manager(Tk):
                 self.iconbitmap(ico)
             except Exception:
                 pass
+
+    def report_callback_exception(self, exc_type, exc_value, exc_tb):
+        # Por defecto Tk imprime la traza en stderr, que en la app
+        # empaquetada (sin consola) se pierde: se registra y se avisa.
+        log.error("Error en un evento de la interfaz", exc_info=(exc_type, exc_value, exc_tb))
+        try:
+            messagebox.showerror(
+                "Error",
+                f"Ocurrió un error inesperado:\n\n{exc_value}\n\n"
+                "El detalle se ha guardado en reyger.log.",
+                parent=self,
+            )
+        except Exception:
+            pass
 
     def construir_container(self):
         if self.Container is not None:

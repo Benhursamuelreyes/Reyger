@@ -131,28 +131,31 @@ def test_bd_almacena_numeros_puros():
     fila = bp.obtener()
     assert fila["moneda"] == "USD"
 
-    # Simula una venta: el importe se persiste como número puro, no como
-    # cadena formateada.
+    # Una venta: los importes se guardan como céntimos enteros (nunca como
+    # texto formateado en la moneda) y la vista «ventas» los da en unidades.
     import reyger.core.db as modulo_db
-    conn = modulo_db.get_connection()
-    conn.execute(
-        """
-        INSERT INTO inventario (nombre, proveedor, precio, costo, stock, tipo_iva)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
+    from reyger.domain import ventas as dv
+
+    modulo_db.execute(
+        "INSERT INTO inventario (nombre, proveedor, precio, costo, stock, tipo_iva)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
         ("Producto X", "Proveedor", 10.5, 8.0, 100, 21.0),
     )
-    conn.execute(
-        """
-        INSERT INTO ventas (factura, nombre_articulo, valor_articulo, cantidad,
-            subtotal, metodo_pago, tipo_iva, cuota_iva, base_imponible)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (1, "Producto X", 10.5, 2, 21.0, "Efectivo", 21.0, 3.64, 17.36),
+    doc = dv.registrar_venta(
+        [dv.LineaVenta("Producto X", 10.5, 2, 21.0)], "ticket", "Efectivo", 21.0
     )
-    conn.commit()
 
-    venta = modulo_db.query_one("SELECT valor_articulo, subtotal FROM ventas WHERE id = 1")
+    linea = modulo_db.query_one(
+        "SELECT precio_cent, subtotal_cent FROM lineas_documento"
+        " JOIN documentos d ON d.id = documento_id WHERE d.numero = ?",
+        (doc.numero,),
+    )
+    assert (linea["precio_cent"], linea["subtotal_cent"]) == (1050, 2100)
+    assert all(isinstance(v, int) for v in tuple(linea))
+
+    venta = modulo_db.query_one(
+        "SELECT valor_articulo, subtotal FROM ventas WHERE factura = ?", (doc.numero,)
+    )
     assert isinstance(venta["valor_articulo"], float)
     assert isinstance(venta["subtotal"], float)
     assert venta["valor_articulo"] == 10.5

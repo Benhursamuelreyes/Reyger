@@ -9,6 +9,7 @@ tickets) se generan a través de este módulo para garantizar coherencia
 visual y lógica.
 """
 
+import logging
 import os
 from datetime import datetime
 
@@ -16,7 +17,6 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     SimpleDocTemplate,
     Table,
@@ -25,9 +25,10 @@ from reportlab.platypus import (
     Spacer,
     Image,
 )
-from reportlab.pdfgen import canvas
 
 from ..config import ConfigManager
+
+log = logging.getLogger(__name__)
 from ..ui import business_profile as bp
 from ..core import moneda as mod_moneda
 from ..resources import get_output_path
@@ -208,7 +209,7 @@ class PdfDocumento:
                 # ("RODISA 1900 S.L.U.") bajo el borde superior de la página.
                 elementos.append(Spacer(1, SEPARACION_LOGO))
             except Exception:
-                pass
+                log.warning("No se pudo añadir el logotipo %s al PDF", logo_path, exc_info=True)
 
         elementos.append(Paragraph(
             f"<b>{titulo_documento.upper()}</b>",

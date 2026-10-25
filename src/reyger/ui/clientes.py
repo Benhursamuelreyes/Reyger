@@ -380,7 +380,7 @@ class Clientes(tk.Frame):
                 "(SELECT COUNT(*) FROM facturas_verifactu WHERE cliente_id = ?) + "
                 "(SELECT COUNT(*) FROM albaranes WHERE cliente_id = ?) + "
                 "(SELECT COUNT(*) FROM presupuestos WHERE cliente_id = ?) + "
-                "(SELECT COUNT(*) FROM ventas WHERE cliente_id = ?) "
+                "(SELECT COUNT(*) FROM documentos WHERE cliente_id = ?) "
                 "AS total",
                 (self.cliente_id_actual,) * 4,
             )

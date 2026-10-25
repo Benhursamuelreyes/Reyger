@@ -23,7 +23,6 @@ from typing import Optional
 
 from ..core import correlativos
 from ..core import db
-from ..ui import business_profile as bp
 
 
 def _formato_fecha_aeat(fecha: str) -> str:

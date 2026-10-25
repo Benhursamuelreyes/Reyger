@@ -52,6 +52,14 @@ icon = "src/reyger/assets/icono"
 # los inserta en sys.path como red de seguridad.
 stub_binary_revision = "12"
 
+[tool.ruff]
+# Mínimo declarado en requires-python: ruff avisa de sintaxis más nueva.
+target-version = "py39"
+
+[tool.ruff.lint]
+# Solo errores reales: sintaxis (E9) y pyflakes (F). El estilo no bloquea CI.
+select = ["E9", "F"]
+
 [tool.pytest.ini_options]
 markers = [
     "orden_dependiente: falla o cuelga solo en la suite completa; se ejecuta aislado o via el main() de su harness",

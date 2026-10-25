@@ -1,3 +1,4 @@
+import logging
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
@@ -22,6 +23,8 @@ from ..resources import (
     get_output_path,
 )
 from ..resources import open_file as abrir_fichero
+
+log = logging.getLogger(__name__)
 
 #: Etiquetas visibles del selector de letra ↔ claves de ESCALAS_LETRA
 ETIQUETAS_LETRA = {
@@ -110,55 +113,55 @@ class Ajustes(tk.Frame):
         self.crear_seccion_tema(main_frame)
         
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
         # Sección 2: Tamaño de fuente
         self.crear_seccion_tamaño_fuente(main_frame)
         
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
         # Sección 3: Logo
         self.crear_seccion_logo(main_frame)
         
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
         # Sección 4: Información de la empresa
         self.crear_seccion_empresa(main_frame)
         
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
         # Sección 4b: Moneda y configuración regional
         self.crear_seccion_moneda(main_frame)
         
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
         # Sección 5: VeriFactu (AEAT)
         self.crear_seccion_verifactu(main_frame)
 
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
         # Sección 6: Opciones adicionales
         self.crear_seccion_opciones(main_frame)
 
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
 
         # Sección 6: Impresora térmica
         self.crear_seccion_impresora_termica(main_frame)
 
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
 
         # Sección 7: Categorías de productos
         self.crear_seccion_categorias(main_frame)
 
         # Separador
-        tk.Frame(main_frame, bg="#CCCCCC", height=2).pack(fill="x", pady=15)
+        tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
 
         # Sección 8: Base de datos (exportar/importar)
         self.crear_seccion_base_datos(main_frame)
@@ -252,7 +255,7 @@ class Ajustes(tk.Frame):
         frame_radio = tk.Frame(frame, bg=self.colors["bg_principal"])
         frame_radio.pack(fill="x", pady=10)
         
-        self.var_tema = tk.StringVar(value=self.config_manager.get("tema"))
+        self.var_tema = tk.StringVar(self, value=self.config_manager.get("tema"))
         
         radio_claro = tk.Radiobutton(
             frame_radio,
@@ -429,7 +432,7 @@ class Ajustes(tk.Frame):
             self.bp_entries[clave] = entry
 
         # Separador visual dentro de la sección
-        tk.Frame(frame, bg="#CCCCCC", height=1).pack(fill="x", pady=10)
+        tk.Frame(frame, bg=self.colors["separador"], height=1).pack(fill="x", pady=10)
 
         lbl_info = tk.Label(
             frame,
@@ -590,7 +593,7 @@ class Ajustes(tk.Frame):
         fila_activa = tk.Frame(frame, bg=self.colors["bg_principal"])
         fila_activa.pack(fill="x", padx=20, pady=(0, 6))
         self.verifactu_var = tk.BooleanVar(
-            value=bool(bp.obtener_campo("verifactu_activo"))
+            self, value=bool(bp.obtener_campo("verifactu_activo"))
         )
         tk.Checkbutton(
             fila_activa,
@@ -615,7 +618,7 @@ class Ajustes(tk.Frame):
             justify="left",
         ).pack(anchor="w")
 
-        tk.Frame(frame, bg="#CCCCCC", height=1).pack(fill="x", pady=(6, 10))
+        tk.Frame(frame, bg=self.colors["separador"], height=1).pack(fill="x", pady=(6, 10))
 
         self._verifactu_estado_labels = {}
 
@@ -643,7 +646,7 @@ class Ajustes(tk.Frame):
             lbl.pack(side="right")
             self._verifactu_estado_labels[clave] = lbl
 
-        tk.Frame(frame, bg="#CCCCCC", height=1).pack(fill="x", pady=10)
+        tk.Frame(frame, bg=self.colors["separador"], height=1).pack(fill="x", pady=10)
 
         frame_botones = tk.Frame(frame, bg=self.colors["bg_principal"])
         frame_botones.pack(fill="x", padx=20, pady=(5, 10))
@@ -700,27 +703,15 @@ class Ajustes(tk.Frame):
     def _verifactu_refrescar_estado(self, frame=None):
         """Actualiza las etiquetas de estado de VeriFactu."""
         try:
-            from ..core import db as mod_db
-            pendientes = mod_db.query_one(
-                "SELECT COUNT(*) AS n FROM facturas_verifactu WHERE estado_envio = 'pendiente'"
-            )
-            enviadas = mod_db.query_one(
-                "SELECT COUNT(*) AS n FROM facturas_verifactu WHERE estado_envio = 'enviado'"
-            )
-            errores = mod_db.query_one(
-                "SELECT COUNT(*) AS n FROM facturas_verifactu WHERE estado_envio = 'error'"
-            )
-            self._verifactu_estado_labels["pendientes"].config(
-                text=str(pendientes["n"] if pendientes else 0)
-            )
-            self._verifactu_estado_labels["enviadas"].config(
-                text=str(enviadas["n"] if enviadas else 0)
-            )
-            self._verifactu_estado_labels["errores"].config(
-                text=str(errores["n"] if errores else 0)
-            )
+            from ..domain.facturas_verifactu import contar_por_estado
+
+            cuentas = contar_por_estado()
+            for etiqueta, estado in (
+                ("pendientes", "pendiente"), ("enviadas", "enviado"), ("errores", "error"),
+            ):
+                self._verifactu_estado_labels[etiqueta].config(text=str(cuentas[estado]))
         except Exception:
-            pass
+            log.warning("No se pudo leer el estado de VeriFactu", exc_info=True)
 
     def _verifactu_exportar_xml(self):
         """Exporta facturas pendientes a XML para envío a AEAT."""
@@ -753,8 +744,7 @@ class Ajustes(tk.Frame):
 
     def _verifactu_exportar_csv(self):
         """Exporta un CSV de verificación con hashes y cadenas."""
-        from ..core import db as mod_db
-        import csv
+        from ..domain import verifactu_xml as vx
 
         ruta = filedialog.asksaveasfilename(
             title="Exportar CSV de verificación",
@@ -766,27 +756,7 @@ class Ajustes(tk.Frame):
             return
 
         try:
-            filas = mod_db.query(
-                "SELECT numero_factura, fecha, nif_emisor, total_iva, total, "
-                "huella, huella_anterior, numero_ord, tipo_comprobante, "
-                "estado_envio, fecha_generacion "
-                "FROM facturas_verifactu ORDER BY numero_ord ASC, id ASC"
-            )
-            with open(ruta, "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    "numero_factura", "fecha", "nif_emisor", "cuota_iva",
-                    "importe_total", "huella", "huella_anterior", "numero_ord",
-                    "tipo_comprobante", "estado_envio", "fecha_generacion",
-                ])
-                for fila in filas:
-                    writer.writerow([
-                        fila["numero_factura"], fila["fecha"], fila["nif_emisor"],
-                        fila["total_iva"], fila["total"], fila["huella"],
-                        fila["huella_anterior"], fila["numero_ord"],
-                        fila["tipo_comprobante"], fila["estado_envio"],
-                        fila["fecha_generacion"],
-                    ])
+            vx.exportar_csv_verificacion(ruta)
             messagebox.showinfo("VeriFactu", f"CSV exportado a:\n{ruta}")
         except Exception as e:
             messagebox.showerror("Error", f"Error al exportar CSV: {e}")
@@ -842,7 +812,7 @@ class Ajustes(tk.Frame):
         frame.pack(fill="x", pady=10)
         
         # Mostrar hora en facturas
-        self.var_hora = tk.BooleanVar(value=self.config_manager.get("mostrar_hora"))
+        self.var_hora = tk.BooleanVar(self, value=self.config_manager.get("mostrar_hora"))
         check_hora = tk.Checkbutton(
             frame,
             text="⏰ Mostrar hora en facturas",
@@ -864,7 +834,7 @@ class Ajustes(tk.Frame):
         )
         label_decimales.pack(anchor="w", padx=20, pady=(10, 5))
         
-        self.var_decimales = tk.IntVar(value=self.config_manager.get("redondear_decimales"))
+        self.var_decimales = tk.IntVar(self, value=self.config_manager.get("redondear_decimales"))
         
         frame_decimales = tk.Frame(frame, bg=self.colors["bg_principal"])
         frame_decimales.pack(anchor="w", padx=20, pady=(0, 15))
@@ -880,7 +850,47 @@ class Ajustes(tk.Frame):
                 font=f"sans {self.config_manager.get_tamaño_fuente()} bold"
             )
             radio.pack(side="left", padx=10)
-    
+
+        # Copia automática diaria al cerrar la aplicación
+        self.var_respaldo_automatico = tk.BooleanVar(
+            self, value=bool(self.config_manager.get("respaldo_automatico", True))
+        )
+        tk.Checkbutton(
+            frame,
+            text="💾 Copia de seguridad automática al cerrar (se conservan 7 días)",
+            variable=self.var_respaldo_automatico,
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            selectcolor=self.colors["bg_secundario"],
+        ).pack(anchor="w", padx=20, pady=5)
+
+        # Umbral del aviso de stock bajo en Inventario
+        frame_stock = tk.Frame(frame, bg=self.colors["bg_principal"])
+        frame_stock.pack(anchor="w", padx=20, pady=(5, 15))
+        tk.Label(
+            frame_stock,
+            text="⚠️ Avisar de stock bajo con",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+        ).pack(side="left")
+        self.var_umbral_stock = tk.IntVar(
+            self, value=int(self.config_manager.get("umbral_stock_bajo", 5))
+        )
+        tk.Spinbox(
+            frame_stock, from_=0, to=9999, width=6,
+            textvariable=self.var_umbral_stock,
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+        ).pack(side="left", padx=8)
+        tk.Label(
+            frame_stock,
+            text="unidades o menos (0 = solo agotados)",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()}",
+        ).pack(side="left")
+
     def crear_seccion_impresora_termica(self, parent):
         """Sección de configuración de la impresora de tickets."""
         frame = tk.LabelFrame(
@@ -934,7 +944,7 @@ class Ajustes(tk.Frame):
         label_ancho.pack(anchor="w", padx=20, pady=(5, 5))
 
         self.var_ancho_ticket = tk.IntVar(
-            value=self.config_manager.get("ancho_ticket", 80)
+            self, value=self.config_manager.get("ancho_ticket", 80)
         )
         frame_anchos = tk.Frame(frame, bg=self.colors["bg_principal"])
         frame_anchos.pack(anchor="w", padx=20, pady=(0, 10))
@@ -961,7 +971,7 @@ class Ajustes(tk.Frame):
         label_letra.pack(anchor="w", padx=20, pady=(5, 5))
 
         self.var_letra_ticket = tk.StringVar(
-            value=ETIQUETAS_LETRA.get(
+            self, value=ETIQUETAS_LETRA.get(
                 self.config_manager.get("letra_ticket", "muy_grande"), "Muy grande"
             )
         )
@@ -987,7 +997,7 @@ class Ajustes(tk.Frame):
             ("Alineación datos fiscales:", "alineacion_datos", "izquierda"),
             ("Alineación pie de página:", "alineacion_pie", "centro"),
         ]:
-            var = tk.StringVar(value=self.config_manager.get(clave, default))
+            var = tk.StringVar(self, value=self.config_manager.get(clave, default))
             self._alineaciones_vars[clave] = var
             tk.Label(
                 frame_alineaciones,
@@ -1329,7 +1339,7 @@ class Ajustes(tk.Frame):
 
         _subseccion(
             "👥 Clientes",
-            "Exporta o importa solo la lista de clientes (…​.xlsx o .csv). "
+            "Exporta o importa solo la lista de clientes (….xlsx o .csv). "
             "Se identifican por su NIF/CIF.",
             ("📤 Exportar clientes…", lambda: self._exportar_datos("clientes")),
             ("📥 Importar clientes…", lambda: self._importar_datos("clientes")),
@@ -1337,14 +1347,14 @@ class Ajustes(tk.Frame):
         )
         _subseccion(
             "🛒 Productos / Catálogo",
-            "Exporta o importa solo el catálogo de productos (…​.xlsx o .csv). "
+            "Exporta o importa solo el catálogo de productos (….xlsx o .csv). "
             "Se identifican por su Código/SKU.",
             ("📤 Exportar catálogo…", lambda: self._exportar_datos("productos")),
             ("📥 Importar catálogo…", lambda: self._importar_datos("productos")),
             ("📄 Plantilla de productos", lambda: self._plantilla_datos("productos")),
         )
 
-        tk.Frame(frame, bg="#CCCCCC", height=2).pack(fill="x", pady=(0, 10))
+        tk.Frame(frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=(0, 10))
 
         # --- Copia de seguridad completa (opción avanzada) ----------------
         avanzado = tk.LabelFrame(
@@ -1358,7 +1368,7 @@ class Ajustes(tk.Frame):
         )
         avanzado.pack(fill="x")
 
-        self.var_formato_bd = tk.StringVar(value="db")
+        self.var_formato_bd = tk.StringVar(self, value="db")
         for valor, texto in (
             ("db", "Base SQLite (.db) — copia completa"),
             ("excel", "Excel (.xlsx) — una hoja por tabla"),
@@ -1378,7 +1388,7 @@ class Ajustes(tk.Frame):
                 radio.config(state="disabled")
             radio.pack(anchor="w", padx=8, pady=(2, 2))
 
-        self.var_encriptar_bd = tk.BooleanVar(value=False)
+        self.var_encriptar_bd = tk.BooleanVar(self, value=False)
         check_enc = tk.Checkbutton(
             avanzado,
             text="Encriptar copia de seguridad (Fernet AES)",
@@ -1758,6 +1768,8 @@ class Ajustes(tk.Frame):
                 "alineacion_encabezado": self._alineaciones_vars["alineacion_encabezado"].get(),
                 "alineacion_datos": self._alineaciones_vars["alineacion_datos"].get(),
                 "alineacion_pie": self._alineaciones_vars["alineacion_pie"].get(),
+                "respaldo_automatico": bool(self.var_respaldo_automatico.get()),
+                "umbral_stock_bajo": max(0, int(self.var_umbral_stock.get())),
             })
             self.config_manager.save_config()
 
@@ -1815,6 +1827,8 @@ class Ajustes(tk.Frame):
                 "alineacion_encabezado": "centro",
                 "alineacion_datos": "izquierda",
                 "alineacion_pie": "centro",
+                "respaldo_automatico": True,
+                "umbral_stock_bajo": 5,
             }
             
             self.config_manager.config_data = default_config
@@ -1842,6 +1856,8 @@ class Ajustes(tk.Frame):
                 }.get(clave, "centro"))
             if self.verifactu_var is not None:
                 self.verifactu_var.set(True)
+            self.var_respaldo_automatico.set(True)
+            self.var_umbral_stock.set(5)
             self.logo_label.config(image="", text="📷\nSin logo")
             self.logo_image_preview = None
             

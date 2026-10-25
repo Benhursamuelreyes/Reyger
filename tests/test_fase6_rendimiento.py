@@ -61,7 +61,10 @@ def test_indices_y_plantilla():
     }
     esperados = {
         "idx_inventario_codigo_barras", "idx_inventario_nombre",
-        "idx_ventas_fecha", "idx_ventas_factura", "idx_clientes_nombre",
+        # Desde el esquema 14 las ventas están en «documentos» (idx_ventas_*
+        # se fueron con la tabla antigua).
+        "idx_documentos_fecha", "idx_lineas_documento_documento_id",
+        "idx_clientes_nombre",
     }
     chequear("Los 5 índices existen en la plantilla",
              esperados <= nombres, str(sorted(esperados - nombres)))
@@ -224,8 +227,10 @@ def test_exportacion_en_hilo():
         # Los parches deben seguir activos mientras se bombean eventos:
         # el callback del hilo llega DESPUÉS de que exportar_base_datos
         # haya retornado.
+        # askyesno: con WAL activo se pide confirmar el aviso de copia manual.
         with patch.object(mod_ajustes.filedialog, "asksaveasfilename",
                           return_value=destino), \
+             patch.object(mod_ajustes.messagebox, "askyesno", return_value=True), \
              patch.object(mod_ajustes.messagebox, "showinfo",
                           lambda *a, **k: mensajes.append(a)), \
              patch.object(mod_ajustes.messagebox, "showerror",

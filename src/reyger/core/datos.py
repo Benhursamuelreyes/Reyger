@@ -30,6 +30,7 @@ import sqlite3
 import unicodedata
 
 from .backup import EXCEL_DISPONIBLE, BackupError, respaldar_bd_actual
+from .db import conectar
 from ..domain.fiscal import TIPOS_IVA, normalizar_tipo_iva
 from ..resources import get_db_path
 
@@ -358,7 +359,7 @@ def plantilla_clientes(ruta):
 
 def exportar_productos(ruta, db_path=None):
     """Exporta el catálogo (tabla ``inventario``) a .xlsx o .csv."""
-    conn = sqlite3.connect(str(db_path or get_db_path()))
+    conn = conectar(db_path or get_db_path())
     try:
         cursor = conn.execute(
             """
@@ -384,7 +385,7 @@ def exportar_productos(ruta, db_path=None):
 
 def exportar_clientes(ruta, db_path=None):
     """Exporta los clientes (tabla ``clientes``) a .xlsx o .csv."""
-    conn = sqlite3.connect(str(db_path or get_db_path()))
+    conn = conectar(db_path or get_db_path())
     try:
         cursor = conn.execute(
             """
@@ -487,7 +488,7 @@ def importar_productos(ruta, modo="actualizar", db_path=None):
 
     destino = str(db_path or get_db_path())
     respaldo = respaldar_bd_actual(destino)
-    conn = sqlite3.connect(destino)
+    conn = conectar(destino)
     insertados = actualizados = ignorados = 0
     try:
         for registro in registros:
@@ -611,7 +612,7 @@ def importar_clientes(ruta, modo="actualizar", db_path=None):
 
     destino = str(db_path or get_db_path())
     respaldo = respaldar_bd_actual(destino)
-    conn = sqlite3.connect(destino)
+    conn = conectar(destino)
     insertados = actualizados = ignorados = 0
     try:
         for registro in registros:
