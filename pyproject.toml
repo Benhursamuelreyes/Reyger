@@ -4,7 +4,7 @@ version = "1.2.0"
 description = "Reyger — Sistema de ventas y facturación"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "reportlab>=4.0",
     "qrcode[pil]>=7.0",
@@ -54,7 +54,7 @@ stub_binary_revision = "12"
 
 [tool.ruff]
 # Mínimo declarado en requires-python: ruff avisa de sintaxis más nueva.
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 # Solo errores reales: sintaxis (E9) y pyflakes (F). El estilo no bloquea CI.
