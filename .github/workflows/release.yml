@@ -222,7 +222,7 @@ jobs:
           path: dist/*.dmg
 
   release:
-    name: Publish Pre-release
+    name: Publish Release
     needs: [tests, linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
@@ -249,30 +249,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish Pre-release and attach assets
+      - name: Prepare release files (fixed names, SHA256SUMS, notes)
+        # Copia cada instalador con su nombre de versión y con un nombre fijo
+        # (los enlaces …/releases/latest/download/… del README), calcula
+        # SHA256SUMS.txt y saca las notas de la sección del CHANGELOG. Falla
+        # si el CHANGELOG no tiene la sección de la versión etiquetada.
+        run: python3 scripts/preparar_release.py dist "${{ github.ref_name }}" release
+
+      - name: Publish release and attach assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Reyger-Linux/*.AppImage
-            dist/Reyger-Windows/*.msi
-            dist/Reyger-macOS/*.dmg
+            release/Reyger-*
+            release/SHA256SUMS.txt
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
           fail_on_unmatched_files: true
-          body: |
-            ## Reyger ${{ github.ref_name }} (Release)
-
-            Instaladores oficiales de la versión **${{ github.ref_name }}** para las tres plataformas.
-
-            ### Descarga
-
-            | Plataforma | Formato | Descripción |
-            |------------|---------|-------------|
-            | Windows | `.msi` | Instalador MSI para Windows 10/11 (asistente de instalación) |
-            | macOS | `.dmg` | Imagen de disco DMG para macOS (arrastra a Aplicaciones) |
-            | Linux | `.AppImage` | Ejecutable portable AppImage (hazlo ejecutable con `chmod +x`) |
-
-            ### Notas
-
-            - Versión **${{ github.ref_name }}**: revisa las notas de versión a continuación.
-            - Las notas de versión con el detalle de commits y cambios se generan automáticamente.
+          body_path: release/NOTAS.md

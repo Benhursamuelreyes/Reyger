@@ -1,7 +1,11 @@
+# Mismas dependencias que [project].dependencies de pyproject.toml (lo
+# comprueba tests/test_dependencias.py) más las de desarrollo en Windows.
 reportlab>=4.0
 qrcode[pil]>=7.0
 Pillow>=10.0
 openpyxl>=3.1
-ttkthemes>=3.0
-cryptography>=42.0
+ttkthemes>=3.0; platform_system != 'Darwin'
+platformdirs>=4.0
+# CVE-2026-69249 no aplica (solo Fernet, sin X.509); >=49 rompe wheels macOS x86_64
+cryptography>=42.0,<49
 pywin32>=306; platform_system == "Windows"
