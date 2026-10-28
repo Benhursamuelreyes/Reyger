@@ -54,10 +54,67 @@ def get_config_path():
     return str(get_user_data_path() / "config.json")
 
 
+def _carpeta_escribible(path):
+    """Crea *path* y comprueba que se puede escribir en ella.
+
+    ``os.access`` no es fiable en Windows (ignora las ACL), así que se
+    prueba creando un fichero temporal de verdad.
+    """
+    import tempfile
+
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=path):
+            pass
+        return True
+    except OSError:
+        return False
+
+
 def get_output_path(subdir):
-    path = get_user_data_path() / subdir
-    path.mkdir(parents=True, exist_ok=True)
-    return str(path)
+    """Carpeta donde se guardan los documentos generados (PDF).
+
+    Normalmente ``<datos de usuario>/<subdir>``. Si esa carpeta no admite
+    escritura (permisos, antivirus, carpeta sincronizada bloqueada…) se usa
+    ``~/Documents/Reyger/<subdir>`` y, en último caso, la carpeta temporal
+    del sistema, en vez de fallar con ``Permission denied``.
+    """
+    import tempfile
+
+    candidatas = (
+        get_user_data_path() / subdir,
+        Path.home() / "Documents" / "Reyger" / subdir,
+        Path(tempfile.gettempdir()) / "Reyger" / subdir,
+    )
+    for path in candidatas:
+        if _carpeta_escribible(path):
+            if path != candidatas[0]:
+                log.warning("Sin permiso de escritura en %s; se usa %s", candidatas[0], path)
+            return str(path)
+    raise PermissionError(
+        f"No hay ninguna carpeta con permiso de escritura para «{subdir}»"
+    )
+
+
+def ruta_escribible(path):
+    """Devuelve *path* o, si está bloqueado, una variante libre a su lado.
+
+    Windows bloquea el PDF mientras está abierto en el visor (Edge, Adobe
+    Reader…): reescribirlo al reimprimir la misma factura fallaba con
+    ``PermissionError: [Errno 13] Permission denied``. En ese caso se usa
+    ``nombre_1.pdf``, ``nombre_2.pdf``…
+    """
+    base, ext = os.path.splitext(path)
+    for n in range(100):
+        candidato = path if n == 0 else f"{base}_{n}{ext}"
+        if not os.path.exists(candidato):
+            return candidato
+        try:
+            with open(candidato, "r+b"):
+                return candidato
+        except OSError:
+            continue
+    raise PermissionError(f"No se puede escribir {path}: el fichero está en uso")
 
 
 def get_bundled_path(relative_path):

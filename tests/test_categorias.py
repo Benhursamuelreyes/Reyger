@@ -246,8 +246,8 @@ def test_mapas_y_filtro_ventas():
         root.withdraw()
         ventas = Ventas(root)
         chequear(
-            "botones de categoria creados",
-            set(ventas.botones_categoria) >= {"Todos", "Frutas", "Informática"},
+            "desplegable de categorias relleno",
+            set(ventas.combo_categoria["values"]) >= {"Todos", "Frutas", "Informática"},
         )
         ventas.filtrar_por_categoria("Frutas")
         chequear(
@@ -259,8 +259,7 @@ def test_mapas_y_filtro_ventas():
             "Todos restaura el listado completo",
             len(list(ventas.entry_nombre["values"])) == 3,
         )
-        btn_activo = ventas.botones_categoria["Todos"].cget("bg")
-        chequear("boton activo resaltado", btn_activo != ventas.botones_categoria["Frutas"].cget("bg"))
+        chequear("desplegable muestra la categoria activa", ventas.combo_categoria.get() == "Todos")
         root.destroy()
     finally:
         modulo_db.close()

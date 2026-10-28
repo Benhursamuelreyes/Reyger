@@ -267,17 +267,18 @@ class TicketTermico:
         for linea_extra in self._lineas_negocio():
             self._partes.append(self._just_encabezado)
             self._partes.append(_linea(linea_extra))
-        self._partes += [
-            self._just_encabezado,
-            _linea(self._titulo_documento()),
-            b"\n",
-        ]
+        self._partes += [self._just_encabezado, _linea(self._titulo_documento())]
+        if self.tipo_documento == "prueba":
+            self._partes += [NEGRITA_ON, _linea("*** SIN VALIDEZ FISCAL ***"), NEGRITA_OFF]
+        self._partes.append(b"\n")
         return self
 
     def _titulo_documento(self):
-        """Cabecera del documento según el tipo (ticket o factura)."""
+        """Cabecera del documento según el tipo (ticket, factura o prueba)."""
         if self.tipo_documento == "factura":
             return "FACTURA"
+        if self.tipo_documento == "prueba":
+            return "TICKET DE PRUEBA"
         return "RECIBO DE VENTA"
 
     def _lineas_negocio(self):

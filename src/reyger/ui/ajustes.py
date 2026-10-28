@@ -142,6 +142,9 @@ class Ajustes(tk.Frame):
         # Sección 5: VeriFactu (AEAT)
         self.crear_seccion_verifactu(main_frame)
 
+        # Sección 5b: Modo pruebas
+        self.crear_seccion_modo_pruebas(main_frame)
+
         # Separador
         tk.Frame(main_frame, bg=self.colors["separador"], height=2).pack(fill="x", pady=15)
         
@@ -575,6 +578,50 @@ class Ajustes(tk.Frame):
             font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
             justify="left",
         ).pack(anchor="w", padx=20, pady=(0, 10))
+
+    def crear_seccion_modo_pruebas(self, parent):
+        """Interruptor del modo pruebas (se guarda al pulsarlo)."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🧪 Modo pruebas",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
+            padx=15,
+            pady=10,
+        )
+        frame.pack(fill="x", pady=10)
+        self.modo_pruebas_var = tk.BooleanVar(
+            self, value=bool(self.config_manager.get("modo_pruebas", False))
+        )
+        tk.Checkbutton(
+            frame,
+            variable=self.modo_pruebas_var,
+            command=lambda: self.config_manager.set(
+                "modo_pruebas", self.modo_pruebas_var.get()
+            ),
+            text="Activar modo pruebas",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            activebackground=self.colors["bg_principal"],
+            activeforeground=self.colors["fg_texto"],
+            selectcolor=self.colors["bg_secundario"],
+            font=f"sans {self.config_manager.get_tamaño_fuente()} bold",
+            anchor="w",
+        ).pack(fill="x", padx=20)
+        tk.Label(
+            frame,
+            text="Para practicar o probar impresoras. Las ventas se numeran "
+                 "PRUEBA-0001…, no consumen la numeración oficial, no "
+                 "descuentan stock, no van a Veri*factu ni a los informes, se "
+                 "pueden borrar y se imprimen con la marca «SIN VALIDEZ "
+                 "FISCAL». Desactívalo antes de vender de verdad.",
+            bg=self.colors["bg_principal"],
+            fg=self.colors["fg_texto"],
+            font=f"sans {self.config_manager.get_tamaño_fuente('pequeño')}",
+            wraplength=650,
+            justify="left",
+        ).pack(anchor="w", padx=20)
 
     def crear_seccion_verifactu(self, parent):
         """Crea la sección de configuración y exportación VeriFactu (AEAT)."""

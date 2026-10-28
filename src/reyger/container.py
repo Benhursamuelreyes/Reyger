@@ -151,24 +151,26 @@ class Container(tk.Frame):
         self.frame_botones = tk.Frame(self, bg=self.colors["bg_principal"])
         self.frame_botones.pack(fill="x", side="bottom", padx=20, pady=(0, 10))
 
+        # Icono encima de la etiqueta: se reconoce de un vistazo en el
+        # mostrador sin perder el texto.
         botones = [
-            ("Ventas", "#f4b400", None, self.ventas),
-            ("Inventario", "#c62e26", "white", self.inventario),
-            ("Clientes", "#2ECC71", "white", self.clientes),
-            ("Presupuestos", "#9B59B6", "white", self.presupuestos),
-            ("Albaranes", "#E67E22", "white", self.albaranes),
-            ("Ajustes", "#17A2B8", "white", self.ajustes),
+            ("🛒", "Ventas", "#f4b400", None, self.ventas),
+            ("📦", "Inventario", "#c62e26", "white", self.inventario),
+            ("👥", "Clientes", "#2ECC71", "white", self.clientes),
+            ("📋", "Presupuestos", "#9B59B6", "white", self.presupuestos),
+            ("🚚", "Albaranes", "#E67E22", "white", self.albaranes),
+            ("⚙", "Ajustes", "#17A2B8", "white", self.ajustes),
         ]
-        for texto, bg, fg, comando in botones:
+        for icono, texto, bg, fg, comando in botones:
             boton = Button(
                 self.frame_botones,
                 bg=bg,
                 fg=fg or "black",
                 font=f"sans {self.config_manager.get_tamaño_fuente('subtitulo')} bold",
-                text=texto,
+                text=f"{icono}\n{texto}",
                 command=comando,
             )
-            boton.pack(side="left", expand=True, fill="x", padx=8, ipady=18)
+            boton.pack(side="left", expand=True, fill="x", padx=8, ipady=10)
 
     @staticmethod
     def _aclarar_trazos_oscuros(imagen, color):

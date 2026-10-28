@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib import colors
 from ..config import ConfigManager
 from . import business_profile as bp
-from ..resources import get_db_path, get_output_path
+from ..resources import get_db_path, get_output_path, ruta_escribible
 
 
 class TicketSimplificado:
@@ -98,6 +98,8 @@ class TicketSimplificado:
                 f"Ticket_{numero_factura}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             )
         
+        output_path = ruta_escribible(output_path)
+
         # Crear documento con tamaño de ticket
         doc = SimpleDocTemplate(
             output_path,

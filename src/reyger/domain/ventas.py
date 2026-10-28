@@ -26,6 +26,28 @@ from .fiscal import a_centimos, a_euros, desglose_linea_cent
 #: Métodos de pago admitidos por :func:`validar_pago`.
 METODOS_PAGO = ("Efectivo", "Tarjeta", "Mixto")
 
+#: Prefijo de los documentos emitidos en modo pruebas. Llevan numeración
+#: propia: no consumen la serie oficial, no descuentan stock, no entran en
+#: Veri*factu* ni en los informes y se pueden borrar.
+PREFIJO_PRUEBA = "PRUEBA-"
+
+
+def es_prueba(numero):
+    """Si *numero* es de un documento emitido en modo pruebas."""
+    return str(numero or "").startswith(PREFIJO_PRUEBA)
+
+
+def siguiente_numero_prueba(conn=None):
+    """Siguiente número de pruebas: ``PRUEBA-0001``, ``PRUEBA-0002``…"""
+    sql = (
+        "SELECT MAX(CAST(SUBSTR(numero, ?) AS INTEGER)) AS n FROM documentos"
+        " WHERE numero LIKE ?"
+    )
+    args = (len(PREFIJO_PRUEBA) + 1, PREFIJO_PRUEBA + "%")
+    fila = (conn.execute(sql, args).fetchone() if conn is not None
+            else db.query_one(sql, args))
+    return f"{PREFIJO_PRUEBA}{(fila['n'] or 0) + 1:04d}"
+
 
 @dataclass(frozen=True)
 class LineaVenta:
@@ -48,6 +70,9 @@ class Documento:
     correlativo: Optional[int] = None  # solo en documentos emitidos
     cliente_id: Optional[int] = None
     metodo_pago: Optional[str] = None
+    fecha: Optional[str] = None  # hora local ISO (``AAAA-MM-DD HH:MM:SS``)
+    estado: Optional[str] = None
+    tipo: Optional[str] = None  # 'ticket' o 'factura'
 
 
 def validar_pago(metodo, efectivo, tarjeta, total):
@@ -134,14 +159,26 @@ def _insertar_documento(conn, numero, tipo, estado, lineas, cliente_id=None,
 
 
 def registrar_venta(lineas, tipo_documento, metodo_pago, efectivo=0.0,
-                    tarjeta=0.0, cliente_id=None):
+                    tarjeta=0.0, cliente_id=None, prueba=False):
     """Cobra *lineas* como ``'ticket'`` o ``'factura'`` en una transacción.
 
     Asigna el número correlativo oficial (que nunca retrocede), guarda el
     documento y sus líneas, descuenta el stock y registra el número en
     ``contadores_documentos``. Si algo falla (p. ej. un producto borrado,
     que lanza ``LookupError``) no se guarda nada.
+
+    Con *prueba* el documento se numera ``PRUEBA-…`` y no toca ni el stock
+    ni el contador oficial (``correlativo`` queda en ``None``).
     """
+    if prueba:
+        with db.transaccion() as conn:
+            numero = siguiente_numero_prueba(conn)
+            _insertar_documento(
+                conn, numero, tipo_documento, "emitido", lineas, cliente_id,
+                metodo_pago, efectivo, tarjeta,
+            )
+        return leer_documento(numero)
+
     prefijo, correlativo = correlativos.siguiente_numero(tipo_documento)
     numero = f"{prefijo}{correlativo:04d}"
     with db.transaccion() as conn:
@@ -176,15 +213,20 @@ def guardar_borrador(lineas, cliente_id, fecha=None):
     return leer_documento(clave)
 
 
-def emitir_borrador(clave):
+def emitir_borrador(clave, prueba=False):
     """Convierte el borrador *clave* en factura con número oficial.
 
     Emite **todas** sus líneas, descuenta su stock y registra el número. La
     fecha pasa a ser la de emisión (la que lleva el PDF). Devuelve el
     :class:`Documento` emitido, o ``None`` si el borrador ya no existe.
+
+    Con *prueba* se emite como factura de pruebas (``PRUEBA-…``), sin
+    stock ni contador oficial.
     """
-    prefijo, correlativo = correlativos.siguiente_numero("factura")
-    numero = f"{prefijo}{correlativo:04d}"
+    if prueba:
+        prefijo, correlativo = None, None
+    else:
+        prefijo, correlativo = correlativos.siguiente_numero("factura")
 
     with db.transaccion() as conn:
         fila = conn.execute(
@@ -200,20 +242,23 @@ def emitir_borrador(clave):
         ).fetchall()
         if not lineas:
             return None
+        numero = (siguiente_numero_prueba(conn) if prueba
+                  else f"{prefijo}{correlativo:04d}")
         conn.execute(
             f"UPDATE documentos SET numero = ?, estado = 'emitido', "
             f"fecha = {FECHA_LOCAL_SQL} WHERE id = ?",
             (numero, fila["id"]),
         )
-        for linea in lineas:
-            id_producto = _id_producto(conn, linea["nombre"], linea["producto_id"])
-            _descontar_stock(conn, linea["nombre"], linea["cantidad"], id_producto)
-            if linea["producto_id"] is None:
-                conn.execute(
-                    "UPDATE lineas_documento SET producto_id = ? WHERE id = ?",
-                    (id_producto, linea["id"]),
-                )
-        correlativos.reservar_numero("factura", correlativo, prefijo, conn=conn)
+        if not prueba:
+            for linea in lineas:
+                id_producto = _id_producto(conn, linea["nombre"], linea["producto_id"])
+                _descontar_stock(conn, linea["nombre"], linea["cantidad"], id_producto)
+                if linea["producto_id"] is None:
+                    conn.execute(
+                        "UPDATE lineas_documento SET producto_id = ? WHERE id = ?",
+                        (id_producto, linea["id"]),
+                    )
+            correlativos.reservar_numero("factura", correlativo, prefijo, conn=conn)
 
     documento = leer_documento(numero)
     documento.correlativo = correlativo
@@ -226,7 +271,8 @@ def leer_documento(numero, estado=None):
     *estado* se acepta por compatibilidad: el número ya es único.
     """
     cabecera = db.query_one(
-        "SELECT id, cliente_id, metodo_pago FROM documentos WHERE numero = ?"
+        "SELECT id, cliente_id, metodo_pago, fecha, estado, tipo FROM documentos"
+        " WHERE numero = ?"
         + (" AND estado = ?" if estado else ""),
         (numero, estado) if estado else (numero,),
     )
@@ -257,6 +303,9 @@ def _documento_por_id(documento_id, numero, cabecera):
         cuota=a_euros(sum(f["cuota_cent"] for f in filas)),
         cliente_id=cabecera["cliente_id"],
         metodo_pago=cabecera["metodo_pago"],
+        fecha=cabecera["fecha"],
+        estado=cabecera["estado"],
+        tipo=cabecera["tipo"],
     )
 
 
@@ -267,7 +316,8 @@ def documento_de_linea(id_linea):
     hay que recuperar todas las líneas del documento, no solo la elegida.
     """
     cabecera = db.query_one(
-        "SELECT d.id, d.numero, d.cliente_id, d.metodo_pago FROM lineas_documento l"
+        "SELECT d.id, d.numero, d.cliente_id, d.metodo_pago, d.fecha, d.estado, d.tipo"
+        " FROM lineas_documento l"
         " JOIN documentos d ON d.id = l.documento_id WHERE l.id = ?",
         (id_linea,),
     )
@@ -286,6 +336,56 @@ def listar_lineas():
         " FROM lineas_documento l JOIN documentos d ON d.id = l.documento_id"
         " ORDER BY d.id DESC, l.id DESC"
     )
+
+
+def listar_documentos(limite=None):
+    """Una fila por documento (ticket, factura o borrador), recientes primero.
+
+    Columnas: ``numero``, ``tipo``, ``estado``, ``fecha``, ``cliente``
+    (nombre o ``None``) y ``total`` en euros.
+    """
+    sql = (
+        "SELECT d.numero AS numero, d.tipo AS tipo, d.estado AS estado,"
+        " d.fecha AS fecha, c.nombre AS cliente,"
+        " COALESCE(SUM(l.subtotal_cent), 0) / 100.0 AS total"
+        " FROM documentos d"
+        " LEFT JOIN clientes c ON c.id = d.cliente_id"
+        " LEFT JOIN lineas_documento l ON l.documento_id = d.id"
+        " GROUP BY d.id ORDER BY d.id DESC"
+    )
+    if limite:
+        return db.query(sql + " LIMIT ?", (int(limite),))
+    return db.query(sql)
+
+
+def borrar_no_oficial(numero):
+    """Borra el borrador o documento de pruebas *numero*; devuelve si existía.
+
+    Un ticket o factura oficiales tienen número correlativo (y quizá
+    registro Veri*factu*) y la normativa (RD 1619/2012) no permite hacerlos
+    desaparecer; se corrigen con una factura rectificativa.
+    """
+    with db.transaccion() as conn:
+        fila = conn.execute(
+            "SELECT id FROM documentos WHERE numero = ?"
+            " AND (estado = 'borrador' OR numero LIKE ?)",
+            (numero, PREFIJO_PRUEBA + "%"),
+        ).fetchone()
+        if fila is None:
+            return False
+        conn.execute("DELETE FROM lineas_documento WHERE documento_id = ?", (fila["id"],))
+        conn.execute("DELETE FROM documentos WHERE id = ?", (fila["id"],))
+    return True
+
+
+def asignar_cliente_borrador(clave, cliente_id):
+    """Asigna *cliente_id* al borrador *clave*; devuelve si se actualizó."""
+    with db.transaccion() as conn:
+        cur = conn.execute(
+            "UPDATE documentos SET cliente_id = ? WHERE numero = ? AND estado = 'borrador'",
+            (cliente_id, clave),
+        )
+    return cur.rowcount == 1
 
 
 def nombre_cliente(cliente_id):

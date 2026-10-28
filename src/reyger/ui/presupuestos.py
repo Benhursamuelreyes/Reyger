@@ -464,7 +464,7 @@ class Presupuestos(tk.Frame):
                     else f"PRE-{datetime.now().strftime('%Y')}-BORRADOR"
                 )
 
-            pdf.generar(
+            archivo_pdf = pdf.generar(
                 output_path=archivo_pdf,
                 titulo_documento=bp.nombre_empresa(),
                 subtitulo_documento="PRESUPUESTO",
@@ -531,7 +531,7 @@ class Presupuestos(tk.Frame):
                     else f"PRE-{datetime.now().strftime('%Y')}-BORRADOR"
                 )
 
-            pdf.generar(
+            archivo_tmp = pdf.generar(
                 output_path=archivo_tmp,
                 titulo_documento=bp.nombre_empresa(),
                 subtitulo_documento="PRESUPUESTO",

@@ -1,7 +1,7 @@
 """Informes de ventas por periodo, sin interfaz gráfica.
 
 Solo cuentan los documentos **emitidos** (tickets y facturas); los
-borradores no son ventas. Los importes se suman en céntimos enteros
+borradores y los documentos del modo pruebas (``PRUEBA-…``) no son ventas. Los importes se suman en céntimos enteros
 (``lineas_documento``) y se pasan a euros al final, así que los totales son
 exactos. ``documentos.fecha`` es hora local ISO, de modo que ``date(fecha)``
 es el día de la venta.
@@ -16,7 +16,8 @@ from .fiscal import a_euros
 
 _DESDE = (
     "FROM lineas_documento l JOIN documentos d ON d.id = l.documento_id "
-    "WHERE d.estado = 'emitido' AND date(d.fecha) BETWEEN ? AND ?"
+    "WHERE d.estado = 'emitido' AND d.numero NOT LIKE 'PRUEBA-%' "
+    "AND date(d.fecha) BETWEEN ? AND ?"
 )
 
 

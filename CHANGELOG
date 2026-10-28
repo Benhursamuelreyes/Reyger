@@ -2,6 +2,42 @@ Changelog content
 
 ## Sin publicar
 
+### Correcciones
+
+- **«Permission denied» al generar facturas en Windows**: la factura se
+  guardaba siempre como `factura_<número>.pdf` y, si seguía abierta en el
+  visor (que bloquea el fichero), reimprimirla o emitirla fallaba. Ahora se
+  escribe al lado (`factura_<número>_1.pdf`…). Si la carpeta de datos no
+  admite escritura, los PDF van a `Documentos/Reyger` o, en último caso, a
+  la carpeta temporal.
+- **Borradores sin cliente**: guardar un borrador exige cliente (es una
+  factura completa). Al emitir un borrador antiguo sin cliente se pide uno,
+  para que la factura no salga con los datos del cliente vacíos.
+- Reimprimir conserva la fecha original del documento en vez de la actual.
+
+### Facturas y ventas
+
+- **«Ver facturas»** muestra un documento por fila (número, tipo, estado,
+  fecha, cliente, total) con filtro Todos / Facturas / Borradores /
+  Tickets. Botones para abrir el PDF (también con doble clic), emitir
+  borrador, reimprimir y **borrar borradores**. Las facturas y tickets
+  emitidos no se pueden borrar (numeración oficial sin huecos): se anulan
+  con una factura rectificativa.
+- **Modo pruebas** (Ajustes → Modo pruebas): las ventas se numeran
+  `PRUEBA-0001…`, no consumen la numeración oficial, no descuentan stock,
+  no se registran en Veri*factu* ni cuentan en los informes, y se pueden
+  borrar. La pantalla de ventas muestra «MODO PRUEBAS» en la cabecera.
+- **Borrador, prueba y oficial se distinguen en papel**: el borrador y el
+  documento de pruebas llevan en el PDF la marca de agua diagonal
+  «BORRADOR»/«PRUEBA — SIN VALIDEZ FISCAL», un subtítulo que lo indica y
+  un pie sin la mención legal; el ticket térmico de prueba sale como
+  «TICKET DE PRUEBA *** SIN VALIDEZ FISCAL ***». El oficial sale limpio.
+  En «Ver facturas» el estado es Borrador / Prueba / Oficial, con filtros.
+- **Cabecera de la factura** vertical y centrada (un dato por línea) e
+  incluye el **WhatsApp** del negocio.
+- Las categorías de la pantalla de ventas pasan a un **desplegable**.
+- Botones principales con **icono y texto**.
+
 ### Documentación e instaladores
 
 - **README orientado a quien instala**: descarga directa de la última

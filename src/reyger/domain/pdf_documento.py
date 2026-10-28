@@ -12,6 +12,7 @@ visual y lógica.
 import logging
 import os
 from datetime import datetime
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -31,7 +32,7 @@ from ..config import ConfigManager
 log = logging.getLogger(__name__)
 from ..ui import business_profile as bp
 from ..core import moneda as mod_moneda
-from ..resources import get_output_path
+from ..resources import get_output_path, ruta_escribible
 
 
 AZUL = colors.HexColor("#0078D4")
@@ -90,7 +91,8 @@ class PdfDocumento:
             fontSize=9,
             textColor=colors.HexColor("#555555"),
             alignment=1,
-            spaceAfter=3,
+            spaceAfter=1,
+            leading=11,
         )
 
     # ── API pública ──────────────────────────────────────────────
@@ -102,7 +104,7 @@ class PdfDocumento:
                 base_imponible=None, tipo_iva=None, total_iva=None,
                 total=None, observaciones="", campos_firma=True,
                 codigo_qr=None, pie_legal=None, columnas_productos=None,
-                filas_extra=None):
+                filas_extra=None, marca_agua=None):
         """Construye y guarda un documento PDF A4 unificado.
 
         Args:
@@ -127,9 +129,15 @@ class PdfDocumento:
                 ['DESCRIPCIÓN', 'CANTIDAD', 'P. UNITARIO (símbolo)',
                 'SUBTOTAL (símbolo)'] según la moneda global.
             filas_extra: Filas adicionales a añadir bajo la tabla.
+            marca_agua: Texto en diagonal sobre cada página (``"BORRADOR"``,
+                ``"PRUEBA"``) para que un documento sin validez fiscal no
+                pueda pasar por uno oficial. ``None`` en los oficiales.
         """
         if output_path is None:
             output_path = self._ruta_por_defecto(subtitulo_documento, numero)
+        # Si el PDF anterior sigue abierto en el visor, se escribe al lado:
+        # quien llama debe usar la ruta devuelta, no la que pasó.
+        output_path = ruta_escribible(output_path)
 
         doc = SimpleDocTemplate(
             output_path,
@@ -179,13 +187,37 @@ class PdfDocumento:
             story.append(Spacer(1, 0.4 * cm))
             story.extend(self._campos_firma())
 
-        doc.build(story)
+        if marca_agua:
+            def pintar(lienzo, _doc):
+                self._marca_agua(lienzo, marca_agua)
+            doc.build(story, onFirstPage=pintar, onLaterPages=pintar)
+        else:
+            doc.build(story)
         return output_path
+
+    @staticmethod
+    def _marca_agua(lienzo, texto):
+        """Texto grande, gris claro y en diagonal en el centro de la página."""
+        ancho, alto = A4
+        lienzo.saveState()
+        lienzo.setFont("Helvetica-Bold", 90)
+        lienzo.setFillColor(colors.HexColor("#E74C3C"), alpha=0.15)
+        lienzo.translate(ancho / 2, alto / 2)
+        lienzo.rotate(45)
+        lienzo.drawCentredString(0, -30, texto.upper())
+        lienzo.setFont("Helvetica-Bold", 22)
+        lienzo.drawCentredString(0, -70, "SIN VALIDEZ FISCAL")
+        lienzo.restoreState()
 
     # ── Secciones ────────────────────────────────────────────────
 
     def _membrete(self, titulo_documento):
-        """Membrete dinámico con logo, nombre y datos de contacto."""
+        """Membrete dinámico con logo, nombre y datos de contacto.
+
+        Todo va centrado y en vertical, un dato por línea (NIF, dirección,
+        teléfono, WhatsApp, email): en una sola línea separada por « | » los
+        datos largos se cortaban y costaba leerlos en papel.
+        """
         elementos = []
 
         logo_path = (
@@ -203,7 +235,7 @@ class PdfDocumento:
                     width=ANCHO_LOGO,
                     height=ALTO_LOGO,
                 )
-                img.hAlign = "LEFT"
+                img.hAlign = "CENTER"
                 elementos.append(img)
                 # Separación mínima entre el logotipo y la razón social
                 # ("RODISA 1900 S.L.U.") bajo el borde superior de la página.
@@ -238,10 +270,12 @@ class PdfDocumento:
                 lineas.append(d)
             if p.get("telefono"):
                 lineas.append(f"Tel: {p['telefono']}")
+            if p.get("whatsapp"):
+                lineas.append(f"WhatsApp: {p['whatsapp']}")
             if p.get("email"):
                 lineas.append(f"Email: {p['email']}")
-            if lineas:
-                elementos.append(Paragraph(" | ".join(lineas), self.estilo_empresa))
+            for linea in lineas:
+                elementos.append(Paragraph(escape(str(linea)), self.estilo_empresa))
 
         return elementos
 

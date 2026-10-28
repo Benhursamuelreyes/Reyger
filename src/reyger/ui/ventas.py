@@ -74,8 +74,8 @@ class Ventas(tk.Frame):
     def widgets(self):
         frame1 = tk.Frame(self, bg=self.colors["bg_cabecera"], highlightbackground="gray", highlightthickness=3)
         frame1.pack(fill="x")
-        titulo = tk.Label(frame1, text="VENTAS", bg=self.colors["bg_cabecera"], font="sans 30 bold", anchor="center")
-        titulo.pack(fill="both", expand=True)
+        self.titulo = tk.Label(frame1, text="VENTAS", bg=self.colors["bg_cabecera"], font="sans 30 bold", anchor="center")
+        self.titulo.pack(fill="both", expand=True)
 
         frame2 = tk.Frame(self, bg=self.colors["bg_principal"], highlightbackground="gray", highlightthickness=3)
         frame2.pack(fill="both", expand=True)
@@ -136,7 +136,7 @@ class Ventas(tk.Frame):
         self.cargar_clientes_venta()
 
         self.boton_nuevo_cliente = tk.Button(
-            lblframe, text="+ Nuevo cliente", bg="#17A2B8", fg="white",
+            lblframe, text="➕ Nuevo cliente", bg="#17A2B8", fg="white",
             font="sans 11 bold", relief="flat", cursor="hand2",
             command=self.abrir_nuevo_cliente,
         )
@@ -152,11 +152,18 @@ class Ventas(tk.Frame):
 
         lblframe.columnconfigure(6, weight=1)
 
+        # Desplegable y no una fila de botones: con muchas categorías la
+        # fila desbordaba el ancho y robaba espacio al carrito.
         frame_categorias = tk.Frame(frame2, bg=self.colors["bg_principal"])
         frame_categorias.pack(fill="x", padx=10)
-        tk.Label(frame_categorias, text="Categorías:", bg=self.colors["bg_principal"], font="sans 12 bold").pack(side="left", padx=(0, 8))
-        self.frame_botones_categoria = frame_categorias
-        self.crear_botones_categorias()
+        tk.Label(frame_categorias, text="🗂 Categoría:", bg=self.colors["bg_principal"], font="sans 12 bold").pack(side="left", padx=(0, 8))
+        self.combo_categoria = ttk.Combobox(frame_categorias, font="sans 12", state="readonly", width=24)
+        self.combo_categoria.pack(side="left", pady=(0, 4))
+        self.combo_categoria.bind(
+            "<<ComboboxSelected>>",
+            lambda _e: self.filtrar_por_categoria(self.combo_categoria.get()),
+        )
+        self.cargar_categorias()
 
         treFrame = tk.Frame(frame2, bg=self.colors["bg_principal"])
         treFrame.pack(fill="both", expand=True, padx=150, pady=10)
@@ -215,16 +222,16 @@ class Ventas(tk.Frame):
         self.toggle_escaner.pack(side="left", padx=(10, 20), pady=10)
         self._pintar_toggle()
 
-        boton_agregar = tk.Button(lblframe1, text="Agregar artículo", bg="#000CFF", fg="white", font="sans 14 bold", command=self.registrar)
+        boton_agregar = tk.Button(lblframe1, text="➕ Agregar artículo", bg="#000CFF", fg="white", font="sans 14 bold", command=self.registrar)
         boton_agregar.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
-        boton_pagar = tk.Button(lblframe1, text="Pagar", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_paga)
+        boton_pagar = tk.Button(lblframe1, text="💶 Pagar", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_paga)
         boton_pagar.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
-        boton_borrador = tk.Button(lblframe1, text="Guardar borrador", bg="#6C757D", fg="white", font="sans 14 bold", command=self.guardar_borrador)
+        boton_borrador = tk.Button(lblframe1, text="📝 Guardar borrador", bg="#6C757D", fg="white", font="sans 14 bold", command=self.guardar_borrador)
         boton_borrador.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
-        boton_ver_factura = tk.Button(lblframe1, text="Ver Facturas", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_factura)
+        boton_ver_factura = tk.Button(lblframe1, text="🧾 Ver facturas", bg="#000CFF", fg="white", font="sans 14 bold", command=self.abrir_ventana_factura)
         boton_ver_factura.pack(side="left", expand=True, fill="x", padx=10, pady=10, ipady=6)
 
     def cargar_productos(self):
@@ -247,8 +254,8 @@ class Ventas(tk.Frame):
                 )
                 self.productos_por_categoria.setdefault(categoria, []).append(nombre)
             self.entry_nombre["values"] = nombres
-            if hasattr(self, "botones_categoria"):
-                self.filtrar_por_categoria("Todos")
+            if hasattr(self, "combo_categoria"):
+                self.cargar_categorias()
             if not nombres:
                 log.info("La base de datos no contiene productos registrados")
         except Exception:
@@ -263,16 +270,9 @@ class Ventas(tk.Frame):
         except Exception:
             return ["General"]
 
-    def crear_botones_categorias(self):
-        self.botones_categoria = {}
-        for nombre in ["Todos"] + self._categorias_disponibles():
-            btn = tk.Button(
-                self.frame_botones_categoria, text=nombre, font="sans 11 bold",
-                bg="#17A2B8", fg="white", relief="flat", cursor="hand2",
-                command=lambda n=nombre: self.filtrar_por_categoria(n),
-            )
-            btn.pack(side="left", padx=(0, 6), pady=(0, 8), ipadx=8, ipady=3)
-            self.botones_categoria[nombre] = btn
+    def cargar_categorias(self):
+        """Rellena el desplegable de categorías y muestra todos los productos."""
+        self.combo_categoria["values"] = ["Todos"] + self._categorias_disponibles()
         self.filtrar_por_categoria("Todos")
 
     def filtrar_por_categoria(self, categoria):
@@ -286,8 +286,8 @@ class Ventas(tk.Frame):
             self.entry_valor.config(state="normal")
             self.entry_valor.delete(0, tk.END)
             self.entry_valor.config(state="readonly")
-        for nombre, btn in getattr(self, "botones_categoria", {}).items():
-            btn.config(bg="#000CFF" if nombre == categoria else "#17A2B8")
+        if hasattr(self, "combo_categoria"):
+            self.combo_categoria.set(categoria)
 
     def cargar_clientes_venta(self):
         """Rellena el desplegable de clientes associating each entry with its id.
@@ -849,10 +849,12 @@ class Ventas(tk.Frame):
                 )
                 return
 
+            prueba = self._modo_pruebas()
             documento = dominio_ventas.registrar_venta(
                 self._lineas_venta(),
                 "factura" if tipo_documento == "factura" else "ticket",
                 metodo_pago, cantidad_efectivo, cantidad_tarjeta, cliente_id,
+                prueba=prueba,
             )
             productos = documento.productos
             total, base_total, cuota_total = (
@@ -869,7 +871,9 @@ class Ventas(tk.Frame):
             # abierta durante un render de ReportLab y, si fallaran,
             # harían rollback de una venta ya cobrada.
             # Fijar el siguiente número evitando tocar el emitido
-            if tipo_documento == "factura":
+            if numero_asignado is None:
+                pass  # documento de pruebas: la serie oficial no avanza
+            elif tipo_documento == "factura":
                 self.numero_factura_actual = numero_asignado + 1
             else:
                 self.numero_ticket_actual = numero_asignado + 1
@@ -887,13 +891,14 @@ class Ventas(tk.Frame):
                     base_imponible=base_total, cuota_iva=cuota_total,
                     cliente_nombre=cliente_nombre,
                     cliente_id=cliente_id,
+                    **_presentacion("emitido", "factura", numero_doc),
                 )
                 # VeriFactu: solo facturas emitidas y con integración activa.
                 # El NIF del receptor se toma de la ficha del cliente
                 # seleccionado por id: antes se pasaba None fijo y el registro
                 # se quedaba sin NIF de receptor aunque la factura sí lo
                 # impresa, que es un dato obligatorio del registro.
-                if self._verifactu_activo():
+                if not prueba and self._verifactu_activo():
                     self._registrar_verifactu(
                         numero_doc,
                         fecha, productos, total,
@@ -910,13 +915,14 @@ class Ventas(tk.Frame):
                     fecha, productos, total,
                     base_total, cuota_total, metodo_pago,
                     None if cliente_id is None else cliente_nombre,
-                    tipo_documento="ticket",
+                    tipo_documento="prueba" if prueba else "ticket",
                 )
 
             messagebox.showinfo(
-                "Exito",
+                "Venta de prueba" if prueba else "Exito",
                 f"La venta se ha completado\nDocumento: {tipo_documento}\n"
-                f"Numero: {numero_doc}\nMetodo de pago: {metodo_pago}",
+                f"Numero: {numero_doc}\nMetodo de pago: {metodo_pago}"
+                + ("\n\nMODO PRUEBAS: documento sin validez fiscal." if prueba else ""),
             )
         except ValueError:
             messagebox.showerror("Error", "Valores ingresados no validos")
@@ -958,6 +964,15 @@ class Ventas(tk.Frame):
         )
         if error_cliente:
             messagebox.showerror("Cliente ambiguo", error_cliente)
+            return
+        # Un borrador es siempre de factura completa: sin cliente, el PDF
+        # salía con «(Consumidor final)» y sin NIF ni dirección.
+        if cliente_id is None:
+            messagebox.showerror(
+                "Cliente obligatorio",
+                "El borrador es una factura completa: selecciona un cliente "
+                "o registra uno nuevo antes de guardarlo.",
+            )
             return
 
         fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -1113,7 +1128,8 @@ class Ventas(tk.Frame):
     def generar_factura_pdf(self, productos, total, factura_numero, fecha,
                             metodo_pago="Efectivo", base_imponible=None,
                             cuota_iva=None, cliente_nombre=None,
-                            cliente_id=None):
+                            cliente_id=None, subtitulo="FACTURA", abrir=True,
+                            marca_agua=None):
         """Genera la factura en PDF A4 estandarizado con membrete del negocio.
 
         Las facturas NO se envían a la impresora térmica de tickets: se
@@ -1125,6 +1141,16 @@ class Ventas(tk.Frame):
             cliente_id: Id en ``clientes`` del cliente facturado. Si se
                 informa, la sección DATOS DEL CLIENTE incluye además NIF,
                 dirección, teléfono y email de su ficha.
+            subtitulo: Tipo que se imprime (``"BORRADOR DE FACTURA"`` en un
+                borrador, para que no pase por factura emitida).
+            abrir: Si hay que abrir el PDF en el visor del sistema.
+            marca_agua: ``"BORRADOR"`` o ``"PRUEBA"`` en documentos sin
+                validez fiscal (ver :func:`_presentacion`); ``None`` en los
+                oficiales.
+
+        Returns:
+            Ruta del PDF generado. Puede diferir de ``factura_<número>.pdf``
+            si la anterior sigue abierta en el visor (Windows la bloquea).
         """
         from ..domain.pdf_documento import PdfDocumento
 
@@ -1149,10 +1175,10 @@ class Ventas(tk.Frame):
                 "subtotal": subtotal,
             })
 
-        pdf.generar(
+        archivo_pdf = pdf.generar(
             output_path=archivo_pdf,
             titulo_documento=bp.nombre_empresa(),
-            subtitulo_documento="FACTURA",
+            subtitulo_documento=subtitulo,
             numero=str(factura_numero),
             fecha=fecha,
             cliente_nombre=cliente_nombre or "(Consumidor final)",
@@ -1167,17 +1193,22 @@ class Ventas(tk.Frame):
             total=total,
             observaciones=f"Forma de pago: {metodo_pago}",
             campos_firma=False,
+            marca_agua=marca_agua,
             pie_legal=(
+                "<i>Documento sin validez fiscal: no es una factura emitida.</i>"
+                if marca_agua else
                 "<i>Esta factura cumple con los requisitos del artículo 34 de "
                 "la Ley 37/1992, de 28 de diciembre, del Impuesto sobre el "
                 "Valor Añadido. Registro de Facturas disponible en la empresa.</i>"
             ),
         )
 
-        try:
-            open_file(archivo_pdf)
-        except Exception:
-            messagebox.showinfo("Factura generada", f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}")
+        if abrir:
+            try:
+                open_file(archivo_pdf)
+            except Exception:
+                messagebox.showinfo("Factura generada", f"La factura #{factura_numero} ha sido creada exitosamente en:\n{archivo_pdf}")
+        return archivo_pdf
 
     def _cambio_tipo_documento(self):
         """Al cambiar el tipo de documento se actualiza el número mostrado.
@@ -1219,9 +1250,28 @@ class Ventas(tk.Frame):
         prefijo, _ = correlativos.siguiente_numero("factura")
         return f"{prefijo}{n:04d}"
 
+    def _modo_pruebas(self):
+        """Si el modo pruebas está activo (se lee de disco: lo cambia Ajustes)."""
+        return bool(ConfigManager().get("modo_pruebas", False))
+
     def mostrar_numero_documento(self):
         """Muestra en pantalla el número correlativo del tipo seleccionado."""
-        if self.var_tipo_documento.get() == "factura":
+        # En modo pruebas la cabecera cambia (en el mismo hueco, sin quitar
+        # alto a la botonera): el cajero debe saber que no vende de verdad.
+        if hasattr(self, "titulo"):
+            if self._modo_pruebas():
+                self.titulo.config(
+                    text="🧪 VENTAS — MODO PRUEBAS (sin validez fiscal)",
+                    bg="#E67E22", fg="white",
+                )
+            else:
+                self.titulo.config(
+                    text="VENTAS", bg=self.colors["bg_cabecera"],
+                    fg=self.colors.get("fg_texto", "black"),
+                )
+        if self._modo_pruebas():
+            self.numero_documento.set(dominio_ventas.siguiente_numero_prueba())
+        elif self.var_tipo_documento.get() == "factura":
             self.numero_documento.set(self._numero_factura_formateado())
         else:
             self.numero_documento.set(self._numero_ticket_formateado())
@@ -1230,15 +1280,30 @@ class Ventas(tk.Frame):
         self.mostrar_numero_documento()
 
     def abrir_ventana_factura(self):
+        """Ventana «Ver facturas»: historial de documentos, uno por fila.
+
+        Desde aquí se abre el PDF de cada documento (también con doble
+        clic), se emiten y borran borradores y se reimprime.
+        """
         ventana_facturas = tk.Toplevel(self)
-        ventana_facturas.title("Documentos / Facturas")
+        ventana_facturas.title("Ver facturas")
         ventana_facturas.geometry("1000x640")
         ventana_facturas.config(bg=self.colors["bg_principal"])
         ventana_facturas.resizable(True, True)
         ventana_facturas.minsize(850, 520)
 
-        facturas_label = tk.Label(ventana_facturas, bg=self.colors["bg_principal"], text="Documentos registrados", font="sans 36 bold")
+        facturas_label = tk.Label(ventana_facturas, bg=self.colors["bg_principal"], text="🧾 Facturas y documentos", font="sans 30 bold")
         facturas_label.pack(pady=15)
+
+        frame_filtro = tk.Frame(ventana_facturas, bg=self.colors["bg_principal"])
+        frame_filtro.pack(fill="x", padx=10, pady=(0, 6))
+        tk.Label(frame_filtro, text="Mostrar:", bg=self.colors["bg_principal"], font="sans 12 bold").pack(side="left", padx=(0, 8))
+        combo_filtro = ttk.Combobox(
+            frame_filtro, state="readonly", font="sans 12", width=18,
+            values=list(FILTROS_HISTORIAL),
+        )
+        combo_filtro.current(0)
+        combo_filtro.pack(side="left")
 
         treFrame = tk.Frame(ventana_facturas, bg=self.colors["bg_principal"])
         treFrame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -1248,125 +1313,215 @@ class Ventas(tk.Frame):
         scrol_x = ttk.Scrollbar(treFrame, orient=HORIZONTAL)
         scrol_x.pack(side=BOTTOM, fill=X)
 
+        # El iid de cada fila es el número del documento, que es único.
         tree_facturas = ttk.Treeview(
             treFrame,
-            columns=("ID", "Documento", "Tipo", "Estado", "Producto", "Precio", "Cantidad", "Subtotal"),
+            columns=("Documento", "Tipo", "Estado", "Fecha", "Cliente", "Total"),
             show="headings", height=10,
             yscrollcommand=scrol_y.set, xscrollcommand=scrol_x.set,
         )
         scrol_y.config(command=tree_facturas.yview)
         scrol_x.config(command=tree_facturas.xview)
 
-        tree_facturas.heading("ID", text="ID")
-        tree_facturas.heading("Documento", text="Número")
-        tree_facturas.heading("Tipo", text="Tipo")
-        tree_facturas.heading("Estado", text="Estado")
-        tree_facturas.heading("Producto", text="Producto")
-        tree_facturas.heading("Precio", text="P. venta")
-        tree_facturas.heading("Cantidad", text="Cantidad")
-        tree_facturas.heading("Subtotal", text="Subtotal")
-
-        tree_facturas.column("ID", width=60, anchor="center")
-        tree_facturas.column("Documento", width=130, anchor="center")
-        tree_facturas.column("Tipo", width=90, anchor="center")
-        tree_facturas.column("Estado", width=90, anchor="center")
-        tree_facturas.column("Producto", width=170, anchor="center")
-        tree_facturas.column("Precio", width=110, anchor="center")
-        tree_facturas.column("Cantidad", width=90, anchor="center")
-        tree_facturas.column("Subtotal", width=110, anchor="center")
+        for columna, titulo, ancho in (
+            ("Documento", "Número", 170),
+            ("Tipo", "Tipo", 90),
+            ("Estado", "Estado", 90),
+            ("Fecha", "Fecha", 140),
+            ("Cliente", "Cliente", 240),
+            ("Total", "Total", 110),
+        ):
+            tree_facturas.heading(columna, text=titulo)
+            tree_facturas.column(columna, width=ancho, anchor="center")
 
         tree_facturas.pack(expand=True, fill=BOTH)
+        tree_facturas.bind("<Double-1>", lambda _e: self.abrir_documento_pdf(tree_facturas))
+        combo_filtro.bind(
+            "<<ComboboxSelected>>",
+            lambda _e: self.cargar_facturas(tree_facturas, combo_filtro.get()),
+        )
 
         frame_botones = tk.Frame(ventana_facturas, bg=self.colors["bg_principal"])
         frame_botones.pack(fill="x", padx=10, pady=(0, 15))
 
-        boton_emitir = tk.Button(
-            frame_botones, text="Emitir factura (desde borrador)",
-            bg="#27AE60", fg="white", font="sans 13 bold",
-            command=lambda: self.emitir_borrador_como_factura(tree_facturas),
-        )
-        boton_emitir.pack(side="left", expand=True, fill="x", padx=6, ipady=6)
+        def recargar():
+            self.cargar_facturas(tree_facturas, combo_filtro.get())
 
-        boton_reimprimir = tk.Button(
-            frame_botones, text="Reimprimir documento",
-            bg="#17A2B8", fg="white", font="sans 13 bold",
-            command=lambda: self.reimprimir_documento(tree_facturas),
-        )
-        boton_reimprimir.pack(side="left", expand=True, fill="x", padx=6, ipady=6)
+        for texto, color, comando in (
+            ("📄 Abrir PDF", "#0078D4", lambda: self.abrir_documento_pdf(tree_facturas)),
+            ("✅ Emitir borrador", "#27AE60", lambda: self.emitir_borrador_como_factura(tree_facturas, recargar)),
+            ("🖨 Reimprimir", "#17A2B8", lambda: self.reimprimir_documento(tree_facturas)),
+            ("🗑 Borrar", "#C0392B", lambda: self.borrar_documento(tree_facturas, recargar)),
+            ("📊 Informe de ventas", "#8E44AD", lambda: VentanaInforme(ventana_facturas)),
+        ):
+            tk.Button(
+                frame_botones, text=texto, bg=color, fg="white",
+                font="sans 13 bold", cursor="hand2", command=comando,
+            ).pack(side="left", expand=True, fill="x", padx=6, ipady=6)
 
-        boton_informe = tk.Button(
-            frame_botones, text="📊 Informe de ventas",
-            bg="#8E44AD", fg="white", font="sans 13 bold",
-            command=lambda: VentanaInforme(ventana_facturas),
-        )
-        boton_informe.pack(side="left", expand=True, fill="x", padx=6, ipady=6)
+        recargar()
 
-        self.cargar_facturas(tree_facturas)
-
-    def cargar_facturas(self, tree):
+    def cargar_facturas(self, tree, filtro="Todos"):
+        """Rellena *tree* con un documento por fila según *filtro*."""
+        tree.delete(*tree.get_children())
+        criterio = FILTROS_HISTORIAL.get(filtro, FILTROS_HISTORIAL["Todos"])
         try:
-            for fila in dominio_ventas.listar_lineas():
-                tree.insert("", "end", values=(
-                    fila["id"],
-                    fila["factura"],
-                    "Factura" if fila["tipo_documento"] == "factura" else "Ticket",
-                    "Borrador" if fila["estado"] == "borrador" else "Emitido",
-                    fila["nombre_articulo"],
-                    f"{fila['valor_articulo']:.2f}",
-                    fila["cantidad"],
-                    f"{fila['subtotal']:.2f}",
+            for fila in dominio_ventas.listar_documentos():
+                if not criterio(fila):
+                    continue
+                tree.insert("", "end", iid=fila["numero"], values=(
+                    fila["numero"],
+                    "Factura" if fila["tipo"] == "factura" else "Ticket",
+                    _estado_visible(fila["estado"], fila["numero"]),
+                    _fecha_corta(fila["fecha"]),
+                    fila["cliente"] or "—",
+                    mod_moneda.format_currency(fila["total"]),
                 ))
         except Exception as e:
             log.exception("Error al cargar los documentos")
             messagebox.showerror("Error", f"Error al cargar los documentos: {e}")
 
-    def _borrador_seleccionado(self, tree):
+    def _documento_seleccionado(self, tree, accion):
+        """Documento de la fila elegida en *tree*, o ``None`` (con aviso)."""
         seleccion = tree.selection()
         if not seleccion:
-            return None, None
-        item = tree.item(seleccion[0], "values")
-        tipo = item[2]
-        estado = item[3]
-        if tipo == "Factura" and estado == "Borrador":
-            return int(item[0]), item[1]
-        return None, None
+            messagebox.showinfo(accion, "Selecciona un documento de la lista.", parent=tree)
+            return None
+        documento = dominio_ventas.leer_documento(seleccion[0])
+        if not documento.productos:
+            messagebox.showerror(accion, "El documento ya no existe.", parent=tree)
+            return None
+        return documento
 
-    def emitir_borrador_como_factura(self, tree):
+    def _pdf_documento(self, documento, abrir=True):
+        """Genera el PDF A4 de *documento* con su fecha y la ficha del cliente."""
+        return self.generar_factura_pdf(
+            documento.productos, documento.total, documento.numero,
+            documento.fecha or datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+            metodo_pago=documento.metodo_pago or "Efectivo",
+            base_imponible=documento.base, cuota_iva=documento.cuota,
+            cliente_nombre=dominio_ventas.nombre_cliente(documento.cliente_id),
+            cliente_id=documento.cliente_id, abrir=abrir,
+            **_presentacion(documento.estado, documento.tipo, documento.numero),
+        )
+
+    def abrir_documento_pdf(self, tree):
+        """Abre el PDF del documento elegido en el visor del sistema.
+
+        Si la factura emitida ya tiene PDF se abre ese (el original); si no
+        (borradores, tickets o PDF borrado) se genera al momento.
+        """
+        documento = self._documento_seleccionado(tree, "Abrir PDF")
+        if documento is None:
+            return
+        ruta = None
+        if documento.estado == "emitido" and documento.tipo == "factura":
+            ruta = _pdf_existente(get_output_path("facturas"), documento.numero)
+        try:
+            if ruta is None:
+                ruta = self._pdf_documento(documento, abrir=False)
+            open_file(ruta)
+        except Exception as e:
+            log.exception("No se pudo abrir el PDF de %s", documento.numero)
+            messagebox.showerror(
+                "Abrir PDF", f"No se pudo abrir el PDF de {documento.numero}:\n{e}",
+                parent=tree,
+            )
+
+    def _pedir_cliente(self, parent):
+        """Diálogo modal para elegir un cliente; devuelve su id o ``None``."""
+        filas = db.query("SELECT id, nombre FROM clientes ORDER BY nombre, id")
+        if not filas:
+            messagebox.showerror(
+                "Cliente obligatorio",
+                "No hay clientes registrados. Crea uno en Clientes antes de "
+                "emitir la factura.", parent=parent,
+            )
+            return None
+        dialogo = tk.Toplevel(parent)
+        dialogo.title("Cliente de la factura")
+        dialogo.config(bg=self.colors["bg_principal"])
+        dialogo.transient(parent)
+        tk.Label(
+            dialogo, bg=self.colors["bg_principal"], font="sans 12",
+            text="Este borrador no tiene cliente.\nElige a quién se factura:",
+        ).pack(padx=20, pady=(15, 8))
+        combo = ttk.Combobox(
+            dialogo, state="readonly", font="sans 12", width=34,
+            values=[f["nombre"] for f in filas],
+        )
+        combo.pack(padx=20)
+        elegido = {"id": None}
+
+        def aceptar():
+            # Por posición: dos clientes pueden llamarse igual.
+            if combo.current() >= 0:
+                elegido["id"] = filas[combo.current()]["id"]
+            dialogo.destroy()
+
+        frame = tk.Frame(dialogo, bg=self.colors["bg_principal"])
+        frame.pack(pady=15)
+        tk.Button(frame, text="Aceptar", bg="#27AE60", fg="white", font="sans 11 bold", command=aceptar).pack(side="left", padx=6)
+        tk.Button(frame, text="Cancelar", font="sans 11", command=dialogo.destroy).pack(side="left", padx=6)
+        dialogo.grab_set()
+        dialogo.wait_window()
+        return elegido["id"]
+
+    def emitir_borrador_como_factura(self, tree, al_terminar=None):
         """Convierte un borrador de factura en factura emitida.
 
         Asigna el número correlativo oficial definitivo (garantizando que
         no retrocede) y actualiza el estado a 'emitido', sin necesidad de
-        anular primero el borrador.
+        anular primero el borrador. Un borrador sin cliente (guardado antes
+        de que fuese obligatorio) pide uno: una factura completa sin
+        destinatario salía con los datos del cliente vacíos.
         """
-        doc_id, numero_temp = self._borrador_seleccionado(tree)
-        if doc_id is None:
+        borrador = self._documento_seleccionado(tree, "Emitir factura")
+        if borrador is None:
+            return
+        if borrador.estado != "borrador":
             messagebox.showinfo(
                 "Emitir factura",
                 "Selecciona un borrador de factura en la lista para emitirlo.",
+                parent=tree,
             )
             return
+        numero_temp = borrador.numero
 
+        if borrador.cliente_id is None:
+            cliente_id = self._pedir_cliente(tree.winfo_toplevel())
+            if cliente_id is None:
+                return
+            dominio_ventas.asignar_cliente_borrador(numero_temp, cliente_id)
+
+        prueba = self._modo_pruebas()
         confirmar = messagebox.askyesno(
             "Emitir factura",
+            f"El borrador #{numero_temp} se convertirá en factura de PRUEBA "
+            "(modo pruebas activo): sin validez fiscal ni número oficial.\n¿Continuar?"
+            if prueba else
             f"El borrador #{numero_temp} se convertirá en factura final.\n"
             "Se le asignará el siguiente número correlativo oficial.\n¿Continuar?",
+            parent=tree,
         )
         if not confirmar:
             return
 
         try:
-            documento = dominio_ventas.emitir_borrador(numero_temp)
+            documento = dominio_ventas.emitir_borrador(numero_temp, prueba=prueba)
         except LookupError as e:
-            messagebox.showerror("Error de inventario", str(e))
+            messagebox.showerror("Error de inventario", str(e), parent=tree)
             return
         if documento is None:
             messagebox.showerror(
                 "Emitir factura",
                 "El borrador seleccionado ya no tiene líneas pendientes.",
+                parent=tree,
             )
             return
 
-        self.numero_factura_actual = documento.correlativo + 1
+        if documento.correlativo is not None:
+            self.numero_factura_actual = documento.correlativo + 1
         self.mostrar_numero_documento()
         self.cargar_productos()
 
@@ -1376,13 +1531,8 @@ class Ventas(tk.Frame):
         cliente_id = documento.cliente_id
         cliente_nombre = dominio_ventas.nombre_cliente(cliente_id)
 
-        self.generar_factura_pdf(
-            documento.productos, documento.total, documento.numero, fecha,
-            base_imponible=documento.base, cuota_iva=documento.cuota,
-            cliente_nombre=cliente_nombre,
-            cliente_id=cliente_id,
-        )
-        if self._verifactu_activo():
+        self._pdf_documento(documento)
+        if not prueba and self._verifactu_activo():
             self._registrar_verifactu(
                 documento.numero, fecha, documento.productos, documento.total,
                 documento.base, documento.cuota,
@@ -1396,38 +1546,117 @@ class Ventas(tk.Frame):
         messagebox.showinfo(
             "Factura emitida",
             f"La factura {documento.numero} se ha emitido correctamente.",
+            parent=tree,
         )
-        tree.delete(*tree.get_children())
-        self.cargar_facturas(tree)
+        if al_terminar is not None:
+            al_terminar()
+
+    def borrar_documento(self, tree, al_terminar=None):
+        """Borra el borrador o documento de pruebas elegido.
+
+        Las facturas y tickets oficiales no se borran: tienen número
+        correlativo oficial y la normativa exige conservarlos (se anulan
+        con una factura rectificativa).
+        """
+        documento = self._documento_seleccionado(tree, "Borrar")
+        if documento is None:
+            return
+        if documento.estado != "borrador" and not dominio_ventas.es_prueba(documento.numero):
+            messagebox.showwarning(
+                "Borrar",
+                f"{documento.numero} ya está emitido y no se puede borrar: la "
+                "ley obliga a conservar las facturas y tickets con número "
+                "oficial sin huecos en la numeración.\n\n"
+                "Para anularlo, emite una factura rectificativa.",
+                parent=tree,
+            )
+            return
+        if not messagebox.askyesno(
+            "Borrar",
+            f"¿Borrar definitivamente {documento.numero}?",
+            parent=tree,
+        ):
+            return
+        dominio_ventas.borrar_no_oficial(documento.numero)
+        if al_terminar is not None:
+            al_terminar()
 
     def reimprimir_documento(self, tree):
-        seleccion = tree.selection()
-        if not seleccion:
-            messagebox.showinfo("Reimprimir", "Selecciona un documento para reimprimir.")
+        documento = self._documento_seleccionado(tree, "Reimprimir")
+        if documento is None:
             return
-        item = tree.item(seleccion[0], "values")
-        tipo = item[2]
 
-        # El historial lista una fila por línea: se reimprime el documento
-        # completo al que pertenece la fila elegida.
-        documento = dominio_ventas.documento_de_linea(int(item[0]))
-        if documento is None or not documento.productos:
-            messagebox.showerror("Reimprimir", "El documento ya no existe.")
-            return
-        cliente_nombre = dominio_ventas.nombre_cliente(documento.cliente_id)
-        fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-
-        if tipo == "Ticket":
+        if documento.tipo == "ticket":
             self._imprimir_ticket_termico(
-                documento.numero, fecha, documento.productos, documento.total,
+                documento.numero,
+                _fecha_corta(documento.fecha) or datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                documento.productos, documento.total,
                 documento.base, documento.cuota,
-                documento.metodo_pago or "Efectivo", cliente_nombre,
-                tipo_documento="ticket",
+                documento.metodo_pago or "Efectivo",
+                dominio_ventas.nombre_cliente(documento.cliente_id),
+                tipo_documento="prueba" if dominio_ventas.es_prueba(documento.numero) else "ticket",
             )
         else:
-            self.generar_factura_pdf(
-                documento.productos, documento.total, documento.numero, fecha,
-                base_imponible=documento.base, cuota_iva=documento.cuota,
-                cliente_nombre=cliente_nombre,
-                cliente_id=documento.cliente_id,
-            )
+            self._pdf_documento(documento)
+
+
+#: Filtros del historial de «Ver facturas»: etiqueta -> criterio por fila.
+FILTROS_HISTORIAL = {
+    "Todos": lambda f: True,
+    "Facturas oficiales": lambda f: (
+        f["tipo"] == "factura" and f["estado"] == "emitido"
+        and not dominio_ventas.es_prueba(f["numero"])
+    ),
+    "Tickets oficiales": lambda f: (
+        f["tipo"] == "ticket" and not dominio_ventas.es_prueba(f["numero"])
+    ),
+    "Borradores": lambda f: f["estado"] == "borrador",
+    "Pruebas": lambda f: dominio_ventas.es_prueba(f["numero"]),
+}
+
+
+def _estado_visible(estado, numero):
+    """Estado del historial: «Borrador», «Prueba» u «Oficial»."""
+    if estado == "borrador":
+        return "Borrador"
+    return "Prueba" if dominio_ventas.es_prueba(numero) else "Oficial"
+
+
+def _presentacion(estado, tipo, numero):
+    """Subtítulo y marca de agua del PDF según la validez del documento.
+
+    Los tres casos deben distinguirse a simple vista en papel: el borrador y
+    el documento de pruebas llevan la marca en diagonal «SIN VALIDEZ
+    FISCAL»; el oficial sale limpio.
+    """
+    nombre = "FACTURA SIMPLIFICADA" if tipo == "ticket" else "FACTURA"
+    if estado == "borrador":
+        return {"subtitulo": "BORRADOR DE FACTURA — SIN VALIDEZ FISCAL",
+                "marca_agua": "BORRADOR"}
+    if dominio_ventas.es_prueba(numero):
+        return {"subtitulo": f"{nombre} DE PRUEBA — SIN VALIDEZ FISCAL",
+                "marca_agua": "PRUEBA"}
+    return {"subtitulo": nombre, "marca_agua": None}
+
+
+def _fecha_corta(fecha):
+    """``AAAA-MM-DD HH:MM:SS`` (hora local de ``documentos``) -> ``dd/mm/aaaa HH:MM``."""
+    if not fecha:
+        return ""
+    try:
+        return datetime.datetime.strptime(fecha[:19], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return fecha
+
+
+def _pdf_existente(carpeta, numero):
+    """PDF más reciente de la factura *numero* en *carpeta*, o ``None``.
+
+    Incluye las variantes ``factura_<n>_1.pdf``… que se crean cuando la
+    anterior estaba abierta en el visor.
+    """
+    import glob
+
+    base = os.path.join(glob.escape(carpeta), f"factura_{glob.escape(str(numero))}")
+    candidatos = glob.glob(base + ".pdf") + glob.glob(base + "_[0-9]*.pdf")
+    return max(candidatos, key=os.path.getmtime) if candidatos else None
