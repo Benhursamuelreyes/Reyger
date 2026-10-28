@@ -1,6 +1,9 @@
 Changelog content
 
-## Sin publicar
+## v1.3.0 (2026-10-28)
+
+FEATURE: «Ver facturas», modo pruebas y facturas que distinguen borrador,
+prueba y oficial; FIX: «Permission denied» al regenerar una factura abierta.
 
 ### Correcciones
 
